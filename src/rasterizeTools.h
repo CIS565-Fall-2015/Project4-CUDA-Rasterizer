@@ -12,6 +12,8 @@
 #include <glm/glm.hpp>
 #include <util/utilityCore.hpp>
 
+#include <minmax.h>
+
 struct AABB {
     glm::vec3 min;
     glm::vec3 max;

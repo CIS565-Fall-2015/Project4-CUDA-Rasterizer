@@ -11,9 +11,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+
+#include "glm/gtc/matrix_transform.hpp"
 
 struct VertexIn {
     glm::vec3 pos;
@@ -21,9 +24,38 @@ struct VertexIn {
     glm::vec3 col;
     // TODO (optional) add other vertex attributes (e.g. texture coordinates)
 };
+
+ 
 struct VertexOut {
     // TODO
+	glm::vec4 pos;	//in NDS
+	glm::vec3 color;
+
+	glm::vec3 noraml_eye_space;
+	
+	float divide_w_clip;
+
+	glm::vec2 uv;
 };
+
+struct Edge
+{
+	VertexOut v[2];
+
+	float x, z;
+	float dx, dz;
+
+
+	//
+	VertexOut cur_v;	//used for interpolate between a scan line
+	float gap_y;
+};
+
+
+
+
+
+
 struct Triangle {
     VertexOut v[3];
 };
@@ -40,6 +72,8 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+
+static int triCount = 0;
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -99,6 +133,10 @@ void rasterizeSetBuffers(
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
 
+	//MY
+	triCount = vertCount / 3;
+	/////////
+
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
     cudaMemcpy(dev_bufIdx, bufIdx, bufIdxSize * sizeof(int), cudaMemcpyHostToDevice);
@@ -121,6 +159,286 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
+
+
+/**
+* each thread copy info for one vertex
+*/
+__global__ 
+void kernVertexShader(int N,glm::mat4 M,glm::mat4 M_normal_view, VertexIn * dev_vertex, Triangle * dev_triangles)
+{
+	int vertexId = blockDim.x * blockIdx.x + threadIdx.x;
+	
+
+	if (vertexId < N)
+	{
+		int triangleId = vertexId / 3;
+		int i = vertexId - triangleId * 3;
+		VertexIn & vi = dev_vertex[vertexId];
+		VertexOut & vo = dev_triangles[triangleId].v[i];
+
+		vo.pos = M * glm::vec4(vi.pos, 1);
+		vo.noraml_eye_space = glm::vec3(M_normal_view * glm::vec4(vi.nor, 0));
+		
+		vo.color = vi.col;
+
+		//TODO: UV etc...
+		
+	}
+}
+
+
+/**
+* MY:
+* 
+* VertexIn dev_bufVertex => Triangle VertexOut
+* M model-view
+*/
+void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M)
+{
+	const int blockSize = 192;
+	dim3 blockCount( (vertCount + blockSize - 1 )/blockSize );
+
+	// get M, M_normal_view
+
+	kernVertexShader << <blockCount, blockSize >> >(vertCount, M, inv_trans_M, dev_bufVertex, dev_primitives);
+}
+
+
+
+
+
+
+
+//MY
+//rasterize
+
+
+__device__ 
+void constructEdge(Edge & e, const VertexOut & v0, const VertexOut & v1)
+{
+	if (v0.pos.y < v1.pos.y)
+	{
+		e.v[0] = v0;
+		e.v[1] = v1;
+	}
+	else
+	{
+		e.v[0] = v1;
+		e.v[1] = v0;
+	}
+
+	//TODO: other members
+	//e.cur_v = e.v[0];
+	e.gap_y = 0.0f;
+
+}
+
+
+__device__
+void initEdge(Edge & e, float y)
+{
+	e.gap_y = e.v[1].pos.y - e.v[0].pos.y;
+
+	e.dx = (e.v[1].pos.x - e.v[0].pos.x) / (e.v[1].pos.y - e.v[0].pos.y);
+	e.dz = (e.v[1].pos.z - e.v[0].pos.z) / (e.v[1].pos.y - e.v[0].pos.y);
+	e.x = e.v[0].pos.x + (y - e.v[0].pos.y) * e.dx;
+	e.z = e.v[0].pos.z + (y - e.v[0].pos.y) * e.dz;
+}
+
+__device__
+void updateEdge(Edge & e)
+{
+	e.x += e.dx;
+	e.z += e.dz;
+}
+
+
+
+__device__
+void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment * depthBuffer)
+{
+	// Find the starting and ending x coordinates and
+	// clamp them to be within the visible region
+	int x_left = (int)(ceilf(e1.v[0].pos.x) + EPSILON);
+	int x_right = (int)(ceilf(e2.v[0].pos.x) + EPSILON);
+
+	if (x_left < 0)
+	{
+		x_left = 0;
+	}
+	
+	if (x_right > width)
+	{
+		x_right = width;
+	}
+
+	// Discard scanline with no actual rasterization and also
+	// ensure that the length is larger than zero
+	if (x_left >= x_right) return;
+
+
+	//TODO: get two interpolated segment end points
+
+
+
+
+	//Initialize attributes
+	float dz = (e2.z - e1.z) / (e2.x - e1.x);
+	float z = e1.z + (x_left - e1.x) * dz;
+
+
+	//Interpolate
+	float gap_x = x_right - x_left;
+	for (int x = x_left; x < x_right; ++x)
+	{
+		int idx = x + y * width;
+
+		// Z-buffer comparision
+		//Atomic read and write
+		
+		//test, scan to white
+		depthBuffer[idx].color = glm::vec3(1.0f);
+
+		z += dz;
+	}
+}
+
+
+
+
+
+
+
+
+/**
+* Rasterize the area between two edges as the left and right limit.
+* We will use it the way so that e1 always represents the edge with the
+* longest y span.
+*/
+__device__
+void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * depthBuffer)
+{
+	// Discard horizontal edge as there is nothing to rasterize
+	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) return;
+
+	// Find the starting and ending y positions and
+	// clamp them to be within the visible region
+	int y_bot = (int)(ceilf(e2.v[0].pos.y) + EPSILON);
+	int y_top = (int)(ceilf(e2.v[1].pos.y) + EPSILON);
+
+	if (y_bot < 0)
+	{
+		y_bot = 0;
+	}
+
+	if (y_top > height)
+	{
+		y_top = height;
+	}
+
+
+	//Initialize edge's structure
+	initEdge(e1, (float)y_bot);
+	initEdge(e1, (float)y_bot);
+
+
+	for (int y = y_bot; y < y_top; ++y)
+	{
+		if (e1.x <= e2.x)
+		{
+			drawOneScanLine(width,e1,e2,y,depthBuffer);
+		}
+		else
+		{
+			drawOneScanLine(width,e2, e1, y, depthBuffer);
+		}
+
+		//update edge
+		updateEdge(e1);
+		updateEdge(e2);
+	}
+}
+
+
+
+
+
+/**
+* Each thread handles one triangle
+* rasterization
+*/
+__global__
+void kernScanLineForOneTriangle(int width,int height
+	,Triangle * triangles, Fragment * depthBuffer)
+{
+	int triangleId = blockDim.x * blockIdx.x + threadIdx.x;
+
+	Triangle tri = triangles[triangleId];	//copy
+
+	//currently tri.v are in clipped coordinates
+	//need to transform to viewport coordinate
+	for (int i = 0; i < 3; i++)
+	{
+		tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		//view port
+		tri.v[i].pos.x = 0.5f * width * (tri.v[i].pos.x * tri.v[i].divide_w_clip + 1.0f);
+		tri.v[i].pos.y = 0.5f * height * (tri.v[i].pos.y * tri.v[i].divide_w_clip + 1.0f);
+		tri.v[i].pos.z = 0.5f * (tri.v[i].pos.z * tri.v[i].divide_w_clip + 1.0f);
+		tri.v[i].pos.w = 1.0f;
+
+		//perspective correct interpolation
+		tri.v[i].color *= tri.v[i].divide_w_clip;
+		
+		//u,v...
+
+
+		////////
+
+	}
+
+
+	//build edge
+	// for line scan
+	Edge edges[3];
+
+	constructEdge(edges[0], tri.v[0], tri.v[1]);
+	constructEdge(edges[1], tri.v[1], tri.v[2]);
+	constructEdge(edges[2], tri.v[2], tri.v[0]);
+
+	//Find the edge with longest y span
+	float maxLength = 0.0f;
+	int longEdge = -1;
+	for (int i = 0; i < 3; ++i)
+	{
+		float length = edges[i].v[1].pos.y - edges[i].v[0].pos.y;
+		if (length > maxLength)
+		{
+			maxLength = length;
+			longEdge = i;
+		}
+	}
+
+
+	// get indices for other two shorter edges
+	int shortEdge0 = (longEdge + 1) % 3;
+	int shortEdge1 = (longEdge + 2) % 3;
+
+	// Rasterize two parts separately
+	drawAllScanLines(width,height,edges[longEdge], edges[shortEdge0], depthBuffer);
+	drawAllScanLines(width,height,edges[longEdge], edges[shortEdge1], depthBuffer);
+
+	
+
+}
+
+
+
+
+
+
+
+
 /**
  * Perform rasterization.
  */
@@ -133,10 +451,21 @@ void rasterize(uchar4 *pbo) {
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
+	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+	//rasterization
+	dim3 blockSize(8);
+	dim3 blockCount_tri((triCount + blockSize.x - 1) / blockSize.x);
+
+	cudaDeviceSynchronize();
+	kernScanLineForOneTriangle << <blockCount_tri, blockSize >> >(width,height,dev_primitives,dev_depthbuffer);
+
     // Copy depthbuffer colors into framebuffer
+	cudaDeviceSynchronize();
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
+	cudaDeviceSynchronize();
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
+	cudaDeviceSynchronize();
     checkCUDAError("rasterize");
 }
 

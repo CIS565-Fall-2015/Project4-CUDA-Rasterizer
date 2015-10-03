@@ -61,6 +61,7 @@ int main(int argc, char **argv);
 //-------------------------------
 
 void runCuda();
+void setupCamera();
 
 #ifdef __APPLE__
 void display();
@@ -93,3 +94,6 @@ void deleteTexture(GLuint *tex);
 void mainLoop();
 void errorCallback(int error, const char *description);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+void mouseMotionCallback(GLFWwindow* window, double xpos, double ypos);
+void mouseWheelCallback(GLFWwindow* window, double xoffset, double yoffset);

@@ -7,10 +7,17 @@
  */
 
 #include "main.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtx/transform.hpp"
+#include "GLFW/glfw3.h"
+
 
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
+
+
+
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -28,7 +35,7 @@ int main(int argc, char **argv) {
     frame = 0;
     seconds = time(NULL);
     fpstracker = 0;
-
+	
     // Launch CUDA/GL
     if (init(mesh)) {
         // GLFW main loop
@@ -41,6 +48,10 @@ int main(int argc, char **argv) {
 void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+		//MY
+		setupCamera();
+
         runCuda();
 
         time_t seconds2 = time (NULL);
@@ -68,17 +79,42 @@ void mainLoop() {
     glfwTerminate();
 }
 
+
+
+
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
+
+//translate x,y, angle, scale for keyboard operations
+float scale = 0.15f;
+float x_trans = 0.0f, y_trans = 0.0f, z_trans = -10.0f;
+float x_angle = 0.0f, y_angle = 0.0f;
+
+
+glm::mat4 M_model;
+glm::mat4 M_view;
+glm::mat4 M_perspective;
+
+glm::mat4 inv_trans_M_view;	//for normal transformation
+
 
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
     dptr = NULL;
 
+	//int xpos, ypos;
+	//glfwGetMousePos(&xpos, &ypos);
+
     cudaGLMapBufferObject((void **)&dptr, pbo);
+
+	vertexShader(M_perspective * M_view * M_model, inv_trans_M_view);
+
     rasterize(dptr);
+
+
+
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -86,9 +122,36 @@ void runCuda() {
 
 }
 
+//MY
+void setupCamera()
+{
+
+	//model-view
+	//M_model = glm::mat4(1.0f);
+	//M_model = glm::translate(M_model, glm::vec3(0, 0, z_trans));
+
+	//x_angle, y_angle : radium
+	M_model = glm::translate(glm::vec3(x_trans, y_trans, z_trans))
+		* glm::rotate(x_angle, glm::vec3(1.0f, 0.0f, 0.0f))
+		* glm::rotate(y_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+	
+	M_view = glm::mat4(1.0f);
+
+	//projection
+	//left, right, bottom, top, near, far
+	M_perspective = glm::frustum<float>(-scale * width / height,
+		scale * width / height,
+		-scale, scale, 1.0, 1000.0);
+
+	inv_trans_M_view = glm::transpose(glm::inverse(M_model));
+}
+
 //-------------------------------
 //----------SETUP STUFF----------
 //-------------------------------
+
+
+
 
 bool init(obj *mesh) {
     glfwSetErrorCallback(errorCallback);
@@ -106,6 +169,14 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
+
+	//MY Mouse Control
+	glfwSetMouseButtonCallback(window, mouseButtonCallback);
+	glfwSetCursorPosCallback(window, mouseMotionCallback);
+
+
+	glfwSetScrollCallback(window,mouseWheelCallback);
+	/////
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -273,4 +344,60 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+}
+
+enum ControlState {NONE=0,ROTATE,TRANSLATE};
+ControlState mouseState = NONE;
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+	if (action == GLFW_PRESS)
+	{
+		if (button == GLFW_MOUSE_BUTTON_LEFT)
+		{
+			mouseState = ROTATE;
+		}
+		else if (button == GLFW_MOUSE_BUTTON_RIGHT)
+		{
+			mouseState = TRANSLATE;
+		}
+		
+	}
+	else if (action == GLFW_RELEASE)
+	{
+		mouseState = NONE;
+	}
+	//printf("%d\n", mouseState);
+}
+
+double lastx = width / 2;
+double lasty = height / 2;
+void mouseMotionCallback(GLFWwindow* window, double xpos, double ypos)
+{
+	const double s_r = 0.01;
+	const double s_t = 0.01;
+
+	double diffx = xpos - lastx;
+	double diffy = ypos - lasty;
+	lastx = xpos;
+	lasty = ypos;
+
+	if (mouseState == ROTATE)
+	{
+		//rotate
+		x_angle += (float)s_r * diffy;
+		y_angle += (float)s_r * diffx;
+	}
+	else if (mouseState == TRANSLATE)
+	{
+		//translate
+		x_trans += (float)(s_t * diffx);
+		y_trans += (float)(-s_t * diffy);
+	}
+}
+
+void mouseWheelCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	const double s_s = 0.01;
+
+	scale += (float)(s_s * yoffset);
 }

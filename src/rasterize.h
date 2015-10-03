@@ -14,5 +14,7 @@ void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol);
-void rasterize(uchar4 *pbo);
+
+void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M);
+void rasterize(uchar4 * pbo);
 void rasterizeFree();
