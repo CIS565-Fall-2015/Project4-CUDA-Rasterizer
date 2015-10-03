@@ -143,7 +143,7 @@ void setupCamera()
 		scale * width / height,
 		-scale, scale, 1.0, 1000.0);
 
-	inv_trans_M_view = glm::transpose(glm::inverse(M_model));
+	inv_trans_M_view = glm::transpose(glm::inverse(M_view * M_model));
 }
 
 //-------------------------------
@@ -399,5 +399,5 @@ void mouseWheelCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
 	const double s_s = 0.01;
 
-	scale += (float)(s_s * yoffset);
+	scale += (float)(-s_s * yoffset);
 }

@@ -217,7 +217,7 @@ void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M)
 __device__ 
 void constructEdge(Edge & e, const VertexOut & v0, const VertexOut & v1)
 {
-	if (v0.pos.y < v1.pos.y)
+	if (v0.pos.y <= v1.pos.y)
 	{
 		e.v[0] = v0;
 		e.v[1] = v1;
@@ -260,8 +260,8 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 {
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
-	int x_left = (int)(ceilf(e1.v[0].pos.x) + EPSILON);
-	int x_right = (int)(ceilf(e2.v[0].pos.x) + EPSILON);
+	int x_left = (int)(ceilf(e1.x) + EPSILON);
+	int x_right = (int)(ceilf(e2.x) + EPSILON);
 
 	if (x_left < 0)
 	{
@@ -279,8 +279,7 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 
 
 	//TODO: get two interpolated segment end points
-
-
+	
 
 
 	//Initialize attributes
@@ -289,7 +288,8 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 
 
 	//Interpolate
-	float gap_x = x_right - x_left;
+	//printf("%d,%d\n", x_left, x_right);
+	//float gap_x = x_right - x_left;
 	for (int x = x_left; x < x_right; ++x)
 	{
 		int idx = x + y * width;
@@ -313,8 +313,7 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 
 /**
 * Rasterize the area between two edges as the left and right limit.
-* We will use it the way so that e1 always represents the edge with the
-* longest y span.
+* e1 - longest y span
 */
 __device__
 void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * depthBuffer)
@@ -340,7 +339,7 @@ void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * dep
 
 	//Initialize edge's structure
 	initEdge(e1, (float)y_bot);
-	initEdge(e1, (float)y_bot);
+	initEdge(e2, (float)y_bot);
 
 
 	for (int y = y_bot; y < y_top; ++y)
