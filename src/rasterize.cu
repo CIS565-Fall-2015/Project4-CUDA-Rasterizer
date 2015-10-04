@@ -54,6 +54,19 @@ struct Edge
 
 
 
+struct FragmentIn
+{
+	bool shade;
+
+	glm::vec3 color;
+	glm::vec3 normal_eye_space;
+	glm::vec2 uv;
+
+	float depth;
+
+	
+	//__host__ __device__ FragmentIn(){ shade = false; depth = FLT_MAX; }
+};
 
 
 struct Triangle {
@@ -74,6 +87,8 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 
 static int triCount = 0;
+
+static FragmentIn * dev_fragments = NULL;
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -118,7 +133,13 @@ void rasterizeInit(int w, int h) {
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
-    cudaFree(dev_framebuffer);
+    
+	cudaFree(dev_fragments);
+	cudaMalloc(&dev_fragments, width * height *sizeof(FragmentIn));
+	cudaMemset(dev_fragments, 0, width * height * sizeof(FragmentIn));
+	
+	
+	cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
     checkCUDAError("rasterizeInit");
@@ -161,6 +182,13 @@ void rasterizeSetBuffers(
 
 
 
+
+
+
+//-------------------------------------------------------------------------------
+// Vertex Shader
+//-------------------------------------------------------------------------------
+
 /**
 * each thread copy info for one vertex
 */
@@ -187,7 +215,6 @@ void kernVertexShader(int N,glm::mat4 M,glm::mat4 M_normal_view, VertexIn * dev_
 	}
 }
 
-
 /**
 * MY:
 * 
@@ -204,6 +231,25 @@ void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M)
 	kernVertexShader << <blockCount, blockSize >> >(vertCount, M, inv_trans_M, dev_bufVertex, dev_primitives);
 }
 
+//------------------------------------------------------------------------------
+
+
+
+//MY
+//atomic write FragmentIn
+
+__device__ 
+void atomicWriteFragmentIn(Fragment * addreass, const Fragment & value)
+{
+	//atomicCAS
+}
+
+
+
+
+
+
+
 
 
 
@@ -211,9 +257,33 @@ void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M)
 
 
 //MY
-//rasterize
+//-------------------------------------------------------------------------------
+// Rasterization
+//-------------------------------------------------------------------------------
+
+__host__ __device__
+VertexOut interpolateVertexOut(const VertexOut & a, const VertexOut & b,float u)
+{
+	VertexOut c;
+
+	if (u < 0.0f){ u = 0.0f; }
+	else if (u > 1.0f){ u = 1.0f; }
+
+	c.pos = (1 - u) * a.pos + u * b.pos;
+	c.color = (1 - u) * a.color + u * b.color;
+	c.uv = (1 - u) * a.uv + u * b.uv;
+
+	c.divide_w_clip = (1 - u) * a.divide_w_clip + u * b.divide_w_clip;
+
+	
+	c.noraml_eye_space = glm::normalize( (1 - u) * a.noraml_eye_space + u * b.noraml_eye_space );
+
+	return c;
+}
 
 
+//e.v[0] is the one with smaller y value
+//scan from v[0] to v[1]
 __device__ 
 void constructEdge(Edge & e, const VertexOut & v0, const VertexOut & v1)
 {
@@ -256,7 +326,7 @@ void updateEdge(Edge & e)
 
 
 __device__
-void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment * depthBuffer)
+void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, FragmentIn * fragments)
 {
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
@@ -279,7 +349,8 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 
 
 	//TODO: get two interpolated segment end points
-	
+	VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], (float)y / e1.gap_y);
+	VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], (float)y / e2.gap_y);
 
 
 	//Initialize attributes
@@ -289,16 +360,33 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 
 	//Interpolate
 	//printf("%d,%d\n", x_left, x_right);
-	//float gap_x = x_right - x_left;
+	float gap_x = x_right - x_left;
 	for (int x = x_left; x < x_right; ++x)
 	{
 		int idx = x + y * width;
 
+
+
 		// Z-buffer comparision
-		//Atomic read and write
+		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, (float)x / gap_x);
 		
-		//test, scan to white
-		depthBuffer[idx].color = glm::vec3(1.0f);
+
+
+
+		//TODO: atomic
+		if (fragments[idx].shade == false)
+		{
+			fragments[idx].shade = true;
+			fragments[idx].depth = FLT_MAX;
+		}
+		if (z < fragments[idx].depth)
+		{
+			fragments[idx].depth = z;
+			fragments[idx].color = p.color;
+			fragments[idx].normal_eye_space = p.noraml_eye_space;
+			fragments[idx].uv = p.uv;
+		}
+		
 
 		z += dz;
 	}
@@ -316,7 +404,7 @@ void drawOneScanLine(int width,const Edge & e1, const Edge & e2, int y, Fragment
 * e1 - longest y span
 */
 __device__
-void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * depthBuffer)
+void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, FragmentIn * dev_fragments)
 {
 	// Discard horizontal edge as there is nothing to rasterize
 	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) return;
@@ -346,11 +434,11 @@ void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * dep
 	{
 		if (e1.x <= e2.x)
 		{
-			drawOneScanLine(width,e1,e2,y,depthBuffer);
+			drawOneScanLine(width, e1, e2, y, dev_fragments);
 		}
 		else
 		{
-			drawOneScanLine(width,e2, e1, y, depthBuffer);
+			drawOneScanLine(width, e2, e1, y, dev_fragments);
 		}
 
 		//update edge
@@ -369,7 +457,7 @@ void drawAllScanLines(int width, int height,Edge & e1, Edge & e2, Fragment * dep
 */
 __global__
 void kernScanLineForOneTriangle(int width,int height
-	,Triangle * triangles, Fragment * depthBuffer)
+, Triangle * triangles, FragmentIn * dev_fragments)
 {
 	int triangleId = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -388,8 +476,9 @@ void kernScanLineForOneTriangle(int width,int height
 
 		//perspective correct interpolation
 		tri.v[i].color *= tri.v[i].divide_w_clip;
+		tri.v[i].noraml_eye_space *= tri.v[i].divide_w_clip;
+		tri.v[i].uv *= tri.v[i].divide_w_clip;
 		
-		//u,v...
 
 
 		////////
@@ -424,15 +513,47 @@ void kernScanLineForOneTriangle(int width,int height
 	int shortEdge1 = (longEdge + 2) % 3;
 
 	// Rasterize two parts separately
-	drawAllScanLines(width,height,edges[longEdge], edges[shortEdge0], depthBuffer);
-	drawAllScanLines(width,height,edges[longEdge], edges[shortEdge1], depthBuffer);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], dev_fragments);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], dev_fragments);
 
 	
 
 }
 
+//---------------------------------------------------------------------------
 
 
+
+//-------------------------------------------------------------------------------
+// Fragment Shader
+//-------------------------------------------------------------------------------
+
+__global__ 
+void fragmentShader(int width, int height, Fragment* depthBuffer, FragmentIn* fragments)
+{
+	//currently
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < width && y < height)
+	{
+		int index = x + y*width;
+
+		if (fragments[index].shade)
+		{
+			//depthBuffer[index].color = glm::vec3(1.0f);
+
+			//test: normal
+			depthBuffer[index].color = fragments[index].normal_eye_space;
+		}
+		
+	}
+}
+
+
+
+
+//--------------------------------------------------------------------------------
 
 
 
@@ -450,13 +571,20 @@ void rasterize(uchar4 *pbo) {
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
+	cudaMemset(dev_fragments, 0, width * height * sizeof(FragmentIn));
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 	//rasterization
-	dim3 blockSize(8);
-	dim3 blockCount_tri((triCount + blockSize.x - 1) / blockSize.x);
+	dim3 blockSize_Rasterize(64);
+	dim3 blockCount_tri((triCount + blockSize_Rasterize.x - 1) / blockSize_Rasterize.x);
 
 	cudaDeviceSynchronize();
-	kernScanLineForOneTriangle << <blockCount_tri, blockSize >> >(width,height,dev_primitives,dev_depthbuffer);
+	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(width, height, dev_primitives, dev_fragments);
+
+
+	//fragment shader
+	fragmentShader << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_fragments);
+
+
 
     // Copy depthbuffer colors into framebuffer
 	cudaDeviceSynchronize();
@@ -467,6 +595,8 @@ void rasterize(uchar4 *pbo) {
 	cudaDeviceSynchronize();
     checkCUDAError("rasterize");
 }
+
+
 
 /**
  * Called once at the end of the program to free CUDA memory.
@@ -483,6 +613,9 @@ void rasterizeFree() {
 
     cudaFree(dev_depthbuffer);
     dev_depthbuffer = NULL;
+
+	cudaFree(dev_fragments);
+	dev_fragments = NULL;
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
