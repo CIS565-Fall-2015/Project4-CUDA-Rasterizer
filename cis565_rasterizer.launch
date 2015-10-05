@@ -10,7 +10,8 @@
 <stringAttribute key="org.eclipse.cdt.launch.PROGRAM_ARGUMENTS" value="objs/tri.obj"/>
 <stringAttribute key="org.eclipse.cdt.launch.PROGRAM_NAME" value="build/cis565_rasterizer"/>
 <stringAttribute key="org.eclipse.cdt.launch.PROJECT_ATTR" value="Project4-CUDA-Rasterizer"/>
-<stringAttribute key="org.eclipse.cdt.launch.PROJECT_BUILD_CONFIG_ID_ATTR" value="com.nvidia.cuda.ide.toolchain.on_path.1673801701.1348522543"/>
+<stringAttribute key="org.eclipse.cdt.launch.PROJECT_BUILD_CONFIG_ID_ATTR" value=""/>
+<booleanAttribute key="org.eclipse.cdt.launch.use_terminal" value="true"/>
 <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
 <listEntry value="/Project4-CUDA-Rasterizer"/>
 </listAttribute>

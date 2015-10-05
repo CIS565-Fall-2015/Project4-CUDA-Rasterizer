@@ -99,7 +99,7 @@ bool init(obj *mesh) {
 
     width = 800;
     height = 800;
-    window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
+    window = glfwCreateWindow(width, height, "SANCHIT GARG : CIS 565 Rasterizer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return false;

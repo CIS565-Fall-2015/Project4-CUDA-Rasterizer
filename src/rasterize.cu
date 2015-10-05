@@ -14,6 +14,8 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+#include <glm/gtc/matrix_transform.hpp>
+
 
 struct VertexIn {
     glm::vec3 pos;
@@ -22,6 +24,7 @@ struct VertexIn {
     // TODO (optional) add other vertex attributes (e.g. texture coordinates)
 };
 struct VertexOut {
+	glm::vec3 pos;
     // TODO
 };
 struct Triangle {
@@ -40,6 +43,12 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static glm::mat4 *dev_view = NULL;
+static glm::mat4 *dev_projection = NULL;
+static glm::mat4 *dev_model = NULL;
+
+//Things added
+static VertexOut *dev_outVertex = NULL;
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -73,6 +82,47 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
     if (x < w && y < h) {
         framebuffer[index] = depthbuffer[index].color;
     }
+}
+
+__global__
+void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, VertexOut *outVertex, glm::mat4 *view, glm::mat4 *projection, glm::mat4 *model)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numVertices)
+	{
+		glm::vec4 outPoint = glm::vec4(inVertex[index].pos.x, inVertex[index].pos.y, inVertex[index].pos.z, 1.0f);
+
+//		outPoint = (*projection) * (*view) * (*model) * outPoint;
+//		outPoint = (*model) * outPoint;
+		//outPoint = multiplyMV4(view[0], outPoint);
+		//outPoint = multiplyMV4(projection[0], outPoint);
+
+		//printf("model : %f\n", (*model)[1][1]);
+		printf("OutPoint %f %f %f %f :\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
+		//if(outPoint.w != 0)
+		//	outVertex[index].pos = glm::vec3(outPoint / outPoint.w);
+//		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
+	}
+}
+
+__global__
+void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, Triangle *triangles, int* indices)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numTriangles)
+	{
+		int k_3 = 3 * index;
+		triangles[index].v[0] = outVertex[indices[k_3]];
+		triangles[index].v[1] = outVertex[indices[k_3+1]];
+		triangles[index].v[2] = outVertex[indices[k_3+2]];
+
+		printf ("Triangle : %d\n", index);
+		printf ("Vertex 1 : %f %f\n", triangles[index].v[0].pos.x, triangles[index].v[0].pos.y);
+		printf ("Vertex 2 : %f %f\n", triangles[index].v[1].pos.x, triangles[index].v[1].pos.y);
+		printf ("Vertex 3 : %f %f\n", triangles[index].v[2].pos.x, triangles[index].v[2].pos.y);
+	}
 }
 
 /**
@@ -118,20 +168,85 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
 
+    cudaFree(dev_outVertex);
+    cudaMalloc((void**)&dev_outVertex, vertCount * sizeof(VertexOut));
+
+    cudaMalloc((void**)&dev_view, sizeof(glm::mat4()));
+    cudaMalloc((void**)&dev_projection, sizeof(glm::mat4()));
+    cudaMalloc((void**)&dev_model, sizeof(glm::mat4()));
+
     checkCUDAError("rasterizeSetBuffers");
 }
 
 /**
  * Perform rasterization.
  */
+bool run = true;
+
+void createCamera()
+{
+	//Camera stuff
+	glm::vec3 camEye, camCenter, camUp;
+	camEye = glm::vec3(0,0,3);
+	camCenter = glm::vec3(0,0,0);
+	camUp = glm::vec3(0,1,0);
+
+	glm::mat4 view = glm::lookAt(camEye, camCenter, camUp);
+	glm::mat4 projection = glm::perspective<float>(60.0f, float(width)/ float(height), 0.1f, 1000.0f);
+	glm::mat4 model = glm::mat4();
+	glm::mat4 temp;
+
+	utilityCore::printMat4(view);
+	std::cout<<std::endl;
+	utilityCore::printMat4(projection);
+	std::cout<<std::endl;
+	utilityCore::printMat4(model);
+	std::cout<<std::endl;
+
+	cudaMemcpy(dev_view, &view, sizeof(glm::mat4), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_model, &model, sizeof(glm::mat4), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_projection, &projection, sizeof(glm::mat4), cudaMemcpyHostToDevice);
+
+	//cudaMemcpy(&temp, dev_model, sizeof(glm::mat4), cudaMemcpyDeviceToDevice);
+	//utilityCore::printMat4(temp);
+	//std::cout<<std::endl;
+}
+
 void rasterize(uchar4 *pbo) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
+
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
+
+    int numTriangles = vertCount/3;
+
+    if(run)
+    {
+    	createCamera();
+//    	run = false;
+    }
+
+    //Todo change the number of threads based on input size.
+    if(run)
+    {
+    	kernVertexShader<<<1, vertCount>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, dev_view, dev_projection, dev_model);
+    	run = false;
+    }
+//
+//    if(run)
+//    {
+//    	kernPrimitiveAssembly<<<1, numTriangles>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
+//    	run = false;
+//    }
+
+    //if(run)
+    {
+    	//kernRasterize
+    }
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
@@ -158,6 +273,18 @@ void rasterizeFree() {
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
+
+    cudaFree(dev_outVertex);
+    dev_outVertex = NULL;
+
+    cudaFree(dev_view);
+    dev_view = NULL;
+
+    cudaFree(dev_model);
+    dev_model = NULL;
+
+    cudaFree(dev_projection);
+    dev_projection = NULL;
 
     checkCUDAError("rasterizeFree");
 }
