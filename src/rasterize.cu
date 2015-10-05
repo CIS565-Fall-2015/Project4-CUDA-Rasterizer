@@ -15,9 +15,10 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 
 #define MAX_THREADS 512
-#define FIXED_SIZE 1000
+#define FIXED_SIZE 10000
 
 struct Light {
 	glm::vec3 pos;
@@ -134,14 +135,16 @@ void rasterizeInit(int w, int h) {
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
     checkCUDAError("rasterizeInit");
 
+
 	cam.width = width;
 	cam.height = height;
-	cam.pos = glm::vec3(0.0f, 0.5f, 10.0f);
+	cam.pos = glm::vec3(0.0f, 1.0f, 3.0f);
 	cam.focus = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.up = glm::vec3(0.0f, 1.0f, 0.0f);
-	cam.fovy = 30.0f;
-	cam.zNear = 0.01f;
-	cam.zFar = 100.0f;
+	cam.fovy = 35.0f * glm::pi<float>() / 180.0f;// *3.141562f / 180.0f;
+	//cam.fovy = 0.6109f;
+	cam.zNear = 0.1f;
+	cam.zFar = 10.0f;
 	cam.aspect = 1.0f;
 
 	Mmod = glm::mat4(1.0f)*1.0f;
@@ -266,7 +269,6 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 				if (isBarycentricCoordInBounds(bary)){
 					//printf("bary: %f %f %f\n", prim.v[0].col.r, prim.v[0].col.g, prim.v[0].col.b);
 					depth = bary[0] * prim.v[0].ndc_pos[2] + bary[1] * prim.v[1].ndc_pos[2] + bary[2] * prim.v[2].ndc_pos[2];
-
 					fixed_depth = (int)(depth * FIXED_SIZE);
 
 					atomicMin(&fs_input[i + j*cam.width].fixed_depth, fixed_depth);
@@ -277,6 +279,8 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 						fs_input[i + j*cam.width].norm = bary[0] * prim.v[0].nor + bary[1] * prim.v[1].nor + bary[2] * prim.v[2].nor;
 						fs_input[i + j*cam.width].pos = bary[0] * prim.v[0].pos + bary[1] * prim.v[1].pos + bary[2] * prim.v[2].pos;
 						fs_input[i + j*cam.width].color = fs_input[i + j*cam.width].norm;
+						//printf("%f  %f  %f\n", (depth + 1.0f) / 2.0f, depth, prim.v[0].ndc_pos[2]);
+						//fs_input[i + j*cam.width].color = glm::vec3((depth + 1.0f)/2.0f);
 					}
 				}
 			}
@@ -315,14 +319,12 @@ void rasterize(uchar4 *pbo) {
 
 	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mproj, Mview, Mmod);
 	
-	/*
-	VertexOut* hst_bufVertexOut = (VertexOut*)malloc(vertCount*sizeof(VertexOut));
-	cudaMemcpy(hst_bufVertexOut,dev_bufVertexOut,vertCount*sizeof(VertexOut),cudaMemcpyDeviceToHost);
-	printf("%d\n",vertCount);
-	for (int i = 0; i < vertCount; i++){
-		printf("%f %f %f\n", hst_bufVertexOut[i].ndc_pos[0], hst_bufVertexOut[i].ndc_pos[1], hst_bufVertexOut[i].ndc_pos[2]);
-	}
-	*/
+	//VertexOut* hst_bufVertexOut = (VertexOut*)malloc(vertCount*sizeof(VertexOut));
+	//cudaMemcpy(hst_bufVertexOut,dev_bufVertexOut,vertCount*sizeof(VertexOut),cudaMemcpyDeviceToHost);
+	//printf("%d\n",vertCount);
+	//for (int i = 0; i < vertCount; i++){
+	//	printf("%f %f %f\n", hst_bufVertexOut[i].ndc_pos[0], hst_bufVertexOut[i].ndc_pos[1], hst_bufVertexOut[i].ndc_pos[2]);
+	//}
 
 	// Primitive Assembly
 	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
@@ -331,8 +333,7 @@ void rasterize(uchar4 *pbo) {
 	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives);
 
 	// Fragment shading
-
-	// Fragments to depth buffer
+	//kernFragmentShading<<< MAX_THREADS>>>();
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
