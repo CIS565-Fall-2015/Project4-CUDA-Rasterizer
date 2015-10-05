@@ -13,6 +13,7 @@
 #include <cuda.h>
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include "rasterizeTools.h"
 
 struct VertexIn {
@@ -126,12 +127,11 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
-__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount) {
+__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 model, glm::mat4 view, glm::mat4 projection) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < vertCount) {
-		outVerts[thrId].pos[0] = (inVerts[thrId].pos[0] * 2.0f) - 1.0f;
-		outVerts[thrId].pos[1] = (inVerts[thrId].pos[1] * 2.0f) - 1.0f;
-		outVerts[thrId].pos[2] = (inVerts[thrId].pos[2] * 2.0f) - 1.0f;
+		glm::vec4 newVert = projection * view * model * glm::vec4(inVerts[thrId], 1.0);
+		outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
 	}
 
 }
@@ -182,7 +182,9 @@ void rasterize(uchar4 *pbo) {
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
-
+    glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.0f, 1000.0f);
+    glm::mat4 model = glm::mat4();
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
@@ -190,7 +192,7 @@ void rasterize(uchar4 *pbo) {
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 	
 	//Transfer from VertexIn to VertexOut (vertex shading)
-	vertexShader<<<1, vertCount>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount);
+	vertexShader<<<1, vertCount>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, model, view, projection);
 
 	//Transfer from VertexOut to Triangles (primitive assembly)
 	primitiveAssemble<<<1, vertCount>>>(dev_bufTransformedVertex, dev_primitives, vertCount);
