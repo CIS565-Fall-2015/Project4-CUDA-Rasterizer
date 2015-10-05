@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
@@ -132,6 +133,13 @@ void rasterize(uchar4 *pbo) {
 
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
+
+
+
+	//so each stage of the pipeline is just anotehr kernel function?
+
+
+
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
