@@ -116,7 +116,7 @@ __global__ void initDepths(int n, Fragment* depthbuffer){
 	int index = threadIdx.x + (blockDim.x*blockIdx.x);
 
 	if (index < n){
-		depthbuffer[index].fixed_depth = 1 * FIXED_SIZE;
+		depthbuffer[index].fixed_depth = 1 * INT_MAX;
 	}
 }
 
@@ -135,14 +135,12 @@ void rasterizeInit(int w, int h) {
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
     checkCUDAError("rasterizeInit");
 
-
 	cam.width = width;
 	cam.height = height;
-	cam.pos = glm::vec3(0.0f, 1.0f, 3.0f);
+	cam.pos = glm::vec3(0.0f, 0.0f, 2.0f);
 	cam.focus = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.up = glm::vec3(0.0f, 1.0f, 0.0f);
-	cam.fovy = 35.0f * glm::pi<float>() / 180.0f;// *3.141562f / 180.0f;
-	//cam.fovy = 0.6109f;
+	cam.fovy = 30.0f * glm::pi<float>() / 180.0f;
 	cam.zNear = 0.1f;
 	cam.zFar = 10.0f;
 	cam.aspect = 1.0f;
@@ -269,7 +267,7 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 				if (isBarycentricCoordInBounds(bary)){
 					//printf("bary: %f %f %f\n", prim.v[0].col.r, prim.v[0].col.g, prim.v[0].col.b);
 					depth = bary[0] * prim.v[0].ndc_pos[2] + bary[1] * prim.v[1].ndc_pos[2] + bary[2] * prim.v[2].ndc_pos[2];
-					fixed_depth = (int)(depth * FIXED_SIZE);
+					fixed_depth = (int)(depth * INT_MAX);
 
 					atomicMin(&fs_input[i + j*cam.width].fixed_depth, fixed_depth);
 
@@ -309,6 +307,10 @@ void rasterize(uchar4 *pbo) {
     // (See README for rasterization pipeline outline.)
 
 	// TODO move this somewhere where it only happens once
+
+	//glm::vec4 viewport(0,0,800,800);
+	//glm::vec3 h = glm::project(glm::vec3(0.99, 0.0, 0.0), Mview*Mmod, Mproj, viewport);
+	//printf("%f %f %f\n",h.x,h.y,h.z);
 
 	// Vertex shading
 	int fragCount = cam.width * cam.height;
