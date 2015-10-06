@@ -94,12 +94,15 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 		glm::vec4 outPoint = glm::vec4(inVertex[index].pos.x, inVertex[index].pos.y, inVertex[index].pos.z, 1.0f);
 
 //		outPoint = (*projection) * (*view) * (*model) * outPoint;
-//		outPoint = (*model) * outPoint;
+		outPoint = (*model) * outPoint;
 		//outPoint = multiplyMV4(view[0], outPoint);
 		//outPoint = multiplyMV4(projection[0], outPoint);
 
-		//printf("model : %f\n", (*model)[1][1]);
-		printf("OutPoint %f %f %f %f :\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
+		printf("model : %f %f %f\n", (*model)[0][0], (*model)[0][1], (*model)[0][2]);
+//		printf("OutPoint : %f %f %f %f\n", t.x, t.y, t.z, t.w);
+
+		printf("OutPoint : %f %f %f %f\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
+
 		//if(outPoint.w != 0)
 		//	outVertex[index].pos = glm::vec3(outPoint / outPoint.w);
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
@@ -196,10 +199,11 @@ void createCamera()
 	glm::mat4 model = glm::mat4();
 	glm::mat4 temp;
 
+	std::cout<<"View : "<<std::endl;
 	utilityCore::printMat4(view);
-	std::cout<<std::endl;
+	std::cout<<std::endl<<"Projection : "<<std::endl;
 	utilityCore::printMat4(projection);
-	std::cout<<std::endl;
+	std::cout<<std::endl<<"Model : "<<std::endl;
 	utilityCore::printMat4(model);
 	std::cout<<std::endl;
 
@@ -207,7 +211,9 @@ void createCamera()
 	cudaMemcpy(dev_model, &model, sizeof(glm::mat4), cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_projection, &projection, sizeof(glm::mat4), cudaMemcpyHostToDevice);
 
-	//cudaMemcpy(&temp, dev_model, sizeof(glm::mat4), cudaMemcpyDeviceToDevice);
+	//TODO: uncomment this to check if the copy back is correct
+
+	//cudaMemcpy(&temp, dev_model, sizeof(glm::mat4), cudaMemcpyDeviceToHost);
 	//utilityCore::printMat4(temp);
 	//std::cout<<std::endl;
 }
