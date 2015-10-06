@@ -79,15 +79,15 @@ In this project, you are given the following code:
 
 You will need to implement the following features/pipeline stages:
 
-* Vertex shading.
-* (Vertex shader) perspective transformation.
-* Primitive assembly with support for triangles read from buffers of index and
-  vertex data.
-* Rasterization.
-* Fragment shading.
-* A depth buffer for storing and depth testing fragments.
-* Fragment to depth buffer writing (**with** atomics for race avoidance).
-* (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong.
+* ~~Vertex shading~~.
+* ~~(Vertex shader) perspective transformation~~.
+* ~~Primitive assembly with support for triangles read from buffers of index and
+  vertex data.~~
+* ~~Rasterization.~~
+* ~~Fragment shading.~~
+* ~~A depth buffer for storing and depth testing fragments.~~
+* ~~Fragment to depth buffer writing (**with** atomics for race avoidance).~~
+* ~~(Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong.~~
 
 See below for more guidance.
 
@@ -115,7 +115,7 @@ You are also required to implement at least "3.0" points in extra features.
 * (1.0) Anti-aliasing.
 * (1.0) Occlusion queries.
 * (1.0) Order-independent translucency using a k-buffer.
-* (0.5) **Mouse**-based interactive camera support.
+* ~~(0.5) **Mouse**-based interactive camera support.~~
 
 This extra feature list is not comprehensive. If you have a particular idea
 you would like to implement, please **contact us first**.
