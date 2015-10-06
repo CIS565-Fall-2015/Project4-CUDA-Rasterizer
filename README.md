@@ -42,13 +42,17 @@ bunch of them around so you can pick a few to document your progress.
 
 * `src/` C++/CUDA source files.
 * `util/` C++ utility files.
-* `objs/` Example OBJ test files:
-  * `tri.obj` (3 verts, 1 tri): The simplest possible geometric object.
-  * `cube.obj` (8 verts, 12 tris): A small model with low depth-complexity.
-  * `suzanne.obj` (507 verts, 968 tris): A medium model with low depth-complexity.
-  * `cow.obj` (4583 verts, 5804 tris): A large model with low depth-complexity.
-  * `flower.obj` (640 verts, 640 tris): A medium model with very high depth-complexity.
-  * `sponza.obj` (153,635 verts, 279,163 tris): A huge model with very high depth-complexity.
+* `objs/` Example OBJ test files (# verts, # tris in buffers after loading)
+  * `tri.obj` (3v, 1t): The simplest possible geometric object.
+  * `cube.obj` (36v, 12t): A small model with low depth-complexity.
+  * `suzanne.obj` (2904 verts, 968 tris): A medium model with low depth-complexity.
+  * `suzanne_smooth.obj` (2904 verts, 968 tris): A medium model with low depth-complexity.
+    This model has normals which must be interpolated.
+  * `cow.obj` (17412 verts, 5804 tris): A large model with low depth-complexity.
+  * `cow_smooth.obj` (17412 verts, 5804 tris): A large model with low depth-complexity.
+    This model has normals which must be interpolated.
+  * `flower.obj` (1920 verts, 640 tris): A medium model with very high depth-complexity.
+  * `sponza.obj` (837,489 verts, 279,163 tris): A huge model with very high depth-complexity.
 * `renders/` Debug render of an example OBJ.
 * `external/` Includes and static libraries for 3rd party libraries.
 
@@ -185,7 +189,10 @@ Start out by testing a single triangle (`tri.obj`).
 * Fragments to depth buffer.
   * `FragmentOut[m] -> FragmentOut[width][height]`
   * Results in race conditions - don't bother to fix these until it works!
-  * Can really be done inside the fragment shader.
+  * Can really be done inside the fragment shader, if you call the fragment
+    shader from the rasterization kernel for every fragment (including those
+    which get occluded). **OR,** this can be done before fragment shading, which
+    may be faster but means the fragment shader cannot change the depth.
 * A depth buffer for storing and depth testing fragments.
   * `FragmentOut[width][height] depthbuffer`
   * An array of `fragment` objects.
@@ -200,7 +207,8 @@ Start out by testing a single triangle (`tri.obj`).
 * Clear the depth buffer with some default value.
 * Vertex shading: 
   * `VertexIn[n] vs_input -> VertexOut[n] vs_output`
-  * Apply some vertex transformation (e.g. model-view-projection matrix).
+  * Apply some vertex transformation (e.g. model-view-projection matrix using
+    `glm::lookAt ` and `glm::perspective `).
 * Primitive assembly.
   * `VertexOut[n] vs_output -> Triangle[n/3] primitives`
   * As above.
@@ -217,13 +225,23 @@ Start out by testing a single triangle (`tri.obj`).
     by kernel parameters (like GLSL uniforms).
 * Fragments to depth buffer.
   * `FragmentOut[m] -> FragmentOut[width][height]`
-  * Can really be done inside the fragment shader.
-    * An optimization: this allows you to do depth tests before spending
-      execution time in complex fragment shader code!
+  * Can really be done inside the fragment shader, if you call the fragment
+    shader from the rasterization kernel for every fragment (including those
+    which get occluded). **OR,** this can be done before fragment shading, which
+    may be faster but means the fragment shader cannot change the depth.
+    * This result in an optimization: it allows you to do depth tests before
+     spending execution time in complex fragment shader code!
   * Handle race conditions! Since multiple primitives write fragments to the
-    same fragment in the depth buffer, depth buffer locations must be locked
-    while comparing the old and new fragment depths and (possibly) writing into
-    it.
+    same fragment in the depth buffer, races must be avoided by using CUDA
+    atomics.
+    * *Approach 1:* Lock the location in the depth buffer during the time that
+      a thread is comparing old and new fragment depths (and possibly writing
+      a new fragment). This should work in all cases, but be slower.
+    * *Approach 2:* Convert your depth value to a fixed-point `int`, and use
+      `atomicMin` to store it into an `int`-typed depth buffer `intdepth`. After
+      that, the value which is stored at `intdepth[i]` is (usually) that of the
+      fragment which should be stored into the `fragment` depth buffer.
+      * This may result in some rare race conditions (e.g. across blocks).
     * The `flower.obj` test file is good for testing race conditions.
 * A depth buffer for storing and depth testing fragments.
   * `FragmentOut[width][height] depthbuffer`
@@ -319,6 +337,8 @@ list of `SOURCE_FILES`), you must test that your project can build in Moore
 
 1. Open a GitHub pull request so that we can see that you have finished.
    The title should be "Submission: YOUR NAME".
+   * **ADDITIONALLY:**
+     In the body of the pull request, include a link to your repository.
 2. Send an email to the TA (gmail: kainino1+cis565@) with:
    * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
    * Direct link to your pull request on GitHub.
