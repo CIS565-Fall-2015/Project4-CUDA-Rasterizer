@@ -43,9 +43,7 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
-static glm::mat4 *dev_view = NULL;
-static glm::mat4 *dev_projection = NULL;
-static glm::mat4 *dev_model = NULL;
+static glm::mat4 matrix;
 
 //Things added
 static VertexOut *dev_outVertex = NULL;
@@ -85,7 +83,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 }
 
 __global__
-void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, VertexOut *outVertex, glm::mat4 *view, glm::mat4 *projection, glm::mat4 *model)
+void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, VertexOut *outVertex, glm::mat4 matrix)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -93,18 +91,12 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 	{
 		glm::vec4 outPoint = glm::vec4(inVertex[index].pos.x, inVertex[index].pos.y, inVertex[index].pos.z, 1.0f);
 
-//		outPoint = (*projection) * (*view) * (*model) * outPoint;
-		outPoint = (*model) * outPoint;
-		//outPoint = multiplyMV4(view[0], outPoint);
-		//outPoint = multiplyMV4(projection[0], outPoint);
+		outPoint = matrix * outPoint;
 
-		printf("model : %f %f %f\n", (*model)[0][0], (*model)[0][1], (*model)[0][2]);
-//		printf("OutPoint : %f %f %f %f\n", t.x, t.y, t.z, t.w);
+//		printf("OutPoint : %f %f %f %f\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
 
-		printf("OutPoint : %f %f %f %f\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
-
-		//if(outPoint.w != 0)
-		//	outVertex[index].pos = glm::vec3(outPoint / outPoint.w);
+		if(outPoint.w != 0)
+			outVertex[index].pos = glm::vec3(outPoint / outPoint.w);
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
 	}
 }
@@ -121,10 +113,10 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, Triangle *tri
 		triangles[index].v[1] = outVertex[indices[k_3+1]];
 		triangles[index].v[2] = outVertex[indices[k_3+2]];
 
-		printf ("Triangle : %d\n", index);
-		printf ("Vertex 1 : %f %f\n", triangles[index].v[0].pos.x, triangles[index].v[0].pos.y);
-		printf ("Vertex 2 : %f %f\n", triangles[index].v[1].pos.x, triangles[index].v[1].pos.y);
-		printf ("Vertex 3 : %f %f\n", triangles[index].v[2].pos.x, triangles[index].v[2].pos.y);
+//		printf ("Triangle : %d\n", index);
+//		printf ("Vertex 1 : %f %f\n", triangles[index].v[0].pos.x, triangles[index].v[0].pos.y);
+//		printf ("Vertex 2 : %f %f\n", triangles[index].v[1].pos.x, triangles[index].v[1].pos.y);
+//		printf ("Vertex 3 : %f %f\n", triangles[index].v[2].pos.x, triangles[index].v[2].pos.y);
 	}
 }
 
@@ -174,10 +166,6 @@ void rasterizeSetBuffers(
     cudaFree(dev_outVertex);
     cudaMalloc((void**)&dev_outVertex, vertCount * sizeof(VertexOut));
 
-    cudaMalloc((void**)&dev_view, sizeof(glm::mat4()));
-    cudaMalloc((void**)&dev_projection, sizeof(glm::mat4()));
-    cudaMalloc((void**)&dev_model, sizeof(glm::mat4()));
-
     checkCUDAError("rasterizeSetBuffers");
 }
 
@@ -190,32 +178,25 @@ void createCamera()
 {
 	//Camera stuff
 	glm::vec3 camEye, camCenter, camUp;
-	camEye = glm::vec3(0,0,3);
+	camEye = glm::vec3(0,0,-2);
 	camCenter = glm::vec3(0,0,0);
 	camUp = glm::vec3(0,1,0);
 
 	glm::mat4 view = glm::lookAt(camEye, camCenter, camUp);
-	glm::mat4 projection = glm::perspective<float>(60.0f, float(width)/ float(height), 0.1f, 1000.0f);
+//	glm::mat4 projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
+	glm::mat4 projection = glm::perspective<float>(45.0f, float(width)/ float(height), 0.1f, 100.0f);
 	glm::mat4 model = glm::mat4();
 	glm::mat4 temp;
 
-	std::cout<<"View : "<<std::endl;
-	utilityCore::printMat4(view);
-	std::cout<<std::endl<<"Projection : "<<std::endl;
-	utilityCore::printMat4(projection);
-	std::cout<<std::endl<<"Model : "<<std::endl;
-	utilityCore::printMat4(model);
-	std::cout<<std::endl;
+//	std::cout<<"View : "<<std::endl;
+//	utilityCore::printMat4(view);
+//	std::cout<<std::endl<<"Projection : "<<std::endl;
+//	utilityCore::printMat4(projection);
+//	std::cout<<std::endl<<"Model : "<<std::endl;
+//	utilityCore::printMat4(model);
+//	std::cout<<std::endl;
 
-	cudaMemcpy(dev_view, &view, sizeof(glm::mat4), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_model, &model, sizeof(glm::mat4), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_projection, &projection, sizeof(glm::mat4), cudaMemcpyHostToDevice);
-
-	//TODO: uncomment this to check if the copy back is correct
-
-	//cudaMemcpy(&temp, dev_model, sizeof(glm::mat4), cudaMemcpyDeviceToHost);
-	//utilityCore::printMat4(temp);
-	//std::cout<<std::endl;
+	matrix = projection * view * model;
 }
 
 void rasterize(uchar4 *pbo) {
@@ -239,17 +220,17 @@ void rasterize(uchar4 *pbo) {
     //Todo change the number of threads based on input size.
     if(run)
     {
-    	kernVertexShader<<<1, vertCount>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, dev_view, dev_projection, dev_model);
+    	kernVertexShader<<<1, vertCount>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, matrix);
+//    	run = false;
+    }
+
+    if(run)
+    {
+    	kernPrimitiveAssembly<<<1, numTriangles>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
     	run = false;
     }
-//
-//    if(run)
-//    {
-//    	kernPrimitiveAssembly<<<1, numTriangles>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
-//    	run = false;
-//    }
 
-    //if(run)
+    if(run)
     {
     	//kernRasterize
     }
@@ -282,15 +263,15 @@ void rasterizeFree() {
 
     cudaFree(dev_outVertex);
     dev_outVertex = NULL;
-
-    cudaFree(dev_view);
-    dev_view = NULL;
-
-    cudaFree(dev_model);
-    dev_model = NULL;
-
-    cudaFree(dev_projection);
-    dev_projection = NULL;
+//
+//    cudaFree(dev_view);
+//    dev_view = NULL;
+//
+//    cudaFree(dev_model);
+//    dev_model = NULL;
+//
+//    cudaFree(dev_projection);
+//    dev_projection = NULL;
 
     checkCUDAError("rasterizeFree");
 }
