@@ -18,7 +18,6 @@
 #include <glm/gtc/constants.hpp>
 
 #define MAX_THREADS 512
-#define FIXED_SIZE 10000
 
 struct Light {
 	glm::vec3 pos;
@@ -137,9 +136,9 @@ void rasterizeInit(int w, int h) {
 
 	cam.width = width;
 	cam.height = height;
-	cam.pos = glm::vec3(0.0f, 0.0f, 2.0f);
+	cam.pos = glm::vec3(0.0f, 0.0f, 10.0f);
 	cam.focus = glm::vec3(0.0f, 0.0f, 0.0f);
-	cam.up = glm::vec3(0.0f, 1.0f, 0.0f);
+	cam.up = glm::vec3(0.0f, -1.0f, 0.0f);
 	cam.fovy = 30.0f * glm::pi<float>() / 180.0f;
 	cam.zNear = 0.1f;
 	cam.zFar = 10.0f;
@@ -220,21 +219,25 @@ __global__ void kernAssemblePrimitives(int n, Triangle* primitives, VertexOut* v
 		primitives[index].v[0] = vs_output[idx0];
 		primitives[index].v[1] = vs_output[idx1];
 		primitives[index].v[2] = vs_output[idx2];
+		primitives[index].v[0].col = glm::vec3(1.0, 0.0, 0.0);
+		primitives[index].v[1].col = glm::vec3(1.0, 0.0, 0.0);
+		primitives[index].v[2].col = glm::vec3(1.0, 0.0, 0.0);
 	}
 }
 
 // Each thread is responsible for rasterizing a single triangle
-__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives){
+__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives, glm::mat4 Mvm, glm::mat4 Mp){
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
 		Triangle prim = primitives[index];
-
 		glm::vec3* tri = new glm::vec3[3];
 
 		tri[0] = glm::vec3(prim.v[0].ndc_pos);
 		tri[1] = glm::vec3(prim.v[1].ndc_pos);
 		tri[2] = glm::vec3(prim.v[2].ndc_pos);
+
+		glm::vec4 viewpoint(0,0,cam.width,cam.height);
 
 		AABB aabb = getAABBForTriangle(tri);
 		glm::vec3 bary;
@@ -273,10 +276,12 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 
 					if (fs_input[i + j*cam.width].fixed_depth == fixed_depth){
 						fs_input[i + j*cam.width].depth = depth;
-						fs_input[i + j*cam.width].color = bary[0] * prim.v[0].col + bary[1] * prim.v[1].col + bary[2] * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
-						fs_input[i + j*cam.width].norm = bary[0] * prim.v[0].nor + bary[1] * prim.v[1].nor + bary[2] * prim.v[2].nor;
-						fs_input[i + j*cam.width].pos = bary[0] * prim.v[0].pos + bary[1] * prim.v[1].pos + bary[2] * prim.v[2].pos;
-						fs_input[i + j*cam.width].color = fs_input[i + j*cam.width].norm;
+						fs_input[i + j*cam.width].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
+						fs_input[i + j*cam.width].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
+						fs_input[i + j*cam.width].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
+						
+						//fs_input[i + j*cam.width].color = glm::vec3(1.0, 0.0, 0.0);
+						//fs_input[i + j*cam.width].color = fs_input[i + j*cam.width].norm;
 						//printf("%f  %f  %f\n", (depth + 1.0f) / 2.0f, depth, prim.v[0].ndc_pos[2]);
 						//fs_input[i + j*cam.width].color = glm::vec3((depth + 1.0f)/2.0f);
 					}
@@ -286,11 +291,14 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 	}
 }
 
-__global__ void kernFragmentShading(int n, Fragment* fs_output, Fragment* fs_input){
+__global__ void kernShadeFragments(int n, Fragment* fs_input, Light light){
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
-		fs_output[index] = fs_input[index];
+		if (fs_input[index].color != glm::vec3(0.0)){
+			glm::vec3 light_ray = glm::normalize(fs_input[index].pos - light.pos);
+			fs_input[index].color = fs_input[index].color * -(glm::dot(glm::normalize(fs_input[index].norm), light_ray));
+		}
 	}
 }
 
@@ -317,7 +325,7 @@ void rasterize(uchar4 *pbo) {
 	int primCount = vertCount / 3;
 	int numVertBlocks = (vertCount - 1) / MAX_THREADS + 1;
 	int numPrimBlocks = (primCount - 1) / MAX_THREADS + 1;
-	int numPixBlocks = (fragCount - 1) / MAX_THREADS + 1;
+	int numFragBlocks = (fragCount - 1) / MAX_THREADS + 1;
 
 	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mproj, Mview, Mmod);
 	
@@ -332,10 +340,12 @@ void rasterize(uchar4 *pbo) {
 	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
 
 	// Rasterization
-	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives);
+	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mview*Mmod,Mproj);
 
 	// Fragment shading
-	//kernFragmentShading<<< MAX_THREADS>>>();
+	Light light;
+	light.pos = glm::vec3(3.0f,3.0f,3.0f);
+	kernShadeFragments<<<numFragBlocks, MAX_THREADS>>>(fragCount, dev_depthbuffer, light);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
