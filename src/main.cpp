@@ -7,6 +7,7 @@
  */
 
 #include "main.hpp"
+#include <chrono>
 
 //-------------------------------
 //-------------MAIN--------------
@@ -214,7 +215,7 @@ GLuint initShader() {
     GLuint program = glslUtility::createDefaultProgram(attribLocations, 2);
     GLint location;
 
-    glUseProgram(program);
+    //glUseProgram(program);
     if ((location = glGetUniformLocation(program, "u_image")) != -1) {
         glUniform1i(location, 0);
     }
@@ -270,7 +271,11 @@ void errorCallback(int error, const char *description) {
 }
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+	if (action == GLFW_PRESS) {
+		switch (key) {
+		case GLFW_KEY_ESCAPE:
+			glfwSetWindowShouldClose(window, GL_TRUE);
+			break;
+		}
+	}
 }

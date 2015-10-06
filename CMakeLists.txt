@@ -77,6 +77,7 @@ find_package(CUDA REQUIRED)
 set(CUDA_ATTACH_VS_BUILD_RULE_TO_CUDA_FILE ON)
 set(CUDA_SEPARABLE_COMPILATION ON)
 
+include_directories(.)
 #add_subdirectory(stream_compaction)  # TODO: uncomment if using your own stream compaction
 add_subdirectory(src)
 add_subdirectory(util)

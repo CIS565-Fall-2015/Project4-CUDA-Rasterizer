@@ -1,4 +1,5 @@
 set(SOURCE_FILES
+	"checkCUDAError.h"
     "stb.cpp"
     "utilityCore.hpp"
     "utilityCore.cpp"
