@@ -103,7 +103,6 @@ void rasterizeSetBuffers(
         int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
-
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
     cudaMemcpy(dev_bufIdx, bufIdx, bufIdxSize * sizeof(int), cudaMemcpyHostToDevice);
@@ -127,11 +126,16 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
-__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 model, glm::mat4 view, glm::mat4 projection) {
+__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 matrix) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < vertCount) {
-		glm::vec4 newVert = projection * view * model * glm::vec4(inVerts[thrId], 1.0);
-		outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
+		glm::vec4 newVert = matrix * glm::vec4(inVerts[thrId].pos, 1.0);
+		if (newVert[0] != 0) {
+			outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
+		}
+		else {
+			outVerts[thrId].pos = glm::vec3(newVert[0], newVert[1], newVert[2]);
+		}
 	}
 
 }
@@ -140,13 +144,13 @@ __global__ void primitiveAssemble(VertexOut* verts, Triangle* tris, int vertCoun
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < vertCount) {
 		if (thrId % 3 == 0) {
-			tris[thrId].v[0] = verts[thrId];
+			tris[thrId/3].v[0] = verts[thrId];
 		} 
 		else if (thrId % 3 == 1) {
-			tris[thrId - 1].v[1] = verts[thrId];
+			tris[(thrId - 1)/3].v[1] = verts[thrId];
 		}
 		else {
-			tris[thrId - 2].v[2] = verts[thrId];
+			tris[(thrId - 2)/3].v[2] = verts[thrId];
 		}
 	}
 }
@@ -164,9 +168,11 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 				triangle[2] = tris[thrId].v[2].pos;
 				glm::vec3 baryCoord = calculateBarycentricCoordinate(triangle, glm::vec2(tempX, tempY));
 				if(isBarycentricCoordInBounds(baryCoord)) {
+					printf("in the triangle \n");
 					buf[x + y*width].color = glm::vec3(1.0f, 1.0f, 1.0f);
 				}
 				else {
+					printf("not in the triangle \n");
 					buf[x + y*width].color = glm::vec3(0.0f, 0.0f, 0.0f);
 				}
 			}
@@ -185,6 +191,7 @@ void rasterize(uchar4 *pbo) {
     glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.0f, 1000.0f);
     glm::mat4 model = glm::mat4();
+	glm::mat4 matrix = projection * view * model;
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
@@ -192,13 +199,14 @@ void rasterize(uchar4 *pbo) {
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 	
 	//Transfer from VertexIn to VertexOut (vertex shading)
-	vertexShader<<<1, vertCount>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, model, view, projection);
+	vertexShader<<<1, vertCount>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, matrix);
 
 	//Transfer from VertexOut to Triangles (primitive assembly)
 	primitiveAssemble<<<1, vertCount>>>(dev_bufTransformedVertex, dev_primitives, vertCount);
 
 	//Scanline each triangle to get fragment color (rasterize)
-	kernRasterize<<<1, vertCount / 3>>>(dev_primitives, dev_depthbuffer, width, height, vertCount/3);
+	int triCount = vertCount / 3;
+	kernRasterize<<<1, triCount>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
