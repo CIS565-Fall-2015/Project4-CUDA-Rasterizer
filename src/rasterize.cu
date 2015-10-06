@@ -25,6 +25,8 @@ struct VertexIn {
 };
 struct VertexOut {
 	glm::vec3 pos;
+	glm::vec3 nor;
+	glm::vec3 col;
     // TODO
 };
 struct Triangle {
@@ -32,6 +34,7 @@ struct Triangle {
 };
 struct Fragment {
     glm::vec3 color;
+    float depth;
 };
 
 static int width = 0;
@@ -93,10 +96,18 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 
 		outPoint = matrix * outPoint;
 
-//		printf("OutPoint : %f %f %f %f\n", outPoint.x, outPoint.y, outPoint.z, outPoint.w);
-
 		if(outPoint.w != 0)
-			outVertex[index].pos = glm::vec3(outPoint / outPoint.w);
+			outPoint /= outPoint.w;
+
+		//In NDC
+//		outVertex[index].pos = glm::vec3(outPoint);
+
+		//In Device Coordinates
+		outVertex[index].pos.x = outPoint.x * w;
+		outVertex[index].pos.y = outPoint.y * h;
+		outVertex[index].pos.z = outPoint.z;
+
+
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
 	}
 }
@@ -118,6 +129,35 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, Triangle *tri
 //		printf ("Vertex 2 : %f %f\n", triangles[index].v[1].pos.x, triangles[index].v[1].pos.y);
 //		printf ("Vertex 3 : %f %f\n", triangles[index].v[2].pos.x, triangles[index].v[2].pos.y);
 	}
+}
+
+__global__
+void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+    int index = x + (y * w);
+
+    if (x < w && y < h)
+    {
+    	glm::vec2 point((x - w*0.5f), (y - h*0.5f));
+    	for(int i=0; i<numTriangles; ++i)
+    	{
+    		glm::vec3 tri[3];
+    		tri[0] = triangles[i].v[0].pos;
+    		tri[1] = triangles[i].v[1].pos;
+    		tri[2] = triangles[i].v[2].pos;
+
+//    		AABB aabb = getAABBForTriangle(tri);
+    		float signedArea = calculateSignedArea(tri);
+    		glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
+    		if(isBarycentricCoordInBounds(barycentric))
+    		{
+    			fragments[index].color = glm::vec3(1);
+    			fragments[index].depth = getZAtCoordinate(barycentric, tri);
+    		}
+    	}
+    }
 }
 
 /**
@@ -178,13 +218,13 @@ void createCamera()
 {
 	//Camera stuff
 	glm::vec3 camEye, camCenter, camUp;
-	camEye = glm::vec3(0,0,-2);
+	camEye = glm::vec3(0,0,-10);
 	camCenter = glm::vec3(0,0,0);
 	camUp = glm::vec3(0,1,0);
 
 	glm::mat4 view = glm::lookAt(camEye, camCenter, camUp);
 //	glm::mat4 projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
-	glm::mat4 projection = glm::perspective<float>(45.0f, float(width)/ float(height), 0.1f, 100.0f);
+	glm::mat4 projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
 	glm::mat4 model = glm::mat4();
 	glm::mat4 temp;
 
@@ -209,30 +249,24 @@ void rasterize(uchar4 *pbo) {
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
+    int numThreads = 512;
+    int numBlocks;
     int numTriangles = vertCount/3;
 
     if(run)
     {
     	createCamera();
-//    	run = false;
-    }
 
-    //Todo change the number of threads based on input size.
-    if(run)
-    {
-    	kernVertexShader<<<1, vertCount>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, matrix);
-//    	run = false;
-    }
+    	numBlocks = (vertCount + numThreads -1)/numThreads;
+    	kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, matrix);
 
-    if(run)
-    {
-    	kernPrimitiveAssembly<<<1, numTriangles>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
+    	numBlocks = (numTriangles + numThreads -1)/numThreads;
+    	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
+
+//    	numBlocks = (vertCount + numThreads -1)/numThreads;
+    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
+
     	run = false;
-    }
-
-    if(run)
-    {
-    	//kernRasterize
     }
 
     // Copy depthbuffer colors into framebuffer
