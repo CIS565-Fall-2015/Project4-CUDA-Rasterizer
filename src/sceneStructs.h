@@ -8,6 +8,11 @@
 
 #pragma once
 
+struct Scissor {
+	glm::vec2 min;
+	glm::vec2 max;
+};
+
 struct MVP {
 	// Perspective projection box
 	const float nearPlane = 0.1f;
@@ -36,4 +41,11 @@ struct MVP {
 	bool mouseRightDown;
 	double mouseDownX, mouseDownY;
 	bool initPos;
+
+	// Scissor test
+	bool doScissor;
+	Scissor scissor;
+
+	// Shade mode
+	int shadeMode;
 };

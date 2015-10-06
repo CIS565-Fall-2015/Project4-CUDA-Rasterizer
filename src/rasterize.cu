@@ -34,6 +34,7 @@ struct VertexOut {
 struct Triangle {
     VertexOut v[3];
 	AABB box;
+	bool isPoint;
 };
 struct Fragment {
 	glm::vec3 pos;
@@ -50,6 +51,9 @@ __constant__ static VertexOut *dev_bufShadedVert = NULL;
 __constant__ static Triangle *dev_primitives = NULL;
 __constant__ static Fragment *dev_depthbuffer = NULL;
 __constant__ static glm::vec3 *dev_framebuffer = NULL;
+
+__constant__ static Triangle *dev_primitives_tess = NULL;
+
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static MVP *mvp = NULL;
@@ -73,8 +77,10 @@ static glm::mat4 projection = glm::perspective(45.0f, 1.0f / 1.0f, -nearPlane, -
 static glm::mat4 mvp = projection*view*model;
 */
 
-static glm::vec3 light = glm::vec3(100.0f, 100.0f, 100.0f)*glm::vec3(80.0f, 80.0f, 80.0f);
-static glm::vec3 lightCol = glm::vec3(0.8f);
+static glm::vec3 light1 = 10.0f*glm::vec3(100.0f, 100.0f, 100.0f);
+static glm::vec3 lightCol1 = glm::vec3(0.95f, 0.95f, 1.0f);
+static glm::vec3 light2 = light1 * glm::vec3(-1.0f, 1.0f, -1.0f);
+static glm::vec3 lightCol2 = glm::vec3(1.0f, 0.725f, 0.494f);
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -147,6 +153,7 @@ void rasterizeInit(int w, int h, MVP *hst_mvp) {
 
 void flushDepthBuffer(){
 	cudaMemset(dev_depth, mvp->farPlane * 10000, width * height * sizeof(int));
+	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 	checkCUDAError("rasterize flush");
 }
 
@@ -180,6 +187,9 @@ void rasterizeSetBuffers(
     //cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+
+	cudaMalloc(&dev_primitives_tess, vertCount / 3 * 4 * sizeof(Triangle));
+	cudaMemset(dev_primitives_tess, 0, vertCount / 3 * 4 * sizeof(Triangle));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -229,11 +239,13 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 		t.v[2] = vIn[triIdx[3 * index + 2]];
 		glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
 		t.box = getAABBForTriangle(coord);
+		// Point test
+		t.isPoint = true;
 		pOut[index] = t;
 	}
 }
 
-__global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int triCount, const int width, const int height, const glm::vec3 camPos){
+__global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int triCount, const int width, const int height, const glm::vec3 camPos, const bool doScissor, const Scissor scissor, const glm::vec3 camLook){
 	int xt = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int yt = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = xt + (yt * width);
@@ -241,18 +253,59 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 	if (index < triCount) {
 		Triangle t = pIn[index];
 		Fragment f;
-		float minX = t.box.min.x, maxX = t.box.max.x;
-		for (int y = round(t.box.max.y); y >= round(t.box.min.y); y--){
-			int dp;
-			glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
-			for (int x = round(minX); x <= round(maxX); x++){
-				glm::vec3 bcc = calculateBarycentricCoordinate(coord, glm::vec2(x, y));
-				if (isBarycentricCoordInBounds(bcc)){
-					dp = getZAtCoordinate(bcc, coord)* 10000;
+		if (t.isPoint){
+			bool discard = false;
+			int x = round(t.v[0].pos.x), y = round(t.v[0].pos.y);
+			// Scissor test
+			if (doScissor){
+				if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
+					discard = true;
+				}
+			}
+			int flatIdx = width - x + (height - y)*width;
+			if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+				discard = true;
+			}
+			if (!discard){
+				int dp = -t.v[0].pos.z * 10000;
 
-					int flatIdx = width-x + (height-y)*width;
+				atomicMin(&depth[flatIdx], dp);
 
-					if (flatIdx >= 0 && flatIdx < width*height && width-x >= 0 && width-x <= width){
+				if (depth[flatIdx] == dp) {
+					// Shallowest
+					f.col = t.v[0].col;
+					f.nor = t.v[0].nor;
+					f.pos = t.v[0].pos;
+					dBuf[flatIdx] = f;
+				}
+			}
+		}
+		else {
+			float minX = t.box.min.x, maxX = t.box.max.x;
+			for (int y = round(t.box.max.y); y >= round(t.box.min.y); y--){
+				int dp;
+				glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
+				bool discard;
+
+				for (int x = round(minX); x <= round(maxX); x++){
+					discard = false;
+					// Scissor test
+					if (doScissor){
+						if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
+							discard = true;
+						}
+					}
+					glm::vec3 bcc = calculateBarycentricCoordinate(coord, glm::vec2(x, y));
+					if (!isBarycentricCoordInBounds(bcc)){
+						discard = true;
+					}
+					int flatIdx = width - x + (height - y)*width;
+					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+						discard = true;
+					}
+					if (!discard){
+						dp = getZAtCoordinate(bcc, coord) * 10000;
+
 						atomicMin(&depth[flatIdx], dp);
 
 						if (depth[flatIdx] == dp) {
@@ -270,16 +323,29 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 	}
 }
 
-__global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width, const glm::vec3 light, const glm::vec3 lightCol){
+__global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width, const glm::vec3 light1, const glm::vec3 lightCol1, const glm::vec3 light2, const glm::vec3 lightCol2){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * width);
 
 	if (index < pxCount) {
-		glm::vec3 L = glm::normalize(light - fBuf[index].pos);
-		fBuf[index].col = glm::dot(L, fBuf[index].nor)*fBuf[index].col*lightCol;
+		glm::vec3 L1 = glm::normalize(light1 - fBuf[index].pos);
+		glm::vec3 L2 = glm::normalize(light2 - fBuf[index].pos);
+		glm::vec3 C1 = glm::dot(L1, fBuf[index].nor)*fBuf[index].col*lightCol1;
+		glm::vec3 C2 = glm::dot(L2, fBuf[index].nor)*fBuf[index].col*lightCol2;
+		fBuf[index].col = C1+C2;
 		//fBuf[index].col = normalize(fBuf[index].pos);
 		//fBuf[index].col = fBuf[index].nor;
+	}
+}
+
+__global__ void shadeFragmentNormal(Fragment *fBuf, const int pxCount, const int width){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+
+	if (index < pxCount) {
+		fBuf[index].col = fBuf[index].nor;
 	}
 }
 
@@ -287,27 +353,34 @@ __global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width
  * Perform rasterization.
  */
 void rasterize(uchar4 *pbo) {
-    int sideLength2d = 8;
-    dim3 blockSize2d(sideLength2d, sideLength2d);
-	
+	int sideLength2d = 8;
+	dim3 blockSize2d(sideLength2d, sideLength2d);
+
 	dim3 blockCount2d((width + blockSize2d.x - 1) / blockSize2d.x,
-						(height + blockSize2d.y - 1) / blockSize2d.y);
+		(height + blockSize2d.y - 1) / blockSize2d.y);
 
 	// Vertex shading
 	shadeVertex << <blockCount2d, blockSize2d >> >(dev_bufShadedVert, dev_bufVertex, vertCount, width, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
 	checkCUDAError("Vert shader");
 
 	// Primitive assembly
-	assemblePrimitive << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, vertCount/3, width);
+	assemblePrimitive << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, vertCount / 3, width);
 	checkCUDAError("Prim assembly");
-	
+
 	// Rasterization
-	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, vertCount / 3, width, height, mvp->camPosition);
+	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, vertCount / 3, width, height, mvp->camPosition, mvp->doScissor, mvp->scissor, mvp->camLookAt);
 	checkCUDAError("Rasterization");
 
-	// Fragment shading
-	shadeFragment << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width, light, lightCol);
-	checkCUDAError("Frag shader");
+	if (mvp->shadeMode == 0){
+		// Fragment shading
+		shadeFragment << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width, light1, lightCol1, light2, lightCol2);
+		checkCUDAError("Frag shader");
+	}
+	else if (mvp->shadeMode == 1){
+		// Fragment shading
+		shadeFragmentNormal << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width);
+		checkCUDAError("Frag shader");
+	}
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);

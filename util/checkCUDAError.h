@@ -5,10 +5,11 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) _checkCUDAErrorHelper(msg, FILENAME, __LINE__)
+#define NDEBUG 0
 
 static
 void _checkCUDAErrorHelper(const char *msg, const char *filename, int line) {
-#if !defined(NDEBUG)
+#if NDEBUG
     cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {

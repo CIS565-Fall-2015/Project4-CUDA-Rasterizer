@@ -203,6 +203,11 @@ bool init(obj *mesh) {
     }
 
     // Initialize other stuff
+	mvp.doScissor = false;
+	mvp.scissor.max = glm::vec2(width * 0.75, height * 0.75);
+	mvp.scissor.min = glm::vec2(width * 0.25, height * 0.25);
+	mvp.shadeMode = 0;
+
 	mvp.camPosition = glm::vec3(0,0,3);
 	mvp.camLookAt = glm::vec3(0, 0, 0);
 	mvp.camRight = glm::vec3(1, 0, 0);
@@ -376,6 +381,18 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			mvp.camRight = glm::vec3(1, 0, 0);
 			mvp.fov = 45.0f;
 			calculateMVP(mvp);
+			break;
+		case GLFW_KEY_S:
+			mvp.doScissor = !mvp.doScissor;
+			flushDepthBuffer();
+			break;
+		case GLFW_KEY_N:	// Shade normal
+			mvp.shadeMode = 1;
+			flushDepthBuffer();
+			break;
+		case GLFW_KEY_R:	// Reset shading to color shading
+			mvp.shadeMode = 0;
+			flushDepthBuffer();
 			break;
 		}
 	}
