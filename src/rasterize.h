@@ -9,10 +9,12 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <util/utilityCore.hpp>
 
-void rasterizeInit(int width, int height);
+void rasterizeInit(int width, int height, MVP *mvp);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol);
 void rasterize(uchar4 *pbo);
 void rasterizeFree();
+void flushDepthBuffer();

@@ -15,6 +15,7 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+#include "sceneStructs.h"
 
 #include <glm/gtx/transform.hpp>
 
@@ -51,14 +52,16 @@ __constant__ static Fragment *dev_depthbuffer = NULL;
 __constant__ static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static MVP *mvp = NULL;
 
+/*
 // Model translation
 static glm::mat4 model = glm::mat4(1.0f);
 // Camera matrix
-glm::vec3 camPosition = glm::vec3(0,0.5f,3);
+glm::vec3 camPosition = glm::vec3(0,0,3);
 glm::mat4 view = glm::lookAt(
 	camPosition,
-	glm::vec3(0,0.5f,0),	// Direction; looking at here from position
+	glm::vec3(0,0,0),	// Direction; looking at here from position
 	glm::vec3(0,1,0)	// Up
 	);
 // Perspective projection box
@@ -68,8 +71,9 @@ static glm::mat4 projection = glm::perspective(45.0f, 1.0f / 1.0f, -nearPlane, -
 
 // Combined matrix
 static glm::mat4 mvp = projection*view*model;
+*/
 
-static glm::vec3 light = glm::vec3(100.0f, 100.0f, 100.0f);
+static glm::vec3 light = glm::vec3(100.0f, 100.0f, 100.0f)*glm::vec3(80.0f, 80.0f, 80.0f);
 static glm::vec3 lightCol = glm::vec3(0.8f);
 
 /**
@@ -125,9 +129,10 @@ __global__ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuff
 /**
  * Called once at the beginning of the program to allocate memory.
  */
-void rasterizeInit(int w, int h) {
+void rasterizeInit(int w, int h, MVP *hst_mvp) {
     width = w;
 	height = h;
+	mvp = hst_mvp;
     //cudaFree(dev_depthbuffer);
 	cudaMalloc(&dev_depthbuffer, width * height * sizeof(Fragment));
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
@@ -136,8 +141,13 @@ void rasterizeInit(int w, int h) {
 	cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
 
 	cudaMalloc(&dev_depth, width * height * sizeof(int));
-	cudaMemset(dev_depth, farPlane*10000, width * height * sizeof(int));
+	cudaMemset(dev_depth, mvp->farPlane*10000, width * height * sizeof(int));
     checkCUDAError("rasterizeInit");
+}
+
+void flushDepthBuffer(){
+	cudaMemset(dev_depth, mvp->farPlane * 10000, width * height * sizeof(int));
+	checkCUDAError("rasterize flush");
 }
 
 /**
@@ -242,7 +252,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 
 					int flatIdx = width-x + (height-y)*width;
 
-					if (flatIdx >= 0 && flatIdx < width*height){
+					if (flatIdx >= 0 && flatIdx < width*height && width-x >= 0 && width-x <= width){
 						atomicMin(&depth[flatIdx], dp);
 
 						if (depth[flatIdx] == dp) {
@@ -265,7 +275,7 @@ __global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * width);
 
-	if (index < pxCount && index > 10) {
+	if (index < pxCount) {
 		glm::vec3 L = glm::normalize(light - fBuf[index].pos);
 		fBuf[index].col = glm::dot(L, fBuf[index].nor)*fBuf[index].col*lightCol;
 		//fBuf[index].col = normalize(fBuf[index].pos);
@@ -284,7 +294,7 @@ void rasterize(uchar4 *pbo) {
 						(height + blockSize2d.y - 1) / blockSize2d.y);
 
 	// Vertex shading
-	shadeVertex << <blockCount2d, blockSize2d >> >(dev_bufShadedVert, dev_bufVertex, vertCount, width, height, mvp, nearPlane, farPlane);
+	shadeVertex << <blockCount2d, blockSize2d >> >(dev_bufShadedVert, dev_bufVertex, vertCount, width, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
 	checkCUDAError("Vert shader");
 
 	// Primitive assembly
@@ -292,11 +302,11 @@ void rasterize(uchar4 *pbo) {
 	checkCUDAError("Prim assembly");
 	
 	// Rasterization
-	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, vertCount / 3, width, height, camPosition);
+	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, vertCount / 3, width, height, mvp->camPosition);
 	checkCUDAError("Rasterization");
 
 	// Fragment shading
-	shadeFragment << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width, light*glm::vec3(80.0f, 80.0f, 80.0f), lightCol);
+	shadeFragment << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width, light, lightCol);
 	checkCUDAError("Frag shader");
 
     // Copy depthbuffer colors into framebuffer

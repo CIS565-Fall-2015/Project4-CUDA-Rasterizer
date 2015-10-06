@@ -8,10 +8,14 @@
 
 #include "main.hpp"
 #include <chrono>
+#include "sceneStructs.h"
+#include "glm/gtx/rotate_vector.hpp"
 
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
+
+MVP mvp;
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -91,6 +95,86 @@ void runCuda() {
 //----------SETUP STUFF----------
 //-------------------------------
 
+void calculateMVP(MVP &mvp, bool flush){
+	glm::vec3 camDirection = glm::normalize(mvp.camLookAt - mvp.camPosition);
+	mvp.camUp = glm::cross(mvp.camRight, camDirection);
+	mvp.view = glm::lookAt(mvp.camPosition, mvp.camLookAt, mvp.camUp);
+	mvp.projection = glm::perspective(mvp.fov, 1.0f, -mvp.nearPlane, -mvp.farPlane);
+	mvp.mvp = mvp.projection*mvp.view*mvp.model;
+	if (flush){
+		flushDepthBuffer();
+	}
+}
+
+void calculateMVP(MVP &mvp){
+	calculateMVP(mvp, true);
+}
+
+static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos){
+	if (mvp.initPos){
+		mvp.mouseDownX = xpos;
+		mvp.mouseDownY = ypos;
+		mvp.initPos = false;
+	}
+	else {
+		if (mvp.mouseLeftDown){
+			glm::vec3 inverseLook = mvp.camPosOld - mvp.camLookAtOld;
+			float shiftX = (mvp.mouseDownX - (float)xpos)*0.05f;
+			glm::vec3 newInverseLook = glm::rotateY(inverseLook, (float)atan2(shiftX, glm::length(inverseLook)));
+			mvp.camRight = glm::normalize(glm::rotateY(glm::vec3(inverseLook.x, 0, inverseLook.z), (float)(PI / 2)));
+			float shiftY = (mvp.mouseDownY - (float)ypos)*0.01f;
+			newInverseLook = glm::rotate(newInverseLook, (float)atan2(shiftY, glm::length(newInverseLook)), mvp.camRight);
+			mvp.camPosition = mvp.camLookAtOld + newInverseLook;
+			calculateMVP(mvp);
+		}
+		else if (mvp.mouseRightDown){
+			float shiftX = (mvp.mouseDownX - (float)xpos)*0.05f;
+			float shiftZ = ((float)ypos - mvp.mouseDownY)*0.05f;
+			mvp.camPosition = mvp.camPosOld + mvp.camRight*shiftX;
+			mvp.camLookAt = mvp.camLookAtOld + mvp.camRight*shiftX;
+			glm::vec3 camDirection = mvp.camLookAt - mvp.camPosition;
+			mvp.camPosition = mvp.camPosition + camDirection*shiftZ;
+			mvp.camLookAt = mvp.camLookAt + camDirection*shiftZ;
+			calculateMVP(mvp);
+		}
+	}
+}
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+		mvp.mouseLeftDown = true;
+		mvp.initPos = true;
+		mvp.camLookAtOld = mvp.camLookAt;
+		mvp.camPosOld = mvp.camPosition;
+		mvp.camRightOld = mvp.camRight;
+	}
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
+		mvp.mouseRightDown = true;
+		mvp.initPos = true;
+		mvp.camLookAtOld = mvp.camLookAt;
+		mvp.camPosOld = mvp.camPosition;
+	}
+	else if (action == GLFW_RELEASE){
+		mvp.mouseLeftDown = false;
+		mvp.mouseRightDown = false;
+		mvp.initPos = false;
+	}
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset){
+	if (yoffset > 0){
+		glm::vec3 camDirection = glm::normalize(mvp.camLookAt - mvp.camPosition);
+		mvp.camPosition = mvp.camPosition + camDirection*0.1f;
+		calculateMVP(mvp);
+	}
+	else if (yoffset < 0){
+		glm::vec3 camDirection = glm::normalize(mvp.camPosition - mvp.camLookAt);
+		mvp.camPosition = mvp.camPosition + camDirection*0.1f;
+		calculateMVP(mvp);
+	}
+}
+
 bool init(obj *mesh) {
     glfwSetErrorCallback(errorCallback);
 
@@ -106,7 +190,11 @@ bool init(obj *mesh) {
         return false;
     }
     glfwMakeContextCurrent(window);
-    glfwSetKeyCallback(window, keyCallback);
+	glfwSetKeyCallback(window, keyCallback);
+	// Mouse control
+	glfwSetCursorPosCallback(window, cursor_pos_callback);
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetScrollCallback(window, scroll_callback);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -115,6 +203,12 @@ bool init(obj *mesh) {
     }
 
     // Initialize other stuff
+	mvp.camPosition = glm::vec3(0,0,3);
+	mvp.camLookAt = glm::vec3(0, 0, 0);
+	mvp.camRight = glm::vec3(1, 0, 0);
+	mvp.fov = 45.0f;
+	calculateMVP(mvp, false);
+
     initVAO();
     initTextures();
     initCuda();
@@ -160,7 +254,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height);
+    rasterizeInit(width, height, &mvp);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -275,6 +369,13 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		switch (key) {
 		case GLFW_KEY_ESCAPE:
 			glfwSetWindowShouldClose(window, GL_TRUE);
+			break;
+		case GLFW_KEY_SPACE:
+			mvp.camPosition = glm::vec3(0, 0, 3);
+			mvp.camLookAt = glm::vec3(0, 0, 0);
+			mvp.camRight = glm::vec3(1, 0, 0);
+			mvp.fov = 45.0f;
+			calculateMVP(mvp);
 			break;
 		}
 	}
