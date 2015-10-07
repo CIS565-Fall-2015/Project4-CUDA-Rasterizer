@@ -156,7 +156,7 @@ void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev
 
 // scanline rasterization. 1D linear blocks expected
 __global__
-void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, Fragment * dev_frags) {
+void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, Fragment *dev_frags) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
@@ -164,7 +164,7 @@ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primit
 		v[0] = dev_primitives[i].v[0].pos;
 		v[1] = dev_primitives[i].v[1].pos;
 		v[2] = dev_primitives[i].v[2].pos;
-
+		printf("crash on allocating array?\n");
 		AABB triangleBB = getAABBForTriangle(v);
 		// triangle should have been "smooshed" to screen coordinates already.
 		// walk and fill frags.
@@ -193,6 +193,7 @@ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primit
 					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
 					interpColor += dev_primitives[i].v[2].col * baryCoordinate[2];
 					dev_frags[fragIndex].color = interpColor;
+					printf("crash on loading into frag buffer?\n");
 				}
 			}
 		}
@@ -221,15 +222,18 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockCount1d_vertices((vertCount - 1) / blockSize1d.x + 1);
 
 	minVertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, ID, dev_bufVertex, dev_shadedVertices);
-	
+	checkCUDAError("debug: vertex shading");
+
 	// 3) primitive assembly
 	int numPrimitives = bufIdxSize / 3;
 	dim3 blockCount1d_primitives((numPrimitives - 1) / blockSize1d.x + 1);
 	primitiveAssembly<<<blockCount1d_primitives, blockSize1d>>>(numPrimitives, dev_shadedVertices, dev_primitives);
+	checkCUDAError("debug: primitive assembly");
 
 	// 4) rasterization
 	scanlineRasterization<<<blockCount1d_primitives, blockSize1d>>>(width, height, numPrimitives,
 		dev_primitives, dev_depthbuffer);
+	checkCUDAError("debug: scanline rasterization");
 
 	// 5) fragment shading
 
