@@ -12,34 +12,39 @@ CUDA Rasterizer
 
 * Vertex shading with perspective transformation
 * Primitive assembly with support for triangles read from buffers of index and vertex data.
-* Geometry shader, able to output a variable number of primitives per input primitive, optimized using stream compaction
+* Geometry shader (optional)
   * `G` toggle geometry shader; shows vertex normals
+  * Able to output a variable number of primitives per input primitive, optimized using stream compaction
   * Can output at most 8 primitives
   * Final result is trimmed via stream compaction
+* Backface culling (optional)
+  * `B` toggle
 * Rasterization
   * Scan each pixel in the bounding box
     * Subject to primitive size in window coordinate
     * For the same object, camera being further away results in smaller object screen size; thus higher FPS
     * Camera very close results in each primitive covering big proportion of screen; thus each thread scans longer; thus lower FPS
     * However, pixel scanning is at least 5x faster than standard scanline
-  * Scissor test
+  * Scissor test (optional)
     * `S`: toggle scissor test
-  * Fragment clipping
+  * Window clipping
   * Depth test (using atomics for race avoidance)
   * Barycentric color interpolation
   * Support for rasterizing lines and points
       * Does **not** support vertex shading for such primitives; only rasterization
 * Fragment shading
   * Lambert
+
+## Misc features
 * Mouse-based interactive camera support
   * `Left button` hold and drag: rotate
   * `Right button` hold and drag: pan
   * Scroll: zoom
   * `SPACE`: reset camera to default
-* Misc support features
-  * `N`: fragment shader will use normal vector as color vector; enable to see fragment normals
-  * `R`: reset to color shading (use fragment color for shaded color, instead of fragment normal)
-  * `P`: toggle point shader; only shows shaded vertices instead of all fragments
+* `N`: fragment shader will use normal vector as color vector; enable to see fragment normals
+* `R`: reset to color shading (use fragment color for shaded color, instead of fragment normal)
+* `P`: toggle point shader; only shows shaded vertices instead of all fragments
+  * Not compatible with geometry shader because it will set all primitives to point; rasterization will still work, but both effects won't show at the same time
 
 **IMPORTANT:**
 For each extra feature, please provide the following brief analysis:
@@ -51,29 +56,38 @@ For each extra feature, please provide the following brief analysis:
 
 ### Performance Analysis
 
-Provide summary of your optimizations (no more than one page), along with
-tables and or graphs to visually explain any performance differences.
+* Camera properties
+  * Position `(0,0,3)`
+  * LookAt `(0,0,0)`
+  * FOV = 45.0 degrees
 
-* Include a breakdown of time spent in each pipeline stage for a few different
-  models. It is suggested that you use pie charts or 100% stacked bar charts.
-* For optimization steps (like backface culling), include a performance
-  comparison to show the effectiveness.
+* Performance breakdown
+  * Fragement shader time is almost fixed, since it's only dependent on the pixel count of the output window
+  * Breakdown are core pipeline only
+  * For the exact same camera properties described above, frame rate largely depends on the transformed size of the primitives, due to the current rasterization implementation
+    * `suzanne.obj` and `flower.obj` see increased frame rate when camera moves away from the object, yielding smaller transformed primitive sizes
 
-* Baseline
-  * `tri.obj`, 
-  * Camera:
-    * Position `(0,0,3)`
-    * LookAt `(0,0,0)`
-    * FOV = 45.0 degrees
+###### `cow.obj` performance breakdown
 
-* Optimization
-  * Alter block size for different kernels to achieve higher warp count
-    * Immediate benefit: ~90 FPS to ~130 FPS
-  * Substitute fixed divisions with corresponding multiplications for marginal performance gain
-    * Reduced register counts
-    * Slight speed up
-  * Cache repetitive calculations; reorder executions to reduce execution dependency
-    * Minor speed up
+###### `suzanne.obj` performance breakdown
+
+###### `suzanne.obj` FPS by camera distance
+
+###### `flower.obj` performance breakdown
+
+###### `flower.obj` FPS by camera distance
+
+* Optimization (`cow.obj`)
+  * Kernel: minor improvements (~10FPS)
+    * Alter block size for different kernels to achieve higher warp count
+    * Substitute fixed divisions with corresponding multiplications for marginal performance gain
+    * Cache repetitive calculations; reorder executions to reduce execution dependency
+  * Backface culling
+    * Only useful when the object is big in window
+      * Reduces rasterization time
+    * Stream compaction overhead might be more significant and cancel out the benefit
+
+###### Backface culling performance impact
 
 ## References
 

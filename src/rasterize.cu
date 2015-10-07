@@ -126,6 +126,7 @@ void rasterizeInit(int w, int h, MVP *hst_mvp) {
 void flushDepthBuffer(){
 	cudaMemset(dev_depth, mvp->farPlane * 10000, width * height * sizeof(int));
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+	cudaMemset(dev_primitives, 0, triCount * geomShaderLimit * sizeof(Triangle));
 	checkCUDAError("rasterize flush");
 }
 
@@ -212,9 +213,7 @@ __global__ void shadeVertex(VertexOut *vOut, VertexIn *vIn, const int vertCount,
 }
 
 __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, const int triCount, const int width){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < triCount) {
 		Triangle t;
@@ -233,9 +232,7 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 }
 
 __global__ void assemblePrimitivePoint(Triangle *pOut, VertexOut *vIn, int *triIdx, const int triCount, const int width){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < triCount) {
 		Triangle t;
@@ -266,6 +263,18 @@ __global__ void simpleShadeGeom(Triangle *pArr, const int triCount, const int wi
 		tN.isLine = true;
 		tN.isValidGeom = true;
 		pArr[index + triCount] = tN;
+	}
+}
+
+__global__ void simpleCulling(Triangle *pArr, const int triCount, const int width, const glm::vec3 camPos){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+
+	if (index < triCount) {
+		if (glm::dot(pArr[index].v[0].mpos - camPos, pArr[index].v[0].nor) >= 0){
+			pArr[index].isValidGeom = false;
+		}
 	}
 }
 
@@ -474,7 +483,7 @@ void rasterize(uchar4 *pbo) {
 	}
 	
 	int primCount = triCount;
-	if (mvp->geomShading && !mvp->pointShading){
+	if (mvp->geomShading){
 		simpleShadeGeom << <blockCount2d, blockSize2d >> >(dev_primitives, primCount, width, geomShaderLimit, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
 		checkCUDAError("Geom shader");
 		StreamCompaction::Efficient::compact(triCount*geomShaderLimit, dv_f_tmp, dv_idx_tmp, dv_out_tmp, dev_primitives, dv_c_tmp);
@@ -482,6 +491,16 @@ void rasterize(uchar4 *pbo) {
 		cudaMemcpy(&primCount, dv_c_tmp, sizeof(int), cudaMemcpyDeviceToHost);
 		cudaMemcpy(dev_primitives, dv_out_tmp, primCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
 		checkCUDAError("Geom shader copy");
+	}
+
+	if (mvp->culling){
+		simpleCulling << <blockCount2d, blockSize2d >> >(dev_primitives, primCount, width, mvp->camPosition);
+		checkCUDAError("Culling");
+		StreamCompaction::Efficient::compact(triCount*geomShaderLimit, dv_f_tmp, dv_idx_tmp, dv_out_tmp, dev_primitives, dv_c_tmp);
+		checkCUDAError("Culling compact");
+		cudaMemcpy(&primCount, dv_c_tmp, sizeof(int), cudaMemcpyDeviceToHost);
+		cudaMemcpy(dev_primitives, dv_out_tmp, primCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
+		checkCUDAError("Culling copy");
 	}
 
 	// Rasterization

@@ -416,6 +416,10 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			mvp.pointShading = !mvp.pointShading;
 			flushDepthBuffer();
 			break;
+		case GLFW_KEY_B:	// Backface culling
+			mvp.culling = !mvp.culling;
+			flushDepthBuffer();
+			break;
 		}
 	}
 }

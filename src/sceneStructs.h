@@ -54,6 +54,9 @@ struct MVP {
 
 	// Point shader
 	bool pointShading;
+
+	// Backface culling
+	bool culling;
 };
 
 struct AABB {
