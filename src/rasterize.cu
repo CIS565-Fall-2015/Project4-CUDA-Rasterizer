@@ -48,6 +48,7 @@ static glm::vec3 lightCol2 = glm::vec3(1.0f, 0.725f, 0.494f);
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
  */
+/*
 __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -65,6 +66,7 @@ __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
         pbo[index].z = color.z;
     }
 }
+*/
 
 __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, Fragment *image) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -212,6 +214,8 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 		t.v[2] = vIn[triIdx[3 * index + 2]];
 		glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
 		t.box = getAABBForTriangle(coord);
+		t.isPoint = false;
+		t.isLine = false;
 		t.isValidGeom = true;
 		pOut[index] = t;
 	}
@@ -484,7 +488,7 @@ void rasterize(uchar4 *pbo) {
 	}
 
     // Copy depthbuffer colors into framebuffer
-    render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
+    //render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
 	//sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_framebuffer);
 	sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_depthbuffer);
