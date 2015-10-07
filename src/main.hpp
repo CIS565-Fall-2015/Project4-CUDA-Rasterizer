@@ -49,6 +49,17 @@ GLFWwindow *window;
 
 int width = 800;
 int height = 800;
+GLfloat lastX=width/2;
+GLfloat lastY=height/2;
+GLfloat yaw   = -90.0f;	// Yaw is initialized to -90.0 degrees since a yaw of 0.0 results in a direction vector pointing to the right (due to how Eular angles work) so we initially rotate a bit to the left.
+GLfloat pitch = 0.0f;
+GLfloat fov=45;
+GLfloat cameraDis=2.0f;
+GLfloat rotation=0.0f;
+bool firstMouse=true;
+glm::vec3 lightPos   = glm::vec3(-2.0f, 0.0f, -5.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
 
 //-------------------------------
 //-------------MAIN--------------
@@ -93,3 +104,5 @@ void deleteTexture(GLuint *tex);
 void mainLoop();
 void errorCallback(int error, const char *description);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void mouseCallback(GLFWwindow* window, double xpos, double ypos);
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);

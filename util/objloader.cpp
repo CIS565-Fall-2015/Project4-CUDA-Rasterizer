@@ -121,7 +121,72 @@ objLoader::objLoader(string filename, obj *newMesh) {
         cout << "ERROR: " << filename << " could not be found" << endl;
         exit(EXIT_FAILURE);
     }
+	cout<<"finish"<<endl;
 }
+
+/*objLoader::objLoader(string fileName,obj* m){
+	string input;
+	geomesh=m;
+	int index;
+	ifstream inObj;
+	inObj.open(fileName);
+	while(inObj>>input){
+		if(input=="v"){
+			glm::vec3 vec;
+			inObj>>vec.x;
+			inObj>>vec.y;
+			inObj>>vec.z;
+			geomesh->addPoint(vec);
+		}
+		else if(input=="vn"){
+			glm::vec3 vec;
+			inObj>>vec.x;
+			inObj>>vec.y;
+			inObj>>vec.z;
+			geomesh->addNormal(vec);
+		}
+		else if(input=="vt"){}
+		else if(input=="f"){
+			vector<int> ind,tex,norIdx;
+			for(int j=0;j<3;j++){
+				int i=0;
+				inObj>>input;
+				int count=0;
+				index=0;
+				while(input[count]<='9'&&input[count]>='0') count++;
+				for(i=0;i<count;i++)
+					index+=(input[i]-'0')*pow(10.0,count-1-i);
+				ind.push_back(index-1);
+				i++;
+
+				if(i<input.size()){//texture
+					int count=i;
+					index=0;
+					while(input[count]<='9'&&input[count]>='0') count++;
+					for(;i<count;i++)
+						index+=(input[i]-'0')*pow(10.0,count-1-i);
+					tex.push_back(index-1);
+					i++;
+				}
+				if(i<input.size()){//normal
+					int count=i;
+					index=0;
+					while(input[count]<='9'&&input[count]>='0') count++;
+					for(;i<count;i++)
+						index+=(input[i]-'0')*pow(10.0,count-1-i);
+					norIdx.push_back(index-1);
+					i++;
+				}
+			}
+			geomesh->addFace(ind);
+			geomesh->addFaceTexture(tex);
+			geomesh->addFaceNormal(norIdx);
+		}
+	}
+	inObj.close();
+	cout<<"Faces:"<<geomesh->getFaces()->size()<<endl;
+	cout<<"Points:"<<geomesh->getPoints()->size()<<endl;
+}*/
 
 objLoader::~objLoader() {
 }

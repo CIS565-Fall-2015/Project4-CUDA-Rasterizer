@@ -78,7 +78,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+	rasterize(dptr,lightPos,cameraUp,cameraFront,fov,cameraDis,rotation);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -106,6 +106,10 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
+	glfwSetCursorPosCallback(window, mouseCallback);  
+	glfwSetScrollCallback(window, scrollCallback); 
+
+	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -159,7 +163,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height);
+	rasterizeInit(width, height);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -273,4 +277,69 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+	GLfloat cameraSpeed = 0.05f;
+    if(key == GLFW_KEY_W)
+        lightPos += cameraSpeed * cameraFront;
+    if(key == GLFW_KEY_S)
+        lightPos -= cameraSpeed * cameraFront;
+    if(key == GLFW_KEY_A)
+        lightPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if(key == GLFW_KEY_D)
+        lightPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;  
+	cout<<lightPos.x<<","<<lightPos.y<<","<<lightPos.z<<endl;
+
+	if(key == GLFW_KEY_UP)
+		cameraDis-=0.1f;
+	if(key == GLFW_KEY_DOWN)
+		cameraDis+=0.1f;
+	if(cameraDis>10.0f) cameraDis=10.0f;
+	if(cameraDis<0.2f) cameraDis=0.2f;
+
+	if(key == GLFW_KEY_R)
+		rotation+=5.0f;
+}
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    GLfloat xoffset = xpos - lastX;
+    GLfloat yoffset = lastY - ypos; // Reversed since y-coordinates go from bottom to left
+    lastX = xpos;
+    lastY = ypos;
+
+    GLfloat sensitivity = 0.25;	
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw   += xoffset;
+    pitch += yoffset;
+
+    // Make sure that when pitch is out of bounds, screen doesn't get flipped
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+	//cout<<cameraFront.x<<","<<cameraFront.y<<","<<cameraFront.z<<endl;
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+  if(fov >= 1.0f && fov <= 90.0f)
+  	fov -= yoffset;
+  if(fov <= 1.0f)
+  	fov = 1.0f;
+  if(fov >= 90.0f)
+  	fov = 90.0f;
 }

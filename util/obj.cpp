@@ -48,7 +48,7 @@ void obj::buildBufPoss() {
     vector<int> BufIdxvec;
     int index = 0;
     bool genNormals = false;
-    if (faces.size() != (int) facenormals.size()) {
+	if (faces.size() != (int) facenormals.size()||facenormals[0].size()==0) {
         genNormals = true;
     }
     for (int k = 0; k < (int) faces.size(); k++) {
@@ -58,7 +58,6 @@ void obj::buildBufPoss() {
             vector<int> face = faces[k];
 
             glm::vec4 p0 = points[face[0]];
-
             for (int i = 2; i < (int) face.size(); i++) {
                 glm::vec4 p1 = points[face[i - 1]];
                 glm::vec4 p2 = points[face[i]];
@@ -71,7 +70,7 @@ void obj::buildBufPoss() {
                 BufPosvec.push_back(p2[0]);
                 BufPosvec.push_back(p2[1]);
                 BufPosvec.push_back(p2[2]); //BufPosvec.push_back(1.0f);
-
+				
                 if (genNormals == false) {
                     vector<int> facenormal = facenormals[k];
                     BufNorvec.push_back(normals[facenormal[0]][0]);
@@ -98,7 +97,6 @@ void obj::buildBufPoss() {
                     BufNorvec.push_back(n[1]);
                     BufNorvec.push_back(n[2]); //BufNorvec.push_back(0.0f);
                 }
-
                 BufIdxvec.push_back(index + 0);
                 BufIdxvec.push_back(index + 1);
                 BufIdxvec.push_back(index + 2);
