@@ -7,16 +7,33 @@
  */
 
 #include "main.hpp"
+#include "image.h"
+#include <ctime>
+
+glm::vec3 *imageColor;
+static std::string startTimeString;
+
 
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
+
+std::string currentTimeString() {
+    time_t now;
+    time(&now);
+    char buf[sizeof "0000-00-00_00-00-00z"];
+    strftime(buf, sizeof buf, "%Y-%m-%d_%H-%M-%Sz", gmtime(&now));
+    return std::string(buf);
+}
+
 
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
         return 0;
     }
+
+    startTimeString = currentTimeString();
 
     obj *mesh = new obj();
 
@@ -71,6 +88,29 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
+
+void saveImage() {
+    //float samples = iteration;
+    // output image file
+    image img(width, height);
+
+    for (int x = 0; x < width; x++) {
+        for (int y = 0; y < height; y++) {
+            int index = x + (y * width);
+            glm::vec3 pix = imageColor[index];
+            img.setPixel(width - 1 - x, y, glm::vec3(pix));// / samples);
+        }
+    }
+
+    std::string filename = "Rasterize";
+    std::ostringstream ss;
+    ss << filename << "." << startTimeString;
+    filename = ss.str();
+
+    // CHECKITOUT
+    img.savePNG(filename);
+    //img.saveHDR(filename);  // Save a Radiance HDR file
+}
 
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
@@ -271,6 +311,10 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    	delete(imageColor);
         glfwSetWindowShouldClose(window, GL_TRUE);
+    }
+    else if(key == GLFW_KEY_SPACE && action == GLFW_PRESS){
+    	saveImage();
     }
 }

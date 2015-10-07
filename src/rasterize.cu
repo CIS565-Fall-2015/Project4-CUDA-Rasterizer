@@ -16,6 +16,7 @@
 #include "rasterizeTools.h"
 #include <glm/gtc/matrix_transform.hpp>
 
+extern glm::vec3 *imageColor;
 
 struct VertexIn {
     glm::vec3 pos;
@@ -27,7 +28,6 @@ struct VertexOut {
 	glm::vec3 pos;
 	glm::vec3 nor;
 	glm::vec3 col;
-    // TODO
 };
 struct Triangle {
     VertexOut v[3];
@@ -132,32 +132,84 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, Triangle *tri
 }
 
 __global__
-void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles)
+void kernDrawAxis(int w, int h, Fragment *fragments)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-    int index = x + (y * w);
+	int index = x + (y * w);
 
-    if (x < w && y < h)
+	if (x < w && y < h)
     {
-    	glm::vec2 point((x - w*0.5f), (y - h*0.5f));
-    	for(int i=0; i<numTriangles; ++i)
-    	{
-    		glm::vec3 tri[3];
-    		tri[0] = triangles[i].v[0].pos;
-    		tri[1] = triangles[i].v[1].pos;
-    		tri[2] = triangles[i].v[2].pos;
-
-//    		AABB aabb = getAABBForTriangle(tri);
-    		float signedArea = calculateSignedArea(tri);
-    		glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
-    		if(isBarycentricCoordInBounds(barycentric))
-    		{
-    			fragments[index].color = glm::vec3(1);
-    			fragments[index].depth = getZAtCoordinate(barycentric, tri);
-    		}
-    	}
+		if((x - w*0.5f) == 0 || (y - h*0.5f) == 0)
+	    {
+			fragments[index].color = glm::vec3(1);
+	    }
     }
+}
+
+__global__
+void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles)
+{
+	//Rasterization per Fragment
+//	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+//	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+//    int index = x + (y * w);
+//
+//    if (x < w && y < h)
+//    {
+//    	if((x - w*0.5f) == 0 || (y - h*0.5f) == 0)
+//    	{
+//    		fragments[index].color = glm::vec3(1);
+//    	}
+//    	else
+//    	{
+//			glm::vec2 point((x - w*0.5f), (y - h*0.5f));
+//			for(int i=0; i<numTriangles; ++i)
+//			{
+//				glm::vec3 tri[3];
+//				tri[0] = triangles[i].v[0].pos;
+//				tri[1] = triangles[i].v[1].pos;
+//				tri[2] = triangles[i].v[2].pos;
+//
+//	//    		AABB aabb = getAABBForTriangle(tri);
+//				float signedArea = calculateSignedArea(tri);
+//				glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
+//				if(isBarycentricCoordInBounds(barycentric))
+//				{
+//					fragments[index].color = glm::vec3(1);
+//					fragments[index].depth = getZAtCoordinate(barycentric, tri);
+//				}
+//			}
+//    	}
+//    }
+
+	//Rasterization per triangle
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numTriangles)
+	{
+		glm::vec3 tri[3];
+		tri[0] = triangles[index].v[0].pos;
+		tri[1] = triangles[index].v[1].pos;
+		tri[2] = triangles[index].v[2].pos;
+
+		AABB aabb = getAABBForTriangle(tri);
+		for(int i=aabb.min.x-1; i<aabb.max.x+1; ++i)
+		{
+			for(int j=aabb.min.y-1; j<aabb.max.y+1; ++j)
+			{
+//				printf("\nMax : %f %f %f\nMin : %f %f %f\n", aabb.max.x, aabb.max.y, aabb.max.z, aabb.min.x, aabb.min.y, aabb.min.z);
+				glm::ivec2 point(i,j);
+//				//		float signedArea = calculateSignedArea(tri);
+				glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
+				if(isBarycentricCoordInBounds(barycentric))
+				{
+					fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = glm::vec3(1);
+////					fragments[(x+1) * y].depth = getZAtCoordinate(barycentric, tri);
+				}
+			}
+		}
+	}
 }
 
 /**
@@ -206,6 +258,8 @@ void rasterizeSetBuffers(
     cudaFree(dev_outVertex);
     cudaMalloc((void**)&dev_outVertex, vertCount * sizeof(VertexOut));
 
+    imageColor = new glm::vec3[width*height];
+
     checkCUDAError("rasterizeSetBuffers");
 }
 
@@ -218,9 +272,9 @@ void createCamera()
 {
 	//Camera stuff
 	glm::vec3 camEye, camCenter, camUp;
-	camEye = glm::vec3(0,0,-10);
+	camEye = glm::vec3(0,0,-5);
 	camCenter = glm::vec3(0,0,0);
-	camUp = glm::vec3(0,1,0);
+	camUp = glm::vec3(0,-1,0);
 
 	glm::mat4 view = glm::lookAt(camEye, camCenter, camUp);
 //	glm::mat4 projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
@@ -249,7 +303,7 @@ void rasterize(uchar4 *pbo) {
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
-    int numThreads = 512;
+    int numThreads = 256;
     int numBlocks;
     int numTriangles = vertCount/3;
 
@@ -263,8 +317,10 @@ void rasterize(uchar4 *pbo) {
     	numBlocks = (numTriangles + numThreads -1)/numThreads;
     	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_primitives, dev_bufIdx);
 
-//    	numBlocks = (vertCount + numThreads -1)/numThreads;
-    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
+    	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+//    	numBlocks = (width*height + numThreads -1)/numThreads;
+    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
+//    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
 
     	run = false;
     }
@@ -273,6 +329,8 @@ void rasterize(uchar4 *pbo) {
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
+
+    cudaMemcpy(imageColor, dev_framebuffer, width*height*sizeof(glm::vec3), cudaMemcpyDeviceToHost);
     checkCUDAError("rasterize");
 }
 
@@ -297,15 +355,6 @@ void rasterizeFree() {
 
     cudaFree(dev_outVertex);
     dev_outVertex = NULL;
-//
-//    cudaFree(dev_view);
-//    dev_view = NULL;
-//
-//    cudaFree(dev_model);
-//    dev_model = NULL;
-//
-//    cudaFree(dev_projection);
-//    dev_projection = NULL;
 
     checkCUDAError("rasterizeFree");
 }
