@@ -30,17 +30,17 @@ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
  * Finds the axis aligned bounding box for a given triangle.
  */
 __host__ __device__ static
-AABB getAABBForTriangle(const glm::vec3 tri[3]) {
-    AABB aabb;
-    aabb.min = glm::vec3(
-            min(min(tri[0].x, tri[1].x), tri[2].x),
-            min(min(tri[0].y, tri[1].y), tri[2].y),
-            min(min(tri[0].z, tri[1].z), tri[2].z));
-    aabb.max = glm::vec3(
-            max(max(tri[0].x, tri[1].x), tri[2].x),
-            max(max(tri[0].y, tri[1].y), tri[2].y),
-            max(max(tri[0].z, tri[1].z), tri[2].z));
-    return aabb;
+AABB getAABBForTriangle(const Triangle tri) {
+	AABB aabb;
+	aabb.min = glm::vec3(
+		glm::min(glm::min(tri.v[0].pos.x, tri.v[1].pos.x), tri.v[2].pos.x),
+		glm::min(glm::min(tri.v[0].pos.y, tri.v[1].pos.y), tri.v[2].pos.y),
+		glm::min(glm::min(tri.v[0].pos.z, tri.v[1].pos.z), tri.v[2].pos.z));
+	aabb.max = glm::vec3(
+		glm::max(glm::max(tri.v[0].pos.x, tri.v[1].pos.x), tri.v[2].pos.x),
+		glm::max(glm::max(tri.v[0].pos.y, tri.v[1].pos.y), tri.v[2].pos.y),
+		glm::max(glm::max(tri.v[0].pos.z, tri.v[1].pos.z), tri.v[2].pos.z));
+	return aabb;
 }
 
 // CHECKITOUT
