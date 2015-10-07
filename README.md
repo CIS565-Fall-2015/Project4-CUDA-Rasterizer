@@ -8,7 +8,7 @@ CUDA Rasterizer
 
 ## Video Demo
 
-![](img/Splash.png)
+[![](img/Splash.png)](https://vimeo.com/141638182)
 
 ## Pipeline Overview
 
