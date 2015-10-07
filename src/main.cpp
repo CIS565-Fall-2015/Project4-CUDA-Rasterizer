@@ -310,11 +310,35 @@ void errorCallback(int error, const char *description) {
 }
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-    	delete(imageColor);
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
-    else if(key == GLFW_KEY_SPACE && action == GLFW_PRESS){
-    	saveImage();
-    }
+
+	if(action == GLFW_PRESS)
+	{
+		switch(key)
+		{
+			case GLFW_KEY_ESCAPE:
+				delete(imageColor);
+				glfwSetWindowShouldClose(window, GL_TRUE);
+				break;
+
+			case GLFW_KEY_SPACE:
+				saveImage();
+				break;
+
+//			case GLFW_KEY_A:
+//
+			default:
+				break;
+		}
+	}
+
+//    case GLFW_KEY_DOWN:  camchanged = true; theta = -0.1f; break;
+//            case GLFW_KEY_UP:    camchanged = true; theta = +0.1f; break;
+//            case GLFW_KEY_RIGHT: camchanged = true; phi = -0.1f; break;
+//            case GLFW_KEY_LEFT:  camchanged = true; phi = +0.1f; break;
+//            case GLFW_KEY_A:     camchanged = true; cammove -= glm::vec3(.1f, 0, 0); break;
+//            case GLFW_KEY_D:     camchanged = true; cammove += glm::vec3(.1f, 0, 0); break;
+//            case GLFW_KEY_W:     camchanged = true; cammove += glm::vec3(0, 0, .1f); break;
+//            case GLFW_KEY_S:     camchanged = true; cammove -= glm::vec3(0, 0, .1f); break;
+//            case GLFW_KEY_R:     camchanged = true; cammove += glm::vec3(0, .1f, 0); break;
+//            case GLFW_KEY_F:     camchanged = true; cammove -= glm::vec3(0, .1f, 0); break;
 }

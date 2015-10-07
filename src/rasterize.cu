@@ -109,7 +109,7 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 		outVertex[index].pos.y = outPoint.y * h;
 		outVertex[index].pos.z = outPoint.z;
 
-		outVertex[index].col = inVertex[index].col;
+		outVertex[index].col = glm::vec3(0,0,1);//inVertex[index].col;
 		outVertex[index].nor = inVertex[index].nor;
 
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
@@ -208,9 +208,16 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 			tri[2] = triangles[index].v[2].pos;
 
 			AABB aabb = getAABBForTriangle(tri);
-			for(int i=aabb.min.x-1; i<aabb.max.x+1; ++i)
+			glm::ivec3 min, max;
+
+			min.x = glm::clamp(aabb.min.x, -(float)w, (float)w);
+			min.y = glm::clamp(aabb.min.y, -(float)h, (float)h);
+			max.x = glm::clamp(aabb.max.x, -(float)w, (float)w);
+			max.y = glm::clamp(aabb.max.y, -(float)h, (float)h);
+
+			for(int i=min.x-1; i<max.x+1; ++i)
 			{
-				for(int j=aabb.min.y-1; j<aabb.max.y+1; ++j)
+				for(int j=min.y-1; j<max.y+1; ++j)
 				{
 	//				printf("\nMax : %f %f %f\nMin : %f %f %f\n", aabb.max.x, aabb.max.y, aabb.max.z, aabb.min.x, aabb.min.y, aabb.min.z);
 					glm::ivec2 point(i,j);
