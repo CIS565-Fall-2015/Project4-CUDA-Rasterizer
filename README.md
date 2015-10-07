@@ -15,10 +15,16 @@ CUDA Rasterizer
 * Geometry shader, able to output a variable number of primitives per input primitive, optimized using stream compaction
   * `G` toggle geometry shader; shows vertex normals
 * Rasterization
-  * Barycentric color interpolation
+  * Scan each pixel in the bounding box
+    * Subject to primitive size in window coordinate
+    * For the same object, camera being further away results in smaller object screen size; thus higher FPS
+    * Camera very close results in each primitive covering big proportion of screen; thus each thread scans longer; thus lower FPS
+    * However, pixel scanning is at least 5x faster than standard scanline
   * Scissor test
     * `S`: toggle scissor test
+  * Fragment clipping
   * Depth test (using atomics for race avoidance)
+  * Barycentric color interpolation
   * Support for rasterizing lines and points
       * Does **not** support vertex shading for such primitives; only rasterization
 * Fragment shading
@@ -51,9 +57,18 @@ tables and or graphs to visually explain any performance differences.
 * For optimization steps (like backface culling), include a performance
   comparison to show the effectiveness.
 
+* Baseline
+  * `tri.obj`, 
+  * Camera:
+    * Position `(0,0,3)`
+    * LookAt `(0,0,0)`
+    * FOV = 45.0 degrees;
+
 ## References
 
 * Line segment intersection test
   * http://paulbourke.net/geometry/pointlineplane/
 * Vertex shader transformation
   * http://www.songho.ca/opengl/gl_transform.html
+* Bresenham's line algorithm
+  * https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm

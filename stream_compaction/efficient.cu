@@ -16,7 +16,7 @@
 
 #define FILENAME1 (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError1(msg) checkCUDAErrorFn1(msg, FILENAME1, __LINE__)
-#define ERRORCHECK1 1
+#define ERRORCHECK1 0
 void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
 #if ERRORCHECK1
 	cudaDeviceSynchronize();

@@ -209,11 +209,14 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 
 	if (index < triCount) {
 		Triangle t;
+		// Assemble vertices
 		t.v[0] = vIn[triIdx[3 * index + 0]];
 		t.v[1] = vIn[triIdx[3 * index + 1]];
 		t.v[2] = vIn[triIdx[3 * index + 2]];
+		// Find bounding box
 		glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
 		t.box = getAABBForTriangle(coord);
+		// Set rasterization property
 		t.isPoint = false;
 		t.isLine = false;
 		t.isValidGeom = true;
@@ -243,7 +246,8 @@ __global__ void simpleShadeGeom(Triangle *pArr, const int triCount, const int wi
 	if (index < triCount) {
 		Triangle t = pArr[index];
 		Triangle tN = t;
-
+		// Calculate a line that represents the vertex normal
+		// Since normal is not MVP-transformed, need to do MVP here for the model-space normal line
 		glm::vec4 clip = mvp*glm::vec4(t.v[0].mpos + t.v[0].nor*0.1f, 1.0f);
 		glm::vec3 ndc = glm::vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
 		tN.v[1].pos = glm::vec3(
@@ -274,15 +278,16 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 					discard = true;
 				}
 			}
+			// Window clipping test
 			int flatIdx = width - x + (height - y)*width;
 			if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
 				discard = true;
 			}
 			if (!discard){
 				int dp = -t.v[0].pos.z * 10000;
-
+				// Try to win the depth test
 				atomicMin(&depth[flatIdx], dp);
-
+				// If won depth test
 				if (depth[flatIdx] == dp) {
 					// Shallowest
 					f.col = t.v[0].col;
@@ -295,6 +300,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 		else if (t.isLine){
 			glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
 			if (round(min.x) == round(max.x)){
+				// Straight vertical line
 				int minY = round(min.y), maxY = round(max.y), minZ = min.z, maxZ = max.z;
 				int x = round(min.x);
 				if (min.y > max.y){
@@ -369,12 +375,14 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 			}
 		}
 		else {
+			// General triangle
 			float minX = t.box.min.x, maxX = t.box.max.x;
+			// For each scanline
 			for (int y = round(t.box.max.y); y >= round(t.box.min.y); y--){
 				int dp;
 				glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
 				bool discard;
-
+				// Scan each pixel
 				for (int x = round(minX); x <= round(maxX); x++){
 					discard = false;
 					// Scissor test
@@ -417,13 +425,12 @@ __global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width
 	int index = x + (y * width);
 
 	if (index < pxCount) {
+		// Add the two lights and do Lambert shading
 		glm::vec3 L1 = glm::normalize(light1 - fBuf[index].pos);
 		glm::vec3 L2 = glm::normalize(light2 - fBuf[index].pos);
 		glm::vec3 C1 = glm::dot(L1, fBuf[index].nor)*fBuf[index].col*lightCol1;
 		glm::vec3 C2 = glm::dot(L2, fBuf[index].nor)*fBuf[index].col*lightCol2;
 		fBuf[index].col = C1+C2;
-		//fBuf[index].col = normalize(fBuf[index].pos);
-		//fBuf[index].col = fBuf[index].nor;
 	}
 }
 
