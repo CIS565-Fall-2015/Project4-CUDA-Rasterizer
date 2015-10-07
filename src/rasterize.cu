@@ -171,6 +171,7 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
+/*
 __device__ void findIntersect(glm::vec3 &i, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4){
 	// http://paulbourke.net/geometry/pointlineplane/
 	float d = (p4.y - p3.y)*(p2.x - p1.x) - (p4.x - p3.x)*(p2.y - p1.y);
@@ -186,6 +187,7 @@ __device__ void findIntersect(glm::vec3 &i, glm::vec3 p1, glm::vec3 p2, glm::vec
 		i.z = 1;
 	}
 }
+*/
 
 __global__ void shadeVertex(VertexOut *vOut, VertexIn *vIn, const int vertCount, const int width, const int height, const glm::mat4 mvp, const float near, const float far){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -274,10 +276,10 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 
 	if (index < triCount) {
 		Triangle t = pIn[index];
-		Fragment f;
 		if (t.isPoint){
 			bool discard = false;
 			int x = round(t.v[0].pos.x), y = round(t.v[0].pos.y);
+			int flatIdx = width - x + (height - y)*width;
 			// Scissor test
 			if (doScissor){
 				if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
@@ -285,8 +287,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 				}
 			}
 			// Window clipping test
-			int flatIdx = width - x + (height - y)*width;
-			if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+			if (y < 0 || height < y || width < x ||  x < 0){
 				discard = true;
 			}
 			if (!discard){
@@ -296,6 +297,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 				// If won depth test
 				if (depth[flatIdx] == dp) {
 					// Shallowest
+					Fragment f;
 					f.col = t.v[0].col;
 					f.nor = t.v[0].nor;
 					f.pos = t.v[0].pos;
@@ -305,16 +307,18 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 		}
 		else if (t.isLine){
 			glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
-			if (round(min.x) == round(max.x)){
+			int minX = round(min.x), maxX = round(max.x);
+			if (minX == maxX){
 				// Straight vertical line
 				int minY = round(min.y), maxY = round(max.y), minZ = min.z, maxZ = max.z;
-				int x = round(min.x);
+				int x = minX;
 				if (min.y > max.y){
 					minY = round(max.y); maxY = round(min.y); minZ = max.z; maxZ = min.z;
 				}
+				int dp;
+				bool discard;
 				for (int y = maxY; y >= minY; y--){
-					int dp;
-					bool discard = false;
+					discard = false;
 					// Scissor test
 					if (doScissor){
 						if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
@@ -322,18 +326,19 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 						}
 					}
 					int flatIdx = width - x + (height - y)*width;
-					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+					if (y < 0 || height < y || x > width || x < 0){
 						discard = true;
 					}
 					if (!discard){
 						float ratio = (y - minY) / (maxY - minY);
-						dp = -(ratio*minZ+(1-ratio)*maxZ) * 10000;
+						dp = -(ratio*minZ + (1 - ratio)*maxZ) * 10000;
 
 						atomicMin(&depth[flatIdx], dp);
 
 						if (depth[flatIdx] == dp) {
 							// Shallowest
-							f.pos = glm::vec3(x, y, -dp/10000);
+							Fragment f;
+							f.pos = glm::vec3(x, y, -dp* 0.0001);
 							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
 							f.col = glm::vec3(1.0f);
 							dBuf[flatIdx] = f;
@@ -343,15 +348,17 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 			}
 			else {
 				// Bresenham
-				if (round(min.x) > round(max.x)){
+				if (minX > maxX){
 					min = t.v[1].pos; max = t.v[0].pos;
 				}
 				int minZ = min.z, maxZ = max.z;
 				float slope = (max.y - min.y) / (max.x - min.x);
 				int dp, y;
 				bool discard;
+				float ratio;
 				for (int x = round(min.x); x <= round(max.x); x++){
 					y = slope * (x - round(min.x)) + min.y;
+					ratio = (x - round(min.x)) / (round(max.x) - round(min.x));
 					discard = false;
 					// Scissor test
 					if (doScissor){
@@ -360,18 +367,18 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 						}
 					}
 					int flatIdx = width - x + (height - y)*width;
-					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+					if (y < 0 || y > height || x < 0 || x > width){
 						discard = true;
 					}
 					if (!discard){
-						float ratio = (x - round(min.x)) / (round(max.x) - round(min.x));
 						dp = -(ratio*minZ + (1 - ratio)*maxZ) * 10000;
 
 						atomicMin(&depth[flatIdx], dp);
 
 						if (depth[flatIdx] == dp) {
 							// Shallowest
-							f.pos = glm::vec3(x, y, -dp / 10000);
+							Fragment f;
+							f.pos = glm::vec3(x, y, -dp*0.0001);
 							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
 							f.col = glm::vec3(1.0f);
 							dBuf[flatIdx] = f;
@@ -382,37 +389,31 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 		}
 		else {
 			// General triangle
-			float minX = t.box.min.x, maxX = t.box.max.x;
+			// Early window clipping & scissor test
+			int minX, maxX, minY, maxY;
+			minX = fmaxf(round(t.box.min.x), 0.0f), maxX = fminf(round(t.box.max.x), (float)width);
+			minY = fmaxf(round(t.box.min.y), 0.0f), maxY = fminf(round(t.box.max.y), (float)height);
+			if (doScissor){
+				minX = fmaxf(minX, scissor.min.x), maxX = fminf(maxX, scissor.max.x);
+				minY = fmaxf(minY, scissor.min.y), maxY = fminf(maxY, scissor.max.y);
+			}
+			glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
+			int dp, flatIdx;
+			glm::vec3 bcc;
 			// For each scanline
-			for (int y = round(t.box.max.y); y >= round(t.box.min.y); y--){
-				int dp;
-				glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
-				bool discard;
+			for (int y = maxY; y >= minY; y--){
 				// Scan each pixel
-				for (int x = round(minX); x <= round(maxX); x++){
-					discard = false;
-					// Scissor test
-					if (doScissor){
-						if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
-							discard = true;
-						}
-					}
-					glm::vec3 bcc = calculateBarycentricCoordinate(coord, glm::vec2(x, y));
-					if (!isBarycentricCoordInBounds(bcc)){
-						discard = true;
-					}
-					int flatIdx = width - x + (height - y)*width;
-					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
-						discard = true;
-					}
-					if (!discard){
+				for (int x = minX; x <= maxX; x++){
+					bcc = calculateBarycentricCoordinate(coord, glm::vec2(x, y));
+					flatIdx = width - x + (height - y)*width;
+					if (isBarycentricCoordInBounds(bcc)){
 						dp = getZAtCoordinate(bcc, coord) * 10000;
 
 						atomicMin(&depth[flatIdx], dp);
 
 						if (depth[flatIdx] == dp) {
 							// Shallowest
-							glm::vec3 bcc = calculateBarycentricCoordinate(coord, glm::vec2(x, y));
+							Fragment f;
 							f.pos = bcc.x * t.v[0].pos + bcc.y*t.v[1].pos + bcc.z*t.v[2].pos;
 							f.nor = bcc.x * t.v[0].nor + bcc.y*t.v[1].nor + bcc.z*t.v[2].nor;
 							f.col = bcc.x * t.v[0].col + bcc.y*t.v[1].col + bcc.z*t.v[2].col;

@@ -72,6 +72,8 @@ tables and or graphs to visually explain any performance differences.
   * Substitute fixed divisions with corresponding multiplications for marginal performance gain
     * Reduced register counts
     * Slight speed up
+  * Cache repetitive calculations; reorder executions to reduce execution dependency
+    * Minor speed up
 
 ## References
 
