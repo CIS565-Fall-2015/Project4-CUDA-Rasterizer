@@ -42,13 +42,17 @@ bunch of them around so you can pick a few to document your progress.
 
 * `src/` C++/CUDA source files.
 * `util/` C++ utility files.
-* `objs/` Example OBJ test files:
-  * `tri.obj` (3 verts, 1 tri): The simplest possible geometric object.
-  * `cube.obj` (8 verts, 12 tris): A small model with low depth-complexity.
-  * `suzanne.obj` (507 verts, 968 tris): A medium model with low depth-complexity.
-  * `cow.obj` (4583 verts, 5804 tris): A large model with low depth-complexity.
-  * `flower.obj` (640 verts, 640 tris): A medium model with very high depth-complexity.
-  * `sponza.obj` (153,635 verts, 279,163 tris): A huge model with very high depth-complexity.
+* `objs/` Example OBJ test files (# verts, # tris in buffers after loading)
+  * `tri.obj` (3v, 1t): The simplest possible geometric object.
+  * `cube.obj` (36v, 12t): A small model with low depth-complexity.
+  * `suzanne.obj` (2904 verts, 968 tris): A medium model with low depth-complexity.
+  * `suzanne_smooth.obj` (2904 verts, 968 tris): A medium model with low depth-complexity.
+    This model has normals which must be interpolated.
+  * `cow.obj` (17412 verts, 5804 tris): A large model with low depth-complexity.
+  * `cow_smooth.obj` (17412 verts, 5804 tris): A large model with low depth-complexity.
+    This model has normals which must be interpolated.
+  * `flower.obj` (1920 verts, 640 tris): A medium model with very high depth-complexity.
+  * `sponza.obj` (837,489 verts, 279,163 tris): A huge model with very high depth-complexity.
 * `renders/` Debug render of an example OBJ.
 * `external/` Includes and static libraries for 3rd party libraries.
 
@@ -228,9 +232,16 @@ Start out by testing a single triangle (`tri.obj`).
     * This result in an optimization: it allows you to do depth tests before
      spending execution time in complex fragment shader code!
   * Handle race conditions! Since multiple primitives write fragments to the
-    same fragment in the depth buffer, depth buffer locations must be locked
-    while comparing the old and new fragment depths and (possibly) writing into
-    it.
+    same fragment in the depth buffer, races must be avoided by using CUDA
+    atomics.
+    * *Approach 1:* Lock the location in the depth buffer during the time that
+      a thread is comparing old and new fragment depths (and possibly writing
+      a new fragment). This should work in all cases, but be slower.
+    * *Approach 2:* Convert your depth value to a fixed-point `int`, and use
+      `atomicMin` to store it into an `int`-typed depth buffer `intdepth`. After
+      that, the value which is stored at `intdepth[i]` is (usually) that of the
+      fragment which should be stored into the `fragment` depth buffer.
+      * This may result in some rare race conditions (e.g. across blocks).
     * The `flower.obj` test file is good for testing race conditions.
 * A depth buffer for storing and depth testing fragments.
   * `FragmentOut[width][height] depthbuffer`
