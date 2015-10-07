@@ -18,6 +18,26 @@ struct AABB {
 };
 
 /**
+ * homogeneous coordinates are the butts, but the buffers provided
+ * are all unhomogeneous. this should help a bit.
+ */
+__host__ __device__ static
+glm::vec3 tfPoint(glm::mat4 m, glm::vec3 point) {
+	glm::vec4 v4 = glm::vec4(point, 1.0f);
+	return glm::vec3(m * v4);
+}
+
+/**
+* homogeneous coordinates are the butts, but the buffers provided
+* are all unhomogeneous. this should help a bit.
+*/
+__host__ __device__ static
+glm::vec3 tfDir(glm::mat4 m, glm::vec3 dir) {
+	glm::vec4 v4 = glm::vec4(dir, 1.0f);
+	return glm::vec3(m * v4);
+}
+
+/**
  * Multiplies a glm::mat4 matrix and a vec4.
  */
 __host__ __device__ static
