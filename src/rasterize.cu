@@ -8,12 +8,16 @@
 
 #include "rasterize.h"
 
+#include <cstdint>
+#include <limits>
 #include <cmath>
 #include <cstdio>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
+
+
 #include "rasterizeTools.h"
 
 #include "glm/gtc/matrix_transform.hpp"
@@ -97,13 +101,13 @@ struct Triangle {
     VertexOut v[3];
 };
 struct Fragment {
-	bool shade;
+	//bool shade;
 
 	glm::vec3 color;
 	glm::vec3 normal_eye_space;
 	glm::vec2 uv;
 
-	float depth;
+	//float depth;
 
     //glm::vec3 color;
 };
@@ -121,9 +125,12 @@ static int vertCount = 0;
 static int triCount = 0;
 
 //static FragmentIn * dev_fragments = NULL;
-static int * dev_fragmentLocks = NULL;
+static int * dev_depth = NULL;
 
 
+
+static int lightsCount = 0;
+static Light* dev_lights = NULL;
 
 
 /**
@@ -164,13 +171,18 @@ void rasterizeInit(int w, int h) {
 	//cudaMalloc(&dev_fragments, width * height *sizeof(FragmentIn));
 	//cudaMemset(dev_fragments, 0, width * height * sizeof(FragmentIn));
 	
-	cudaFree(dev_fragmentLocks);
-	cudaMalloc(&dev_fragmentLocks, width * height *sizeof(int));
-	cudaMemset(dev_fragmentLocks, 0, width * height * sizeof(int));
+	cudaFree(dev_depth);
+	cudaMalloc(&dev_depth, width * height *sizeof(int));
+	//cudaMemset(dev_depth, INT_MAX, width * height * sizeof(int));
 	
 	cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+
+
+
+
+
     checkCUDAError("rasterizeInit");
 }
 
@@ -205,6 +217,18 @@ void rasterizeSetBuffers(
     cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+
+
+
+
+
+
+	////init lights
+	//cudaFree(dev_lights);
+	//cudaMalloc(&dev_lights, lightsCount*sizeof(Light));
+	//cudaMemcpy(dev_lights, lights, lightsCount * sizeof(Light), cudaMemcpyHostToDevice);
+	////////////
+
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -299,11 +323,11 @@ VertexOut interpolateVertexOut(const VertexOut & a, const VertexOut & b,float u)
 	if (u < 0.0f){ u = 0.0f; }
 	else if (u > 1.0f){ u = 1.0f; }
 
+	c.divide_w_clip = (1 - u) * a.divide_w_clip + u * b.divide_w_clip;
+
 	c.pos = (1 - u) * a.pos + u * b.pos;
 	c.color = (1 - u) * a.color + u * b.color;
 	c.uv = (1 - u) * a.uv + u * b.uv;
-
-	c.divide_w_clip = (1 - u) * a.divide_w_clip + u * b.divide_w_clip;
 
 	
 	c.noraml_eye_space = glm::normalize( (1 - u) * a.noraml_eye_space + u * b.noraml_eye_space );
@@ -356,7 +380,7 @@ void updateEdge(Edge & e)
 
 
 __device__
-void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragment * fragments, int * fragmentLocks)
+void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragment * fragments, int * depth)
 {
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
@@ -368,9 +392,9 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 		x_left = 0;
 	}
 	
-	if (x_right > width)
+	if (x_right >= width)
 	{
-		x_right = width;
+		x_right = width-1;
 	}
 
 	// Discard scanline with no actual rasterization and also
@@ -403,49 +427,52 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 
 
 
-		//atomic 
-
-		int assumed;
-		int* address = &fragmentLocks[idx];
-		int old = *address;
-
-		//lock
-		do{
-			assumed = old;
-			old = atomicCAS(address, assumed, 1);
-		} while (assumed != old);
-
+		////atomic 
+		//int assumed;
+		//int* address = &depth[idx];
+		//int old = *address;
+		////lock method, don't know why it doesn't work on some cases
+		//do{
+		//	assumed = old;
+		//	old = atomicCAS(address, assumed, 1);
+		//} while (assumed != old);
 		//if (*address == 0)
 		//{
 		//	printf(" -%d- ", *address);
 		//}
 		
+		int z_int = (int)(z * INT_MAX);
+		int* address = &depth[idx];
 
-		if (fragments[idx].shade == false)
-		{
-			fragments[idx].shade = true;
-			fragments[idx].depth = FLT_MAX;
-		}
+		atomicMin(address, z_int);
 
-		if (z < fragments[idx].depth)
+		//if (fragments[idx].shade == false)
+		//{
+		//	fragments[idx].shade = true;
+		//	fragments[idx].depth = FLT_MAX;
+		//}
+
+
+		//if (z < fragments[idx].depth)
+		if (*address == z_int)
 		{
-			fragments[idx].depth = z;
-			fragments[idx].color = p.color;
-			fragments[idx].normal_eye_space = p.noraml_eye_space;
-			fragments[idx].uv = p.uv;
+			//fragments[idx].depth = z;
+			fragments[idx].color = p.color / p.divide_w_clip;
+			fragments[idx].normal_eye_space = glm::normalize( p.noraml_eye_space / p.divide_w_clip );
+			fragments[idx].uv = p.uv / p.divide_w_clip;
 		}
 		
 
-		//unlock
-		old = *address;
-		do{
-			assumed = old;
-			old = atomicCAS(address, assumed, 0);
-		} while (assumed != old);
-		//if (*address == 1)
-		//{
-		//	printf("%d,%d\t", *address,old);
-		//}
+		////unlock
+		//old = *address;
+		//do{
+		//	assumed = old;
+		//	old = atomicCAS(address, assumed, 0);
+		//} while (assumed != old);
+		////if (*address == 1)
+		////{
+		////	printf("%d,%d\t", *address,old);
+		////}
 		
 
 		z += dz;
@@ -464,7 +491,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 * e1 - longest y span
 */
 __device__
-void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fragments, int * fragmentLocks)
+void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fragments, int * depth)
 {
 	// Discard horizontal edge as there is nothing to rasterize
 	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) return;
@@ -479,9 +506,9 @@ void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fr
 		y_bot = 0;
 	}
 
-	if (y_top > height)
+	if (y_top >= height)
 	{
-		y_top = height;
+		y_top = height-1;
 	}
 
 
@@ -494,11 +521,11 @@ void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fr
 	{
 		if (e1.x <= e2.x)
 		{
-			drawOneScanLine(width, e1, e2, y, fragments, fragmentLocks);
+			drawOneScanLine(width, e1, e2, y, fragments, depth);
 		}
 		else
 		{
-			drawOneScanLine(width, e2, e1, y, fragments, fragmentLocks);
+			drawOneScanLine(width, e2, e1, y, fragments, depth);
 		}
 
 		//update edge
@@ -517,7 +544,7 @@ void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fr
 */
 __global__
 void kernScanLineForOneTriangle(int width,int height
-, Triangle * triangles, Fragment * depth_fragment, int * fragmentLocks)
+, Triangle * triangles, Fragment * depth_fragment, int * depth)
 {
 	int triangleId = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -573,8 +600,8 @@ void kernScanLineForOneTriangle(int width,int height
 	int shortEdge1 = (longEdge + 2) % 3;
 
 	// Rasterize two parts separately
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, fragmentLocks);
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, fragmentLocks);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, depth);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, depth);
 
 	
 
@@ -624,28 +651,41 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 	if (x < w && y < h) {
 		//framebuffer[index] = depthbuffer[index].color;
 
-		if (x < w && y < h)
-		{
+		
 
-			if (depthbuffer[index].shade)
-			{
+			//if (depthbuffer[index].shade)
+			//{
 				//depthBuffer[index].color = glm::vec3(1.0f);
 
 				//test: normal
 				framebuffer[index] = depthbuffer[index].normal_eye_space;
-			}
-			else
-			{
-				framebuffer[index] = BACKGROUND_COLOR;
-			}
-		}
+			//}
+			//else
+			//{
+			//	framebuffer[index] = BACKGROUND_COLOR;
+			//}
+		
 	}
 }
 
 //--------------------------------------------------------------------------------
 
 
+__global__
+void initDepth(int w,int h,int * depth)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	
+	if ( x < w && y < h)
+	{
+		int index = x + (y * w);
 
+		depth[index] = INT_MAX;
+	}
+
+	
+}
 
 
 /**
@@ -661,8 +701,12 @@ void rasterize(uchar4 *pbo) {
     // (See README for rasterization pipeline outline.)
 
 	//cudaMemset(dev_fragments, 0, width * height * sizeof(FragmentIn));
-	cudaMemset(dev_fragmentLocks, 0, width * height * sizeof(int));
+	//cudaMemset(dev_depth, INT_MAX, width * height * sizeof(int));
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+
+
+
+	initDepth << <blockCount2d, blockSize2d >> >(width,height,dev_depth);
 
 
 	//rasterization
@@ -670,7 +714,7 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockCount_tri((triCount + blockSize_Rasterize.x - 1) / blockSize_Rasterize.x);
 
 	cudaDeviceSynchronize();
-	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(width, height, dev_primitives, dev_depthbuffer, dev_fragmentLocks);
+	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(width, height, dev_primitives, dev_depthbuffer, dev_depth);
 
 
 	//fragment shader
@@ -711,8 +755,8 @@ void rasterizeFree() {
 	//cudaFree(dev_fragments);
 	//dev_fragments = NULL;
 
-	cudaFree(dev_fragmentLocks);
-	dev_fragmentLocks = NULL;
+	cudaFree(dev_depth);
+	dev_depth = NULL;
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
