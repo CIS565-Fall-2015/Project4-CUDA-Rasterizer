@@ -14,6 +14,8 @@ CUDA Rasterizer
 * Primitive assembly with support for triangles read from buffers of index and vertex data.
 * Geometry shader, able to output a variable number of primitives per input primitive, optimized using stream compaction
   * `G` toggle geometry shader; shows vertex normals
+  * Can output at most 8 primitives
+  * Final result is trimmed via stream compaction
 * Rasterization
   * Scan each pixel in the bounding box
     * Subject to primitive size in window coordinate
@@ -62,7 +64,14 @@ tables and or graphs to visually explain any performance differences.
   * Camera:
     * Position `(0,0,3)`
     * LookAt `(0,0,0)`
-    * FOV = 45.0 degrees;
+    * FOV = 45.0 degrees
+
+* Optimization
+  * Alter block size for different kernels to achieve higher warp count
+    * Immediate benefit: ~90 FPS to ~130 FPS
+  * Substitute fixed divisions with corresponding multiplications for marginal performance gain
+    * Reduced register counts
+    * Slight speed up
 
 ## References
 

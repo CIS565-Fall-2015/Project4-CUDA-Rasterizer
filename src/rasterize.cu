@@ -17,6 +17,9 @@
 #include "rasterize.h"
 #include "rasterizeTools.h"
 
+#define VERTSHADER_BLOCK 128
+#define FRAGSHADER_BLOCK 256
+
 static int width = 0;
 static int height = 0;
 __constant__ static int *dev_bufIdx = NULL;
@@ -31,8 +34,9 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 static MVP *mvp = NULL;
 
+// Geometry shader restriction
 const int geomShaderLimit = 8;
-static int triCount;;
+static int triCount;
 
 // Temp variables for stream compaction
 __constant__ static int *dv_f_tmp = NULL;
@@ -40,6 +44,7 @@ __constant__ static int *dv_idx_tmp = NULL;
 __constant__ static Triangle *dv_out_tmp = NULL;
 __constant__ static int *dv_c_tmp = NULL;
 
+// Fixed lighting
 static glm::vec3 light1 = 10.0f*glm::vec3(100.0f, 100.0f, 100.0f);
 static glm::vec3 lightCol1 = glm::vec3(0.95f, 0.95f, 1.0f);
 static glm::vec3 light2 = light1 * glm::vec3(-1.0f, 1.0f, -1.0f);
@@ -74,10 +79,12 @@ __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, Fragment *image) {
 	int index = x + (y * w);
 
 	if (x < w && y < h) {
-		glm::vec3 color;
-		color.x = glm::clamp(image[index].col.x, 0.0f, 1.0f) * 255.0;
-		color.y = glm::clamp(image[index].col.y, 0.0f, 1.0f) * 255.0;
-		color.z = glm::clamp(image[index].col.z, 0.0f, 1.0f) * 255.0;
+		Fragment f = image[index];
+		glm::vec3 color = glm::vec3(255.0f);
+
+		color.x = color.x * glm::clamp(f.col.x, 0.0f, 1.0f);
+		color.y = color.y * glm::clamp(f.col.y, 0.0f, 1.0f);
+		color.z = color.z * glm::clamp(f.col.z, 0.0f, 1.0f);
 		// Each thread writes one pixel location in the texture (textel)
 		pbo[index].w = 0;
 		pbo[index].x = color.x;
@@ -188,16 +195,16 @@ __global__ void shadeVertex(VertexOut *vOut, VertexIn *vIn, const int vertCount,
 	if (index < vertCount) {
 		// http://www.songho.ca/opengl/gl_transform.html
 		VertexOut o;
+		o.mpos = vIn[index].pos;
+		o.nor = vIn[index].nor;
+		o.col = vIn[index].col;
 		glm::vec4 clip = mvp*glm::vec4(vIn[index].pos, 1.0f);
 		glm::vec3 ndc = glm::vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
 		o.pos = glm::vec3(
-			width/2*(ndc.x+1), 
-			height/2*(ndc.y+1), 
-			(far-near)/2*ndc.z+(far+near)/2
+			width*0.5f*(ndc.x+1), 
+			height*0.5f*(ndc.y+1), 
+			((far-near)*ndc.z+(far+near))*0.5f
 			);
-		o.nor = vIn[index].nor;
-		o.col = vIn[index].col;
-		o.mpos = vIn[index].pos;
 		vOut[index] = o;
 	}
 }
@@ -209,17 +216,16 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 
 	if (index < triCount) {
 		Triangle t;
+		// Set rasterization property
+		t.isPoint = false;
+		t.isLine = false;
+		t.isValidGeom = true;
 		// Assemble vertices
 		t.v[0] = vIn[triIdx[3 * index + 0]];
 		t.v[1] = vIn[triIdx[3 * index + 1]];
 		t.v[2] = vIn[triIdx[3 * index + 2]];
 		// Find bounding box
-		glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
-		t.box = getAABBForTriangle(coord);
-		// Set rasterization property
-		t.isPoint = false;
-		t.isLine = false;
-		t.isValidGeom = true;
+		t.box = getAABBForTriangle(t);
 		pOut[index] = t;
 	}
 }
@@ -420,9 +426,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 }
 
 __global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width, const glm::vec3 light1, const glm::vec3 lightCol1, const glm::vec3 light2, const glm::vec3 lightCol2){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < pxCount) {
 		// Add the two lights and do Lambert shading
@@ -435,9 +439,7 @@ __global__ void shadeFragment(Fragment *fBuf, const int pxCount, const int width
 }
 
 __global__ void shadeFragmentNormal(Fragment *fBuf, const int pxCount, const int width){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < pxCount) {
 		fBuf[index].col = fBuf[index].nor;
@@ -454,17 +456,19 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockCount2d((width + blockSize2d.x - 1) / blockSize2d.x,
 		(height + blockSize2d.y - 1) / blockSize2d.y);
 
+	int vertGridSize = (width*height + VERTSHADER_BLOCK - 1) / VERTSHADER_BLOCK;
+
 	// Vertex shading
-	shadeVertex << <blockCount2d, blockSize2d >> >(dev_bufShadedVert, dev_bufVertex, vertCount, width, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
+	shadeVertex << <vertGridSize, VERTSHADER_BLOCK>> >(dev_bufShadedVert, dev_bufVertex, vertCount, width, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
 	checkCUDAError("Vert shader");
 
 	// Primitive assembly
 	if (mvp->pointShading){
-		assemblePrimitivePoint << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
+		assemblePrimitivePoint << <vertGridSize, VERTSHADER_BLOCK >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
 		checkCUDAError("Prim assembly");
 	}
 	else {
-		assemblePrimitive << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
+		assemblePrimitive << <vertGridSize, VERTSHADER_BLOCK >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
 		checkCUDAError("Prim assembly");
 	}
 	
@@ -483,14 +487,16 @@ void rasterize(uchar4 *pbo) {
 	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, primCount, width, height, mvp->camPosition, mvp->doScissor, mvp->scissor, mvp->camLookAt);
 	checkCUDAError("Rasterization");
 
+	int fragGridSize = (width*height + FRAGSHADER_BLOCK - 1) / FRAGSHADER_BLOCK;
+
 	if (mvp->shadeMode == 0){
 		// Fragment shading
-		shadeFragment << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width, light1, lightCol1, light2, lightCol2);
+		shadeFragment << <fragGridSize, FRAGSHADER_BLOCK >> >(dev_depthbuffer, height*width, width, light1, lightCol1, light2, lightCol2);
 		checkCUDAError("Frag shader");
 	}
 	else if (mvp->shadeMode == 1){
 		// Fragment shading
-		shadeFragmentNormal << <blockCount2d, blockSize2d >> >(dev_depthbuffer, height*width, width);
+		shadeFragmentNormal << <fragGridSize, FRAGSHADER_BLOCK >> >(dev_depthbuffer, height*width, width);
 		checkCUDAError("Frag shader");
 	}
 
@@ -498,7 +504,13 @@ void rasterize(uchar4 *pbo) {
     //render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
 	//sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_framebuffer);
-	sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_depthbuffer);
+
+	dim3 blockSize2d2(16, 16);
+
+	dim3 blockCount2d2((width + blockSize2d2.x - 1) / blockSize2d2.x,
+		(height + blockSize2d2.y - 1) / blockSize2d2.y);
+
+	sendImageToPBO << <blockCount2d2, blockSize2d2 >> >(pbo, width, height, dev_depthbuffer);
     checkCUDAError("rasterize");
 }
 
