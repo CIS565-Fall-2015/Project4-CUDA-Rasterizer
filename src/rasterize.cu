@@ -86,6 +86,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 void rasterizeInit(int w, int h) {
     width = w;
     height = h;
+	printf("Width: %i, Height: %i", width, height);
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
@@ -129,12 +130,15 @@ void rasterizeSetBuffers(
 __global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 matrix) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < vertCount) {
+		//printf("%i oldVert: (%i, %i, %i) \n", thrId, inVerts[thrId].pos[0], inVerts[thrId].pos[1], inVerts[thrId].pos[2]);
 		glm::vec4 newVert = matrix * glm::vec4(inVerts[thrId].pos, 1.0);
 		if (newVert[0] != 0) {
 			outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
+			//printf("%i newVert: (%i, %i, %i) \n", thrId, outVerts[thrId].pos[0], outVerts[thrId].pos[1], outVerts[thrId].pos[2]);
 		}
 		else {
 			outVerts[thrId].pos = glm::vec3(newVert[0], newVert[1], newVert[2]);
+			//printf("%i newVert: (%i, %i, %i) \n", thrId, outVerts[thrId].pos[0], outVerts[thrId].pos[1], outVerts[thrId].pos[2]);
 		}
 	}
 
@@ -145,12 +149,15 @@ __global__ void primitiveAssemble(VertexOut* verts, Triangle* tris, int vertCoun
 	if (thrId < vertCount) {
 		if (thrId % 3 == 0) {
 			tris[thrId/3].v[0] = verts[thrId];
+			//printf("%i first: (%i, %i, %i) \n", thrId, verts[thrId].pos[0], verts[thrId].pos[1], verts[thrId].pos[2]);
 		} 
 		else if (thrId % 3 == 1) {
 			tris[(thrId - 1)/3].v[1] = verts[thrId];
+			//printf("%i second: (%i, %i, %i) \n", thrId, verts[thrId].pos[0], verts[thrId].pos[1], verts[thrId].pos[2]);
 		}
 		else {
 			tris[(thrId - 2)/3].v[2] = verts[thrId];
+			//printf("%i third: (%i, %i, %i) \n", thrId, verts[thrId].pos[0], verts[thrId].pos[1], verts[thrId].pos[2]);
 		}
 	}
 }
@@ -158,23 +165,26 @@ __global__ void primitiveAssemble(VertexOut* verts, Triangle* tris, int vertCoun
 __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int height, int triCount) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < triCount) {
+		//printf("here \n");
+		glm::vec3 triangle[3];
+		triangle[0] = tris[thrId].v[0].pos;
+		triangle[1] = tris[thrId].v[1].pos;
+		triangle[2] = tris[thrId].v[2].pos;
+		AABB bbox = getAABBForTriangle(triangle);
+		printf("min x: %i, max x: %i, min y: %i, max y: %i \n", bbox.min.x, bbox.max.x, bbox.min.y, bbox.max.y);
 		for (int x = 0; x < width; x++) {
 			for (int y = 0; y < height; y++) {
+				
+				
 				float tempX = ((x / (float)width) * 2.0f) - 1.0f;
 				float tempY = ((y / (float)height) * 2.0f) - 1.0f;
-				glm::vec3 triangle[3];
-				triangle[0] = tris[thrId].v[0].pos;
-				triangle[1] = tris[thrId].v[1].pos;
-				triangle[2] = tris[thrId].v[2].pos;
+				
 				glm::vec3 baryCoord = calculateBarycentricCoordinate(triangle, glm::vec2(tempX, tempY));
 				if(isBarycentricCoordInBounds(baryCoord)) {
-					printf("in the triangle \n");
+					printf("(%i, %i) \n", x, y);
 					buf[x + y*width].color = glm::vec3(1.0f, 1.0f, 1.0f);
 				}
-				else {
-					printf("not in the triangle \n");
-					buf[x + y*width].color = glm::vec3(0.0f, 0.0f, 0.0f);
-				}
+				
 			}
 		}
 	}
@@ -200,14 +210,15 @@ void rasterize(uchar4 *pbo) {
 	
 	//Transfer from VertexIn to VertexOut (vertex shading)
 	vertexShader<<<1, vertCount>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, matrix);
-
+	checkCUDAError("rasterize");
 	//Transfer from VertexOut to Triangles (primitive assembly)
 	primitiveAssemble<<<1, vertCount>>>(dev_bufTransformedVertex, dev_primitives, vertCount);
-
+	checkCUDAError("rasterize");
 	//Scanline each triangle to get fragment color (rasterize)
 	int triCount = vertCount / 3;
+	printf("Tri count: %i \n", triCount);
 	kernRasterize<<<1, triCount>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
-
+	checkCUDAError("rasterize");
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
