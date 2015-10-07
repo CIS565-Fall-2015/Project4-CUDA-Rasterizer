@@ -116,9 +116,13 @@ CUDA Rasterizer
   * Breakdown are core pipeline only
   * For the exact same camera properties described above, frame rate largely depends on the transformed size of the primitives, due to the current rasterization implementation
     * `suzanne.obj` and `flower.obj` see increased frame rate when camera moves away from the object, yielding smaller transformed primitive sizes
+  * For `cow.obj`, camera moving away is not as effective. This may due to the fact that the performance limit of current implementation has been reached
 
 ###### `cow.obj` performance breakdown
 ![](img/cow-perf.png)
+
+###### `cow.obj` FPS by camera distance
+![](img/cow-dist.png)
 
 ###### `suzanne.obj` performance breakdown
 ![](img/suzanne-perf.png)
