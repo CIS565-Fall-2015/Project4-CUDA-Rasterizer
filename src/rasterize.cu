@@ -31,6 +31,7 @@ struct VertexOut {
 };
 struct Triangle {
     VertexOut v[3];
+    glm::vec3 triNor;	//Used for back face culling
 };
 struct Fragment {
     glm::vec3 color;
@@ -47,6 +48,7 @@ static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static glm::mat4 matrix;
+static glm::vec3 camDir;
 
 //Things added
 static VertexOut *dev_outVertex = NULL;
@@ -107,6 +109,8 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 		outVertex[index].pos.y = outPoint.y * h;
 		outVertex[index].pos.z = outPoint.z;
 
+		outVertex[index].col = inVertex[index].col;
+		outVertex[index].nor = inVertex[index].nor;
 
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
 	}
@@ -120,11 +124,14 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, Triangle *tri
 	if(index < numTriangles)
 	{
 		int k_3 = 3 * index;
-		triangles[index].v[0] = outVertex[indices[k_3]];
-		triangles[index].v[1] = outVertex[indices[k_3+1]];
-		triangles[index].v[2] = outVertex[indices[k_3+2]];
+		Triangle &t = triangles[index];
+		t.v[0] = outVertex[indices[k_3]];
+		t.v[1] = outVertex[indices[k_3+1]];
+		t.v[2] = outVertex[indices[k_3+2]];
 
-//		printf ("Triangle : %d\n", index);
+		t.triNor = (t.v[0].nor + t.v[1].nor + t.v[2].nor) / 3.0f;
+
+		//		printf ("Triangle : %d\n", index);
 //		printf ("Vertex 1 : %f %f\n", triangles[index].v[0].pos.x, triangles[index].v[0].pos.y);
 //		printf ("Vertex 2 : %f %f\n", triangles[index].v[1].pos.x, triangles[index].v[1].pos.y);
 //		printf ("Vertex 3 : %f %f\n", triangles[index].v[2].pos.x, triangles[index].v[2].pos.y);
@@ -140,15 +147,19 @@ void kernDrawAxis(int w, int h, Fragment *fragments)
 
 	if (x < w && y < h)
     {
-		if((x - w*0.5f) == 0 || (y - h*0.5f) == 0)
+		if((x - w*0.5f) == 0)
 	    {
-			fragments[index].color = glm::vec3(1);
+			fragments[index].color = glm::vec3(1, 0, 0);
 	    }
+		else if((y - h*0.5f) == 0)
+		{
+			fragments[index].color = glm::vec3(0, 1, 0);
+		}
     }
 }
 
 __global__
-void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles)
+void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, glm::vec3 camDir)
 {
 	//Rasterization per Fragment
 //	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -188,24 +199,28 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 
 	if(index < numTriangles)
 	{
-		glm::vec3 tri[3];
-		tri[0] = triangles[index].v[0].pos;
-		tri[1] = triangles[index].v[1].pos;
-		tri[2] = triangles[index].v[2].pos;
-
-		AABB aabb = getAABBForTriangle(tri);
-		for(int i=aabb.min.x-1; i<aabb.max.x+1; ++i)
+		//back face culling
+		if(glm::dot(camDir, triangles[index].triNor) < 0.01f)
 		{
-			for(int j=aabb.min.y-1; j<aabb.max.y+1; ++j)
+			glm::vec3 tri[3];
+			tri[0] = triangles[index].v[0].pos;
+			tri[1] = triangles[index].v[1].pos;
+			tri[2] = triangles[index].v[2].pos;
+
+			AABB aabb = getAABBForTriangle(tri);
+			for(int i=aabb.min.x-1; i<aabb.max.x+1; ++i)
 			{
-//				printf("\nMax : %f %f %f\nMin : %f %f %f\n", aabb.max.x, aabb.max.y, aabb.max.z, aabb.min.x, aabb.min.y, aabb.min.z);
-				glm::ivec2 point(i,j);
-//				//		float signedArea = calculateSignedArea(tri);
-				glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
-				if(isBarycentricCoordInBounds(barycentric))
+				for(int j=aabb.min.y-1; j<aabb.max.y+1; ++j)
 				{
-					fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = glm::vec3(1);
-////					fragments[(x+1) * y].depth = getZAtCoordinate(barycentric, tri);
+	//				printf("\nMax : %f %f %f\nMin : %f %f %f\n", aabb.max.x, aabb.max.y, aabb.max.z, aabb.min.x, aabb.min.y, aabb.min.z);
+					glm::ivec2 point(i,j);
+	//				//		float signedArea = calculateSignedArea(tri);
+					glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
+					if(isBarycentricCoordInBounds(barycentric))
+					{
+						fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = triangles[index].triNor;
+	////					fragments[(x+1) * y].depth = getZAtCoordinate(barycentric, tri);
+					}
 				}
 			}
 		}
@@ -291,6 +306,7 @@ void createCamera()
 //	std::cout<<std::endl;
 
 	matrix = projection * view * model;
+	camDir = camCenter - camEye;
 }
 
 void rasterize(uchar4 *pbo) {
@@ -319,7 +335,7 @@ void rasterize(uchar4 *pbo) {
 
     	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 //    	numBlocks = (width*height + numThreads -1)/numThreads;
-    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
+    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, camDir);
 //    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
 
     	run = false;
