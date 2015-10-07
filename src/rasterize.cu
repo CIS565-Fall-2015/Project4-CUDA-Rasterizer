@@ -6,41 +6,16 @@
  * @copyright University of Pennsylvania & STUDENT
  */
 
-#include "rasterize.h"
-
 #include <cmath>
 #include <cstdio>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <thrust/random.h>
-#include <util/checkCUDAError.h>
-#include "rasterizeTools.h"
+#include <stream_compaction/efficient.h>
 #include "sceneStructs.h"
-
+#include <util/checkCUDAError.h>
 #include <glm/gtx/transform.hpp>
-
-struct VertexIn {
-    glm::vec3 pos;
-    glm::vec3 nor;
-    glm::vec3 col;
-    // TODO (optional) add other vertex attributes (e.g. texture coordinates)
-};
-struct VertexOut {
-	glm::vec3 pos;
-	glm::vec3 nor;
-	glm::vec3 col;
-    // TODO
-};
-struct Triangle {
-    VertexOut v[3];
-	AABB box;
-	bool isPoint;
-};
-struct Fragment {
-	glm::vec3 pos;
-	glm::vec3 nor;
-    glm::vec3 col;
-};
+#include "rasterize.h"
+#include "rasterizeTools.h"
 
 static int width = 0;
 static int height = 0;
@@ -52,30 +27,18 @@ __constant__ static Triangle *dev_primitives = NULL;
 __constant__ static Fragment *dev_depthbuffer = NULL;
 __constant__ static glm::vec3 *dev_framebuffer = NULL;
 
-__constant__ static Triangle *dev_primitives_tess = NULL;
-
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static MVP *mvp = NULL;
 
-/*
-// Model translation
-static glm::mat4 model = glm::mat4(1.0f);
-// Camera matrix
-glm::vec3 camPosition = glm::vec3(0,0,3);
-glm::mat4 view = glm::lookAt(
-	camPosition,
-	glm::vec3(0,0,0),	// Direction; looking at here from position
-	glm::vec3(0,1,0)	// Up
-	);
-// Perspective projection box
-float nearPlane = 0.1f;
-float farPlane = 100.0f;
-static glm::mat4 projection = glm::perspective(45.0f, 1.0f / 1.0f, -nearPlane, -farPlane);
+const int geomShaderLimit = 8;
+static int triCount;;
 
-// Combined matrix
-static glm::mat4 mvp = projection*view*model;
-*/
+// Temp variables for stream compaction
+__constant__ static int *dv_f_tmp = NULL;
+__constant__ static int *dv_idx_tmp = NULL;
+__constant__ static Triangle *dv_out_tmp = NULL;
+__constant__ static int *dv_c_tmp = NULL;
 
 static glm::vec3 light1 = 10.0f*glm::vec3(100.0f, 100.0f, 100.0f);
 static glm::vec3 lightCol1 = glm::vec3(0.95f, 0.95f, 1.0f);
@@ -184,31 +147,19 @@ void rasterizeSetBuffers(
 	//cudaFree(dev_bufShadedVert);
 	cudaMalloc(&dev_bufShadedVert, vertCount * sizeof(VertexOut));
 
-    //cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+	triCount = vertCount / 3;
 
-	cudaMalloc(&dev_primitives_tess, vertCount / 3 * 4 * sizeof(Triangle));
-	cudaMemset(dev_primitives_tess, 0, vertCount / 3 * 4 * sizeof(Triangle));
+    //cudaFree(dev_primitives);
+    cudaMalloc(&dev_primitives, triCount * geomShaderLimit * sizeof(Triangle));
+	cudaMemset(dev_primitives, 0, triCount * geomShaderLimit * sizeof(Triangle));
+
+	// Allocate temp vars
+	cudaMalloc((void**)&dv_f_tmp, triCount * geomShaderLimit *sizeof(int));
+	cudaMalloc((void**)&dv_idx_tmp, triCount * geomShaderLimit *sizeof(int));
+	cudaMalloc((void**)&dv_out_tmp, triCount * geomShaderLimit *sizeof(Triangle));
+	cudaMalloc((void**)&dv_c_tmp, sizeof(int));
 
     checkCUDAError("rasterizeSetBuffers");
-}
-
-__global__ void shadeVertex(VertexOut *vOut, VertexIn *vIn, const int vertCount, const int width, const int height, const glm::mat4 mvp, const float near, const float far){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
-
-	if (index < vertCount) {
-		// http://www.songho.ca/opengl/gl_transform.html
-		VertexOut o;
-		glm::vec4 clip = mvp*glm::vec4(vIn[index].pos, 1.0f);
-		glm::vec3 ndc = glm::vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
-		o.pos = glm::vec3(width/2*(ndc.x+1), height/2*(ndc.y+1), (far-near)/2*ndc.z+(far+near)/2);
-		o.nor = vIn[index].nor;
-		o.col = vIn[index].col;
-		vOut[index] = o;
-	}
 }
 
 __device__ void findIntersect(glm::vec3 &i, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4){
@@ -227,6 +178,28 @@ __device__ void findIntersect(glm::vec3 &i, glm::vec3 p1, glm::vec3 p2, glm::vec
 	}
 }
 
+__global__ void shadeVertex(VertexOut *vOut, VertexIn *vIn, const int vertCount, const int width, const int height, const glm::mat4 mvp, const float near, const float far){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+
+	if (index < vertCount) {
+		// http://www.songho.ca/opengl/gl_transform.html
+		VertexOut o;
+		glm::vec4 clip = mvp*glm::vec4(vIn[index].pos, 1.0f);
+		glm::vec3 ndc = glm::vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
+		o.pos = glm::vec3(
+			width/2*(ndc.x+1), 
+			height/2*(ndc.y+1), 
+			(far-near)/2*ndc.z+(far+near)/2
+			);
+		o.nor = vIn[index].nor;
+		o.col = vIn[index].col;
+		o.mpos = vIn[index].pos;
+		vOut[index] = o;
+	}
+}
+
 __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, const int triCount, const int width){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -239,9 +212,44 @@ __global__ void assemblePrimitive(Triangle *pOut, VertexOut *vIn, int *triIdx, c
 		t.v[2] = vIn[triIdx[3 * index + 2]];
 		glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
 		t.box = getAABBForTriangle(coord);
-		// Point test
-		t.isPoint = true;
+		t.isValidGeom = true;
 		pOut[index] = t;
+	}
+}
+
+__global__ void assemblePrimitivePoint(Triangle *pOut, VertexOut *vIn, int *triIdx, const int triCount, const int width){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+
+	if (index < triCount) {
+		Triangle t;
+		t.v[0] = vIn[triIdx[3 * index + 0]];
+		t.isPoint = true;
+		t.isValidGeom = true;
+		pOut[index] = t;
+	}
+}
+
+__global__ void simpleShadeGeom(Triangle *pArr, const int triCount, const int width, const int limit, const int height, const glm::mat4 mvp, const float near, const float far){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+
+	if (index < triCount) {
+		Triangle t = pArr[index];
+		Triangle tN = t;
+
+		glm::vec4 clip = mvp*glm::vec4(t.v[0].mpos + t.v[0].nor*0.1f, 1.0f);
+		glm::vec3 ndc = glm::vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
+		tN.v[1].pos = glm::vec3(
+			width / 2 * (ndc.x + 1),
+			height / 2 * (ndc.y + 1),
+			(far - near) / 2 * ndc.z + (far + near) / 2
+			);
+		tN.isLine = true;
+		tN.isValidGeom = true;
+		pArr[index + triCount] = tN;
 	}
 }
 
@@ -277,6 +285,82 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 					f.nor = t.v[0].nor;
 					f.pos = t.v[0].pos;
 					dBuf[flatIdx] = f;
+				}
+			}
+		}
+		else if (t.isLine){
+			glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
+			if (round(min.x) == round(max.x)){
+				int minY = round(min.y), maxY = round(max.y), minZ = min.z, maxZ = max.z;
+				int x = round(min.x);
+				if (min.y > max.y){
+					minY = round(max.y); maxY = round(min.y); minZ = max.z; maxZ = min.z;
+				}
+				for (int y = maxY; y >= minY; y--){
+					int dp;
+					bool discard = false;
+					// Scissor test
+					if (doScissor){
+						if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
+							discard = true;
+						}
+					}
+					int flatIdx = width - x + (height - y)*width;
+					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+						discard = true;
+					}
+					if (!discard){
+						float ratio = (y - minY) / (maxY - minY);
+						dp = -(ratio*minZ+(1-ratio)*maxZ) * 10000;
+
+						atomicMin(&depth[flatIdx], dp);
+
+						if (depth[flatIdx] == dp) {
+							// Shallowest
+							f.pos = glm::vec3(x, y, -dp/10000);
+							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+							f.col = glm::vec3(1.0f);
+							dBuf[flatIdx] = f;
+						}
+					}
+				}
+			}
+			else {
+				// Bresenham
+				if (round(min.x) > round(max.x)){
+					min = t.v[1].pos; max = t.v[0].pos;
+				}
+				int minZ = min.z, maxZ = max.z;
+				float slope = (max.y - min.y) / (max.x - min.x);
+				int dp, y;
+				bool discard;
+				for (int x = round(min.x); x <= round(max.x); x++){
+					y = slope * (x - round(min.x)) + min.y;
+					discard = false;
+					// Scissor test
+					if (doScissor){
+						if (x > scissor.max.x || x < scissor.min.x || y > scissor.max.y || y < scissor.min.y){
+							discard = true;
+						}
+					}
+					int flatIdx = width - x + (height - y)*width;
+					if (flatIdx < 0 || flatIdx >= width*height || width - x < 0 || width - x > width){
+						discard = true;
+					}
+					if (!discard){
+						float ratio = (x - round(min.x)) / (round(max.x) - round(min.x));
+						dp = -(ratio*minZ + (1 - ratio)*maxZ) * 10000;
+
+						atomicMin(&depth[flatIdx], dp);
+
+						if (depth[flatIdx] == dp) {
+							// Shallowest
+							f.pos = glm::vec3(x, y, -dp / 10000);
+							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+							f.col = glm::vec3(1.0f);
+							dBuf[flatIdx] = f;
+						}
+					}
 				}
 			}
 		}
@@ -364,11 +448,28 @@ void rasterize(uchar4 *pbo) {
 	checkCUDAError("Vert shader");
 
 	// Primitive assembly
-	assemblePrimitive << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, vertCount / 3, width);
-	checkCUDAError("Prim assembly");
+	if (mvp->pointShading){
+		assemblePrimitivePoint << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
+		checkCUDAError("Prim assembly");
+	}
+	else {
+		assemblePrimitive << <blockCount2d, blockSize2d >> >(dev_primitives, dev_bufShadedVert, dev_bufIdx, triCount, width);
+		checkCUDAError("Prim assembly");
+	}
+	
+	int primCount = triCount;
+	if (mvp->geomShading && !mvp->pointShading){
+		simpleShadeGeom << <blockCount2d, blockSize2d >> >(dev_primitives, primCount, width, geomShaderLimit, height, mvp->mvp, mvp->nearPlane, mvp->farPlane);
+		checkCUDAError("Geom shader");
+		StreamCompaction::Efficient::compact(triCount*geomShaderLimit, dv_f_tmp, dv_idx_tmp, dv_out_tmp, dev_primitives, dv_c_tmp);
+		checkCUDAError("Geom shader compact");
+		cudaMemcpy(&primCount, dv_c_tmp, sizeof(int), cudaMemcpyDeviceToHost);
+		cudaMemcpy(dev_primitives, dv_out_tmp, primCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
+		checkCUDAError("Geom shader copy");
+	}
 
 	// Rasterization
-	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, vertCount / 3, width, height, mvp->camPosition, mvp->doScissor, mvp->scissor, mvp->camLookAt);
+	testCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, dev_depth, dev_primitives, primCount, width, height, mvp->camPosition, mvp->doScissor, mvp->scissor, mvp->camLookAt);
 	checkCUDAError("Rasterization");
 
 	if (mvp->shadeMode == 0){
@@ -401,6 +502,11 @@ void rasterizeFree() {
     cudaFree(dev_depthbuffer);
     cudaFree(dev_framebuffer);
 	cudaFree(dev_depth);
+
+	cudaFree(dv_f_tmp);
+	cudaFree(dv_idx_tmp);
+	cudaFree(dv_out_tmp);
+	cudaFree(dv_c_tmp);
 
     checkCUDAError("rasterizeFree");
 }

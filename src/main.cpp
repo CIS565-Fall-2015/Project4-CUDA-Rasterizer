@@ -118,24 +118,35 @@ static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos){
 	}
 	else {
 		if (mvp.mouseLeftDown){
-			glm::vec3 inverseLook = mvp.camPosOld - mvp.camLookAtOld;
-			float shiftX = (mvp.mouseDownX - (float)xpos)*0.05f;
-			glm::vec3 newInverseLook = glm::rotateY(inverseLook, (float)atan2(shiftX, glm::length(inverseLook)));
+			// Rotate; move camera around lookAt
+			glm::vec3 inverseLook = mvp.camPosOld - mvp.camLookAt;
+			float r = glm::length(inverseLook);
+			float shiftX = (mvp.mouseDownX - (float)xpos)*0.25f;
+			float shiftY = (mvp.mouseDownY - (float)ypos)*0.25f;
+			glm::vec3 newInverseLook = glm::rotateY(inverseLook, (float)atan2(shiftX/(TWO_PI*r), glm::length(inverseLook)));
 			mvp.camRight = glm::normalize(glm::rotateY(glm::vec3(inverseLook.x, 0, inverseLook.z), (float)(PI / 2)));
-			float shiftY = (mvp.mouseDownY - (float)ypos)*0.01f;
-			newInverseLook = glm::rotate(newInverseLook, (float)atan2(shiftY, glm::length(newInverseLook)), mvp.camRight);
-			mvp.camPosition = mvp.camLookAtOld + newInverseLook;
+			newInverseLook = glm::rotate(newInverseLook, (float)atan2(shiftY / (TWO_PI*r), glm::length(newInverseLook)), mvp.camRight);
+			mvp.camPosition = mvp.camLookAt + newInverseLook;
 			calculateMVP(mvp);
 		}
 		else if (mvp.mouseRightDown){
-			float shiftX = (mvp.mouseDownX - (float)xpos)*0.05f;
-			float shiftZ = ((float)ypos - mvp.mouseDownY)*0.05f;
-			mvp.camPosition = mvp.camPosOld + mvp.camRight*shiftX;
-			mvp.camLookAt = mvp.camLookAtOld + mvp.camRight*shiftX;
-			glm::vec3 camDirection = mvp.camLookAt - mvp.camPosition;
-			mvp.camPosition = mvp.camPosition + camDirection*shiftZ;
-			mvp.camLookAt = mvp.camLookAt + camDirection*shiftZ;
-			calculateMVP(mvp);
+			// Pan; move camera along camera right & up
+			float shiftX = (mvp.mouseDownX - (float)xpos)*0.01f;
+			float shiftZ = ((float)ypos - mvp.mouseDownY)*0.01f;
+			glm::vec3 newPos = mvp.camPosOld + mvp.camRight*shiftX;
+			glm::vec3 look = mvp.camLookAt - newPos;
+			newPos = newPos + mvp.camUp*shiftZ;
+			look = mvp.camLookAt - newPos;
+			if (glm::length(look) > 1){
+				mvp.camPosition = newPos;
+				mvp.camLookAt = mvp.camLookAtOld + newPos - mvp.camPosOld;
+				/*
+				mvp.camPosition = mvp.camPosOld + mvp.camRight*shiftX;
+				glm::vec3 camDirection = glm::normalize(mvp.camLookAt - mvp.camPosition);
+				mvp.camPosition = mvp.camPosition + camDirection*shiftZ;
+				*/
+				calculateMVP(mvp);
+			}
 		}
 	}
 }
@@ -163,10 +174,14 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset){
+	// Zoom
 	if (yoffset > 0){
-		glm::vec3 camDirection = glm::normalize(mvp.camLookAt - mvp.camPosition);
-		mvp.camPosition = mvp.camPosition + camDirection*0.1f;
-		calculateMVP(mvp);
+		glm::vec3 look = mvp.camLookAt - mvp.camPosition;
+		if (glm::length(look)>1){
+			glm::vec3 camDirection = glm::normalize(look);
+			mvp.camPosition = mvp.camPosition + camDirection*0.1f;
+			calculateMVP(mvp);
+		}
 	}
 	else if (yoffset < 0){
 		glm::vec3 camDirection = glm::normalize(mvp.camPosition - mvp.camLookAt);
@@ -203,7 +218,6 @@ bool init(obj *mesh) {
     }
 
     // Initialize other stuff
-	mvp.doScissor = false;
 	mvp.scissor.max = glm::vec2(width * 0.75, height * 0.75);
 	mvp.scissor.min = glm::vec2(width * 0.25, height * 0.25);
 	mvp.shadeMode = 0;
@@ -392,6 +406,14 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			break;
 		case GLFW_KEY_R:	// Reset shading to color shading
 			mvp.shadeMode = 0;
+			flushDepthBuffer();
+			break;
+		case GLFW_KEY_G:	// Geometry shader
+			mvp.geomShading = !mvp.geomShading;
+			flushDepthBuffer();
+			break;
+		case GLFW_KEY_P:	// Point shader
+			mvp.pointShading = !mvp.pointShading;
 			flushDepthBuffer();
 			break;
 		}

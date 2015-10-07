@@ -48,4 +48,47 @@ struct MVP {
 
 	// Shade mode
 	int shadeMode;
+
+	// Geometry shader
+	bool geomShading;
+
+	// Point shader
+	bool pointShading;
+};
+
+struct AABB {
+	glm::vec3 min;
+	glm::vec3 max;
+};
+
+struct VertexIn {
+	glm::vec3 pos;
+	glm::vec3 nor;
+	glm::vec3 col;
+};
+struct VertexOut {
+	glm::vec3 pos;
+	glm::vec3 nor;
+	glm::vec3 col;
+	glm::vec3 mpos;
+};
+struct Triangle {
+	VertexOut v[3];
+	AABB box;
+	bool isPoint;
+	bool isLine;
+	bool isValidGeom;
+};
+struct Fragment {
+	glm::vec3 pos;
+	glm::vec3 nor;
+	glm::vec3 col;
+};
+
+struct is_invalid{
+	__host__ __device__
+		bool operator()(const Triangle &t)
+	{
+		return !t.isValidGeom;
+	}
 };

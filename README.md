@@ -110,7 +110,7 @@ You are also required to implement at least "3.0" points in extra features.
 * (1.0) UV texture mapping with bilinear texture filtering and perspective
   correct texture coordinates.
 * Support for rasterizing additional primitives:
-   * (0.5) Lines or line strips.
+   * ~~(0.5) Lines or line strips.~~
    * ~~(0.5) Points.~~
 * (1.0) Anti-aliasing.
 * (1.0) Occlusion queries.

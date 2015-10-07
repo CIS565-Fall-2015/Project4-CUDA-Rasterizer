@@ -11,11 +11,7 @@
 #include <cmath>
 #include <glm/glm.hpp>
 #include <util/utilityCore.hpp>
-
-struct AABB {
-    glm::vec3 min;
-    glm::vec3 max;
-};
+#include "sceneStructs.h"
 
 /**
  * Multiplies a glm::mat4 matrix and a vec4.
