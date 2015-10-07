@@ -8,7 +8,7 @@ CUDA Rasterizer
 
 ## Video Demo
 
-(splash)
+![](img/Splash.png)
 
 ## Pipeline Overview
 
@@ -29,6 +29,7 @@ CUDA Rasterizer
     * Possible improvement: it might be better to simply refrain from using any compaction method, but direcly indexing the primitives during rasterization. This way the stream compaction overhead can be avoided. However it adds complexity to the next stage in the pipeline
 
 ###### Geometry shader. Hairs are vertex normals
+![](img/geometry-shading.png)
 
 * Backface culling (optional)
   * `B` toggle
@@ -39,6 +40,7 @@ CUDA Rasterizer
     * Possible improvement: same as geometry shader. In this case there is actually strong evidence that stream compaction overhead might be too significant
 
 ###### Backface culling. Notice that backface normals are removed
+![](img/culling.png)
 
 * Rasterization
   * Rasterize input primitives. Uses scanline algorithm
@@ -73,12 +75,14 @@ CUDA Rasterizer
         * Possible improvement: none
 
 ###### Scissor test. Fragments outside the scissor box are clipped
+![](img/scissor.png)
 
 * Fragment shading
   * Simple Lambert shader
   * Each fragment is shaded with two fixed lights
 
 ###### Lambert shading with barycentric interpolation. Two lights are used to better demonstrate the effect
+![](img/lambert.png)
 
 ## Misc Features
 * Mouse-based interactive camera support
@@ -91,12 +95,14 @@ CUDA Rasterizer
 * `N`: fragment shader will use normal vector as color vector; enable to see fragment normals
 
 ###### Normal shading
+![](img/normal.png)
 
 * `R`: reset to color shading (use fragment color for shaded color, instead of fragment normal)
 * `P`: toggle point shader; only shows shaded vertices instead of all fragments
   * Not compatible with geometry shader because it will set all primitives to point; rasterization will still work, but the two effects won't show at the same time
 
 ###### Point shading
+![](img/point-shading.png)
 
 ### Performance Analysis
 
@@ -112,14 +118,19 @@ CUDA Rasterizer
     * `suzanne.obj` and `flower.obj` see increased frame rate when camera moves away from the object, yielding smaller transformed primitive sizes
 
 ###### `cow.obj` performance breakdown
+![](img/cow-perf.png)
 
 ###### `suzanne.obj` performance breakdown
+![](img/suzanne-perf.png)
 
 ###### `suzanne.obj` FPS by camera distance
+![](img/suzanne-dist.png)
 
 ###### `flower.obj` performance breakdown
+![](img/flower-perf.png)
 
 ###### `flower.obj` FPS by camera distance
+![](img/flower-dist.png)
 
 * Optimization (`cow.obj`)
   * Kernel: minor improvements (~10FPS)
@@ -132,6 +143,7 @@ CUDA Rasterizer
     * Stream compaction overhead might be more significant and cancel out the benefit
 
 ###### Backface culling performance impact
+![](img/backface.png)
 
 ## References
 
