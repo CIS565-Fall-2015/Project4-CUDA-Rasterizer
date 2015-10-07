@@ -48,7 +48,7 @@ void obj::buildBufPoss() {
     vector<int> BufIdxvec;
     int index = 0;
     bool genNormals = false;
-    if (faces.size() != (int) facenormals.size()) {
+    if (faces.size() != facenormals.size() || facenormals[0].size() == 0) {
         genNormals = true;
     }
     for (int k = 0; k < (int) faces.size(); k++) {
@@ -124,6 +124,10 @@ void obj::buildBufPoss() {
         ibo[i] = BufIdxvec[i];
     }
     setColor(glm::vec3(1, 1, 1));
+
+    printf("Mesh built: buffers contain %d faces & %d vertices\n",
+            getBufIdxsize() / 3,
+            getBufPossize() / 3);
 }
 
 void obj::compareMaxMin(float x, float y, float z) {
