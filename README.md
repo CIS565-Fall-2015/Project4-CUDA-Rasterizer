@@ -6,53 +6,97 @@ CUDA Rasterizer
 * Tongbo Sui
 * Tested on: Windows 10, i5-3320M @ 2.60GHz 8GB, NVS 5400M 2GB (Personal)
 
-## Video demo
+## Video Demo
 
-## Pipeline overview
+(splash)
 
-* Vertex shading with perspective transformation
-* Primitive assembly with support for triangles read from buffers of index and vertex data.
+## Pipeline Overview
+
+* Vertex shading
+  * Vertex shader with perspective transformation. Takes in vertices and transform the coordinates to window coordinates
+* Primitive assembly
+  * Assembles triangles from the list of vertices
+  * Calculates AABB bounding box for each triangle
+  * Initializes primitive properties for shading later
 * Geometry shader (optional)
-  * `G` toggle geometry shader; shows vertex normals
-  * Able to output a variable number of primitives per input primitive, optimized using stream compaction
-  * Can output at most 8 primitives
-  * Final result is trimmed via stream compaction
+  * `G` toggle geometry shader
+  * For each triangle's first vertex, draw a line to demonstrate the vertex's normal
+  * Shader has the ability to output at most 8 primitives for each input primitive
+  * Shader output is optimized via stream compaction, where unused storage is trimmed
+  * Analysis
+    * Performance impact: on average 2x slower, since the current shader outputs 2 primitives per input primitive
+    * Optimization: stream compaction is used to trim down the output array size
+    * Possible improvement: it might be better to simply refrain from using any compaction method, but direcly indexing the primitives during rasterization. This way the stream compaction overhead can be avoided. However it adds complexity to the next stage in the pipeline
+
+###### Geometry shader. Hairs are vertex normals
+
 * Backface culling (optional)
   * `B` toggle
-* Rasterization
-  * Scan each pixel in the bounding box
-    * Subject to primitive size in window coordinate
-    * For the same object, camera being further away results in smaller object screen size; thus higher FPS
-    * Camera very close results in each primitive covering big proportion of screen; thus each thread scans longer; thus lower FPS
-    * However, pixel scanning is at least 5x faster than standard scanline
-  * Scissor test (optional)
-    * `S`: toggle scissor test
-  * Window clipping
-  * Depth test (using atomics for race avoidance)
-  * Barycentric color interpolation
-  * Support for rasterizing lines and points
-      * Does **not** support vertex shading for such primitives; only rasterization
-* Fragment shading
-  * Lambert
+  * Marks all backfaces, then remove them using stream compaction
+  * Analysis
+    * Performance impact: varying impact on performance (see below in Performance Analysis)
+    * Optimization: stream compaction is used to trim down the output array size
+    * Possible improvement: same as geometry shader. In this case there is actually strong evidence that stream compaction overhead might be too significant
 
-## Misc features
+###### Backface culling. Notice that backface normals are removed
+
+* Rasterization
+  * Rasterize input primitives. Uses scanline algorithm
+    * Each thread takes care of one triangle, and scans every pixel inside the triangle's bounding box
+    * Supports lines and points
+        * Does **not** support vertex shading and assembly for such primitives; only rasterization
+        * Analysis
+          * Performance impact: no visible direct impact; however if point shader is enabled, the scene would render much faster since the rasterization logic is dramatically simplified
+          * Optimization: various kernel optimization techniques, including reordering to reduce execution dependency, and removing cache variables for lower memory dependency and higher cache hit rate
+          * Possible improvement: faster algorithm to rasterize the primitive
+  * Sub-pipeline
+    * Pre-clipping
+      * Window clipping: remove fragments outside window by directly shrinking the scan bounding box
+      * Scissor test (optional): same as window clipping, and further shrinks the scan bounding box
+        * `S` toggle scissor test
+        * Analysis
+          * Performance impact: direct positive impact, but only when the object is partially inside the scissor box. Even in that case, the impact is small around ~10FPS
+          * Optimization: clipping before scaning, instead of discarding fragment during scan, essentially decreases the amount of computation needed for clipped primitives
+          * Possible improvement: may be a faster calculation for the scissor box clipping
+    * Each thread scans each pixel in the triangle's bounding box
+      * Subject to primitive size in window coordinate; the bigger, the slower
+        * For the same object, camera being further away results in smaller object screen size; thus higher FPS
+        * On the other hand, camera being very close results in each primitive covering big proportion of screen; thus each thread scans longer; thus lower FPS
+      * The overhead of calculating and sorting intersection points per scanline cancels out the benefit that such points can shrink the scan range. Scanning every pixel is actually faster in general
+    * Depth test
+      * Directly testing the current calculated depth with the shallowest
+      * Write to buffer if it wins the depth test, using atomics to avoid races
+      * Use barycentric interpolation for color, position and normal. Thus it enables rendering of flat-shade objects, as well as smooth objects
+      * Analysis on barycentric interpolatoin
+        * Performance impact: no visible impact
+        * Optimization: none
+        * Possible improvement: none
+
+###### Scissor test. Fragments outside the scissor box are clipped
+
+* Fragment shading
+  * Simple Lambert shader
+  * Each fragment is shaded with two fixed lights
+
+###### Lambert shading with barycentric interpolation. Two lights are used to better demonstrate the effect
+
+## Misc Features
 * Mouse-based interactive camera support
-  * `Left button` hold and drag: rotate
-  * `Right button` hold and drag: pan
-  * Scroll: zoom
-  * `SPACE`: reset camera to default
+  * Controls
+    * `Left button` hold and drag: rotate
+    * `Right button` hold and drag: pan
+    * Scroll: zoom
+    * `SPACE`: reset camera to default
+  * Performance impact: no visible impact
 * `N`: fragment shader will use normal vector as color vector; enable to see fragment normals
+
+###### Normal shading
+
 * `R`: reset to color shading (use fragment color for shaded color, instead of fragment normal)
 * `P`: toggle point shader; only shows shaded vertices instead of all fragments
-  * Not compatible with geometry shader because it will set all primitives to point; rasterization will still work, but both effects won't show at the same time
+  * Not compatible with geometry shader because it will set all primitives to point; rasterization will still work, but the two effects won't show at the same time
 
-**IMPORTANT:**
-For each extra feature, please provide the following brief analysis:
-
-* Concise overview write-up of the feature.
-* Performance impact of adding the feature (slower or faster).
-* If you did something to accelerate the feature, what did you do and why?
-* How might this feature be optimized beyond your current implementation?
+###### Point shading
 
 ### Performance Analysis
 

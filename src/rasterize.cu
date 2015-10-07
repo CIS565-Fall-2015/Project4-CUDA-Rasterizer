@@ -284,10 +284,9 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 	int index = xt + (yt * width);
 
 	if (index < triCount) {
-		Triangle t = pIn[index];
-		if (t.isPoint){
+		if (pIn[index].isPoint){
 			bool discard = false;
-			int x = round(t.v[0].pos.x), y = round(t.v[0].pos.y);
+			int x = round(pIn[index].v[0].pos.x), y = round(pIn[index].v[0].pos.y);
 			int flatIdx = width - x + (height - y)*width;
 			// Scissor test
 			if (doScissor){
@@ -296,26 +295,26 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 				}
 			}
 			// Window clipping test
-			if (y < 0 || height < y || width < x ||  x < 0){
+			if (y < 0 || height < y || width < x || x < 0){
 				discard = true;
 			}
 			if (!discard){
-				int dp = -t.v[0].pos.z * 10000;
+				int dp = -pIn[index].v[0].pos.z * 10000;
 				// Try to win the depth test
 				atomicMin(&depth[flatIdx], dp);
 				// If won depth test
 				if (depth[flatIdx] == dp) {
 					// Shallowest
 					Fragment f;
-					f.col = t.v[0].col;
-					f.nor = t.v[0].nor;
-					f.pos = t.v[0].pos;
+					f.col = pIn[index].v[0].col;
+					f.nor = pIn[index].v[0].nor;
+					f.pos = pIn[index].v[0].pos;
 					dBuf[flatIdx] = f;
 				}
 			}
 		}
-		else if (t.isLine){
-			glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
+		else if (pIn[index].isLine){
+			glm::vec3 min = pIn[index].v[0].pos, max = pIn[index].v[1].pos;
 			int minX = round(min.x), maxX = round(max.x);
 			if (minX == maxX){
 				// Straight vertical line
@@ -348,7 +347,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 							// Shallowest
 							Fragment f;
 							f.pos = glm::vec3(x, y, -dp* 0.0001);
-							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+							f.nor = glm::normalize(pIn[index].v[0].nor + pIn[index].v[1].nor);
 							f.col = glm::vec3(1.0f);
 							dBuf[flatIdx] = f;
 						}
@@ -358,7 +357,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 			else {
 				// Bresenham
 				if (minX > maxX){
-					min = t.v[1].pos; max = t.v[0].pos;
+					min = pIn[index].v[1].pos; max = pIn[index].v[0].pos;
 				}
 				int minZ = min.z, maxZ = max.z;
 				float slope = (max.y - min.y) / (max.x - min.x);
@@ -388,7 +387,7 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 							// Shallowest
 							Fragment f;
 							f.pos = glm::vec3(x, y, -dp*0.0001);
-							f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+							f.nor = glm::normalize(pIn[index].v[0].nor + pIn[index].v[1].nor);
 							f.col = glm::vec3(1.0f);
 							dBuf[flatIdx] = f;
 						}
@@ -400,13 +399,13 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 			// General triangle
 			// Early window clipping & scissor test
 			int minX, maxX, minY, maxY;
-			minX = fmaxf(round(t.box.min.x), 0.0f), maxX = fminf(round(t.box.max.x), (float)width);
-			minY = fmaxf(round(t.box.min.y), 0.0f), maxY = fminf(round(t.box.max.y), (float)height);
+			minX = fmaxf(round(pIn[index].box.min.x), 0.0f), maxX = fminf(round(pIn[index].box.max.x), (float)width);
+			minY = fmaxf(round(pIn[index].box.min.y), 0.0f), maxY = fminf(round(pIn[index].box.max.y), (float)height);
 			if (doScissor){
 				minX = fmaxf(minX, scissor.min.x), maxX = fminf(maxX, scissor.max.x);
 				minY = fmaxf(minY, scissor.min.y), maxY = fminf(maxY, scissor.max.y);
 			}
-			glm::vec3 coord[3] = { t.v[0].pos, t.v[1].pos, t.v[2].pos };
+			glm::vec3 coord[3] = { pIn[index].v[0].pos, pIn[index].v[1].pos, pIn[index].v[2].pos };
 			int dp, flatIdx;
 			glm::vec3 bcc;
 			// For each scanline
@@ -423,9 +422,9 @@ __global__ void testCover(Fragment *dBuf, int *depth, Triangle *pIn, const int t
 						if (depth[flatIdx] == dp) {
 							// Shallowest
 							Fragment f;
-							f.pos = bcc.x * t.v[0].pos + bcc.y*t.v[1].pos + bcc.z*t.v[2].pos;
-							f.nor = bcc.x * t.v[0].nor + bcc.y*t.v[1].nor + bcc.z*t.v[2].nor;
-							f.col = bcc.x * t.v[0].col + bcc.y*t.v[1].col + bcc.z*t.v[2].col;
+							f.pos = bcc.x * pIn[index].v[0].pos + bcc.y*pIn[index].v[1].pos + bcc.z*pIn[index].v[2].pos;
+							f.nor = bcc.x * pIn[index].v[0].nor + bcc.y*pIn[index].v[1].nor + bcc.z*pIn[index].v[2].nor;
+							f.col = bcc.x * pIn[index].v[0].col + bcc.y*pIn[index].v[1].col + bcc.z*pIn[index].v[2].col;
 							dBuf[flatIdx] = f;
 						}
 					}
