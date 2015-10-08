@@ -48,6 +48,8 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+glm::mat4 M_win;
+glm::mat4 M_view;
 
 __global__
 void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
@@ -58,7 +60,7 @@ void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
 
 	if (x < w && y < h) 
 	{
-		depthbuffer[index].depth = 10000; //INFINITY;//!!!
+		depthbuffer[index].depth = 100000; //INFINITY;//!!!
 		depthbuffer[index].color = glm::vec3(0.2, 0, 0);
 	}
 }
@@ -98,7 +100,7 @@ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, Vert
 }
 
 __global__
-void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int bufIdxSize,glm::mat4 M_win )
+void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int bufIdxSize )
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -138,12 +140,14 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					//crntNDC = M_win*crntNDC;
 					//int crntDepth = (int)(tri[0].z * 1000);
 					//int crntDepth = (int)(crntNDC.z * 1000);
-					int crntDepth = getZAtCoordinate(bPoint, tri)*1000;
-					int orig = atomicMin(&depthbuffer[x+y*w].depth, crntDepth);
-					if (orig >= crntDepth)
+					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000);
+					int orig = atomicMin(&(depthbuffer[x+y*w].depth), crntDepth);
+					//if (orig >= crntDepth)
+					if (depthbuffer[x + y*w].depth==crntDepth)
 					{
 						depthbuffer[x + y*w].color = normal;// (normal + glm::vec3(1, 1, 1))*0.5f; //glm::vec3(0, 1, 0);
 					}
+					//else depthbuffer[x + y*w].color = glm::vec3(0, 0, 0);
 					//printf("point(%d,%d):orig=%d,new=%d\n", x, y, orig, depthbuffer[x, y].depth);
 				}
 			}
@@ -192,6 +196,15 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 void rasterizeInit(int w, int h) {
     width = w;
     height = h;
+
+	int hWidth = width / 2;
+	int hHeight = height / 2;
+	M_win = glm::mat4(\
+		hWidth, 0, 0, 0, \
+		0, hHeight, 0, 0, \
+		0, 0, 0.5, 0,
+		hWidth, hHeight, 0.5, 1
+		);
 
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
@@ -242,13 +255,13 @@ void rasterizeSetBuffers(
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo) {
+void rasterize(uchar4 *pbo,glm::mat4 viewMat) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
-	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+	M_view = viewMat;//glm::lookAt(eye, center, up);
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
@@ -257,25 +270,11 @@ void rasterize(uchar4 *pbo) {
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
 	dim3 gSize_pri((bufIdxSize/3 + bSize_pri - 1) / bSize_pri);
 	//****** 1. Clear depth buffer
-	
+	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	//****** 2. Vertex Shading
 	//	VertexIn[n] vs_input -> VertexOut[n] vs_output
-	int hWidth = width / 2;
-	int hHeight = height / 2;
-	glm::mat4 _M_win(\
-		hWidth, 0, 0, hWidth, \
-		0, hHeight, 0, hHeight, \
-		0, 0, 0.5, 0.5,
-		0, 0, 0, 1
-		);
 
-	glm::mat4 M_win(\
-		hWidth, 0, 0, 0, \
-		0, hHeight, 0, 0, \
-		0, 0, 0.5, 0,
-		hWidth, hHeight, 0.5, 1
-		);
-	kernVertexShader <<<gSize_vtx, bSize_vtx >>>(vertCount,glm::mat4(), glm::mat4(), glm::mat4(), dev_bufVertex, dev_bufVtxOut,M_win);
+	kernVertexShader <<<gSize_vtx, bSize_vtx >>>(vertCount,glm::mat4(), M_view, glm::mat4(), dev_bufVertex, dev_bufVtxOut,M_win);
 
 	VertexOut * textVtxOut = new VertexOut[vertCount];
 	cudaMemcpy(textVtxOut, dev_bufVtxOut, vertCount*sizeof(VertexOut), cudaMemcpyDeviceToHost);
@@ -291,7 +290,7 @@ void rasterize(uchar4 *pbo) {
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
-	kernRasterizer <<<gSize_pri, bSize_pri >>>(width,height,dev_depthbuffer, dev_primitives, bufIdxSize,M_win);
+	kernRasterizer <<<gSize_pri, bSize_pri >>>(width,height,dev_depthbuffer, dev_primitives, bufIdxSize);
 	//****** 5. Fragment shading
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments

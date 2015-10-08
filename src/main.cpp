@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
 void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
         runCuda();
 
         time_t seconds2 = time (NULL);
@@ -71,14 +72,14 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
-
+glm::mat4 ViewMatrix = glm::mat4();
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+	rasterize(dptr, ViewMatrix);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -106,7 +107,10 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
-
+	//
+	glfwSetCursorPosCallback(window, mouseMoveCallback);
+	glfwSetMouseButtonCallback(window, mouseDownCallback);
+	glfwSetScrollCallback(window, mouseScrollCallback);
     // Set up GL context
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -273,4 +277,92 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+
+}
+
+float horizontalAngle = 0;
+float verticalAngle = -PI;
+bool isMoving = false;
+bool isRotating = false;
+glm::vec3 center(0,0,0);
+float x_lsPos;
+float y_lsPos;
+
+//http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
+//http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
+//https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.3-Input-handling-with-GLFW
+void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
+{
+	float mouseSpeed = 0.02;
+	if (isRotating)
+	{
+		printf("isRotating\n");
+		float deltaTime = (1.f / 10.f);//!!!later
+
+		horizontalAngle -= mouseSpeed * deltaTime * float(xpos - x_lsPos);//!!!
+		verticalAngle += mouseSpeed * deltaTime * float(ypos - y_lsPos);
+		// Direction : Spherical coordinates to Cartesian coordinates conversion
+		glm::vec3 direction(
+			cos(verticalAngle) * sin(horizontalAngle),
+			sin(verticalAngle),
+			cos(verticalAngle) * cos(horizontalAngle)
+			);
+		// Right vector
+		glm::vec3 right = glm::vec3(
+			sin(horizontalAngle - 3.14f / 2.0f),
+			0,
+			cos(horizontalAngle - 3.14f / 2.0f)
+			);
+		// Up vector : perpendicular to both direction and right
+		glm::vec3 up = glm::cross(right, direction);
+
+		// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
+		//ProjectionMatrix = glm::perspective(FoV, 4.0f / 3.0f, 0.1f, 100.0f);
+		// Camera matrix
+		//glm::vec3 eye(0, 0, 1);//eye+direction = center
+		//glm::vec3 center(0,0,0);
+		//eye = center - direction;
+		//glm::mat4 
+		ViewMatrix = glm::lookAt(
+			center - direction,           // Camera is here
+			center, // and looks here : at the same position, plus "direction"
+			up                  // Head is up (set to 0,-1,0 to look upside-down)
+			);
+	}
+	else if (isMoving)
+	{
+		printf("isMoving\n");
+	}
+
+	x_lsPos = xpos;
+	y_lsPos = ypos;
+
+}
+
+void mouseDownCallback(GLFWwindow *window, int button, int action, int mods)
+{
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		printf("RightDown\n");
+		//right down : move center
+		isMoving = true;
+		isRotating = false;
+	}
+	else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	{
+		printf("LeftDown\n");
+		//left down : rotate
+		isRotating = true;
+		isMoving = false;
+	}
+	else if (action == GLFW_RELEASE)
+	{
+		printf("Release\n");
+		isRotating = false;
+		isMoving = false;
+	}
+}
+
+void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
 }
