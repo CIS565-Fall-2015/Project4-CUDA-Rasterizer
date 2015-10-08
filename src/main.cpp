@@ -7,6 +7,10 @@
  */
 
 #include "main.hpp"
+#include <cuda.h>
+#include <glm/gtc/constants.hpp>
+
+static Cam cam;
 
 //-------------------------------
 //-------------MAIN--------------
@@ -78,7 +82,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+    rasterize(dptr, cam);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -97,8 +101,19 @@ bool init(obj *mesh) {
         return false;
     }
 
-    width = 800;
-    height = 800;
+    width = 1600;
+    height = 1600;
+
+	cam.width = width;
+	cam.height = height;
+	cam.pos = glm::vec3(0.0f, 0.0f, 7.0f);
+	cam.focus = glm::vec3(0.0f, 0.0f, 0.0f);
+	cam.up = glm::vec3(0.0f, -1.0f, 0.0f);
+	cam.fovy = 30.0f * glm::pi<float>() / 180.0f;
+	cam.zNear = 0.1f;
+	cam.zFar = 10.0f;
+	cam.aspect = 1.0f;
+
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
@@ -106,6 +121,7 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
+	glfwSetScrollCallback(window, scrollCallback);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -272,5 +288,21 @@ void errorCallback(int error, const char *description) {
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+	}
+	else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
+		cam.pos += glm::vec3(0.0,-0.1,0.0);
+	}
+	else if (key == GLFW_KEY_UP && action == GLFW_PRESS){
+		cam.pos += glm::vec3(0.0, 0.1, 0.0);
+	}
+	else if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS){
+		cam.pos += glm::vec3(0.1, 0.0, 0.0);
+	}
+	else if (key == GLFW_KEY_LEFT && action == GLFW_PRESS){
+		cam.pos += glm::vec3(-0.1, 0.0, 0.0);
+	}
+}
+
+void scrollCallback(GLFWwindow *window, double x_offset, double y_offset){
+	cam.pos += glm::vec3(0.0,0.0,-y_offset);
 }
