@@ -116,13 +116,13 @@ float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c,
 /**
 * Helper function for calculating barycentric coordinates.
 */
-__host__ __device__ static
+__device__ static
 float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c, const float triArea) {
 	glm::vec3 baryTri[3];
 	baryTri[0] = glm::vec3(a, 0);
 	baryTri[1] = glm::vec3(b, 0);
 	baryTri[2] = glm::vec3(c, 0);
-	return calculateSignedArea(baryTri) / triArea;
+	return __fdividef(calculateSignedArea(baryTri), triArea);
 }
 
 // CHECKITOUT
@@ -137,7 +137,7 @@ glm::vec3 calculateBarycentricCoordinate(const glm::vec3 tri[3], glm::vec2 point
     return glm::vec3(alpha, beta, gamma);
 }
 
-__host__ __device__ static
+__device__ static
 glm::vec3 calculateBarycentricCoordinate(const Triangle tri, glm::vec2 point) {
 	float beta = calculateBarycentricCoordinateValue(glm::vec2(tri.v[0].pos.x, tri.v[0].pos.y), point, glm::vec2(tri.v[2].pos.x, tri.v[2].pos.y), tri.signedArea);
 	float gamma = calculateBarycentricCoordinateValue(glm::vec2(tri.v[0].pos.x, tri.v[0].pos.y), glm::vec2(tri.v[1].pos.x, tri.v[1].pos.y), point, tri.signedArea);

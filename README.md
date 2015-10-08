@@ -13,7 +13,7 @@ CUDA Rasterizer
 ###### Scanline demo
 [![](img/Splash.png)](https://vimeo.com/141638182)
 
-## Pipeline Overview (Tile-based)
+## Pipeline Overview (Tile-based) use `L` to switch between pipelines
 
 ## Pipeline Overview (Scanline)
 

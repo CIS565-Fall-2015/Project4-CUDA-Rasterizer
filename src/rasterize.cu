@@ -85,6 +85,16 @@ int binGridWidth, binGridHeight;
 __constant__ static Queue::Segment *binVsTriangle;
 __constant__ static Queue::Segment *tileVsTriangle;
 
+/****************************************************************************************************************************************
+****************************************************************************************************************************************
+****************************************************************************************************************************************
+****************************************************************************************************************************************
+* Scanline pipeline below
+****************************************************************************************************************************************
+****************************************************************************************************************************************
+****************************************************************************************************************************************
+*****************************************************************************************************************************************/
+
 __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, Fragment *image) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -637,87 +647,6 @@ __global__ void simpleShadeGeomT(Triangle *pArr, const int triCount, const int w
 	}
 }
 
-/*
-__global__ void testTrig(Fragment *fBuf, Triangle *prim, const int primC){
-	for (int p = 0; p < primC; p++){
-		for (int i = 0; i < 3; i++){
-			int idx = prim[p].v[i].pos.x + prim[p].v[i].pos.y * 800;
-			fBuf[idx].col = glm::vec3(1.0f, 0.0f, 0.0f);
-		}
-	}
-}
-
-__global__ void testBin(Fragment *fBuf, Queue::Segment *binFlag, const int binGridSize, const int width){
-	for (int i = 0; i < binGridSize; i++){
-		if (binFlag[i].queueSize > 0){
-			glm::vec3 col = glm::vec3(0.0f, 1.0f, 0.0f);
-			if (binFlag[i].queueSize > QSEG_SIZE){
-				col = glm::vec3(0.0f, 0.0f, 1.0f);
-			}
-			int binX = i % width, binY = (i - binX) / width;
-			int minX = binX*BINSIDE_LEN*TILESIDE_LEN, maxX = minX + BINSIDE_LEN*TILESIDE_LEN;
-			int minY = binY*BINSIDE_LEN*TILESIDE_LEN, maxY = minY + BINSIDE_LEN*TILESIDE_LEN;
-			int idx = minX + minY * 800;
-			for (int x = idx; x < minX + 4 + minY * 800; x++){
-				fBuf[x].col = col;
-			}
-			for (int y = idx; y < minX + (minY + 4) * 800; y += 800){
-				fBuf[y].col = col;
-			}
-		}
-	}
-}
-
-__global__ void testTile(Fragment *fBuf, Queue::Segment *binFlag, const int binGridSize, const int width, const int max){
-	for (int i = 0; i < binGridSize; i++){
-		if (binFlag[i].queueSize > 0){
-			glm::vec3 col = glm::vec3(1.0f);
-			if (binFlag[i].queueSize > QSEG_SIZE){
-				col = glm::vec3(1.0f, 1.0f, 0.0f);
-			}
-			int binX = i % width, binY = (i - binX) / width;
-			int minX = binX*TILESIDE_LEN, maxX = minX + TILESIDE_LEN;
-			int minY = binY*TILESIDE_LEN, maxY = minY + TILESIDE_LEN;
-			if (minX < 800 && minY < 800){
-				int idx = minX + minY * 800;
-				if (idx < max){
-					fBuf[idx].col = col;
-					fBuf[idx + 1].col = col;
-					fBuf[idx + 2].col = col;
-					fBuf[idx + 800].col = col;
-					fBuf[idx + 1600].col = col;
-				}
-			}
-		}
-	}
-}
-
-__global__ void testPx(Fragment *fBuf, Queue::Segment *tileFlag, Triangle *prim, const int binGridWidth, const int width, const int height){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * width);
-	int tileIdx = x / TILESIDE_LEN + (y / TILESIDE_LEN)*binGridWidth*BINSIDE_LEN;
-
-	if (x < width && y < height){
-		Fragment f;
-		if (tileFlag[tileIdx].queueSize > 0){
-			f.isCovered = true;
-			f.col = glm::vec3(1.0f);
-			f.nor = glm::vec3(1.0f);
-			f.pos = glm::vec3(x, y, 0);
-		}
-		else {
-			f.isCovered = false;
-			f.col = glm::vec3(0.0f);
-			f.nor = glm::vec3(0.0f);
-			f.pos = glm::vec3(x, y, 0);
-		}
-		tileFlag[tileIdx].queueSize = 0;
-		fBuf[index] = f;
-	}
-}
-*/
-
 __global__ void binCover(Queue::Segment* binVsTriangle, Triangle *dev_primitives, const int primCount, const int width, const int height){
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -757,83 +686,75 @@ __global__ void tileCover(Queue::Segment *tileVsTriangle, Queue::Segment *binVsT
 	Queue::clear(binVsTriangle[binId]);
 }
 
-__global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriangle, Triangle *dev_primitives, const int width, const int height, const int binGridWidth, const bool doScissor, const Scissor scissor){
+__global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriangle, Triangle *dev_primitives, const int width, const int height, const int tileGridWidth, const bool doScissor, const Scissor scissor){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int tileIdx = x/TILESIDE_LEN + (y/TILESIDE_LEN)*tileGridWidth;
 	int index = x + (y * width);
-	int tileIdx = x/TILESIDE_LEN + (y/TILESIDE_LEN)*binGridWidth*BINSIDE_LEN;
 
 	if (x < width && y < height) {
-		bool discard = false;
-		bool covered = false;
-		Fragment f;
+		bool covered = true;
 		if (doScissor){
 			if (x < scissor.min.x || x > scissor.max.x || y < scissor.min.y || y > scissor.max.y){
-				discard = true;
+				covered = false;
 			}
 		}
-		if (!discard){
+		if (tileVsTriangle[tileIdx].queueSize == 0){
+			covered = false;
+		}
+		if (covered){
 			float depth = 100;
-			if (tileVsTriangle[tileIdx].queueSize > 0){
-				covered = true;
-			}
-			for (int i = 0; i < tileVsTriangle[tileIdx].queueSize; i++){
+			int bound = glm::min(tileVsTriangle[tileIdx].queueSize, QSEG_SIZE);
+
+			for (int i = 0; i < bound; i++){
 				Triangle t = dev_primitives[tileVsTriangle[tileIdx].queue[i]];
-				if (t.isPoint){
-					if (t.v[0].pos.x == x && t.v[0].pos.y == y){
-						if (-t.v[0].pos.z <= depth) {
-							// Shallowest
-							f.col = t.v[0].col;
-							f.nor = t.v[0].nor;
-							f.pos = t.v[0].pos;
-							depth = -t.v[0].pos.z;
-						}
+				if (t.isPoint && t.v[0].pos.x == x && t.v[0].pos.y == y){
+					if (-t.v[0].pos.z <= depth) {
+						// Shallowest
+						dev_depthbuffer[index].col = t.v[0].col;
+						dev_depthbuffer[index].nor = t.v[0].nor;
+						dev_depthbuffer[index].pos = t.v[0].pos;
+						depth = -t.v[0].pos.z;
 					}
 				}
 				else if (t.isLine){
 					glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
 					float minX = round(min.x), maxX = round(max.x);
+					if (minX > maxX){
+						min = t.v[1].pos; max = t.v[0].pos;
+					}
+					AABB pointBox = getAABB1D(glm::vec3(x, y, 1.0f));
 					if (minX == maxX){
-						float minY = min.y, maxY = max.y, minZ = min.z, maxZ = max.z;
-						if (min.y > max.y){
-							minY = max.y; maxY = min.y; minZ = max.z; maxZ = min.z;
-						}
 						// Straight vertical line
-						AABB pointBox = getAABB1D(glm::vec3(x, y, 1.0f));
 						if (boxOverlapTest(pointBox, t.box)){
-							float ratio = (y - minY) / (maxY - minY);
-							float dp = -(ratio*minZ + (1 - ratio)*maxZ);
-							float vecY = -(ratio*minY + (1 - ratio)*maxY);
-
+							float ratio = __fdividef(y - min.y, max.y - min.y);
+							//float ratio = (y - min.y) / (max.y - min.y);
+							//float dp = -(ratio*min.z + (1 - ratio)*max.z);
+							float dp = -(max.z + ratio*(min.z -max.z));
 							if (dp <= depth) {
 								// Shallowest
-								f.pos = glm::vec3(t.v[0].pos.x, vecY, dp);
-								f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
-								f.col = glm::vec3(1.0f);
+								dev_depthbuffer[index].pos = glm::vec3(x, y, dp);
+								dev_depthbuffer[index].nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+								dev_depthbuffer[index].col = glm::vec3(1.0f);
 								depth = dp;
 							}
 						}
 					}
 					else {
 						// Bresenham
-						if (minX > maxX){
-							min = t.v[1].pos; max = t.v[0].pos;
-						}
-						int minZ = min.z, maxZ = max.z;
-						float slope = (max.y - min.y) / (max.x - min.x);
-						float ratio;
-						int assumedY = slope * (x - round(min.x)) + min.y;
-						AABB pointBox = getAABB1D(glm::vec3(x, y, 1.0f));
+						//float slope = (max.y - min.y) / (max.x - min.x);
+						//float ratio = (x - min.x) / (max.x - min.x);
+						float slope = __fdividef(max.y - min.y, max.x - min.x);
+						int assumedY = slope * (x - min.x) + min.y;
 						if (assumedY == y && boxOverlapTest(pointBox, t.box)){
-							ratio = (x - min.x) / (max.x - min.x);
-							float dp = -(ratio*minZ + (1 - ratio)*maxZ);
-							float vecY = -(ratio*min.y + (1 - ratio)*max.y);
-
+							float ratio = __fdividef(x - min.x, max.x - min.x);
+							//float dp = -(ratio*min.z + (1 - ratio)*max.z);
+							float dp = -(max.z + ratio*(min.z - max.z));
 							if (dp <= depth) {
 								// Shallowest
-								f.pos = glm::vec3(t.v[0].pos.x, vecY, dp);
-								f.nor = glm::normalize(t.v[0].nor + t.v[1].nor);
-								f.col = glm::vec3(1.0f);
+								dev_depthbuffer[index].pos = glm::vec3(x, y, dp);
+								dev_depthbuffer[index].nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+								dev_depthbuffer[index].col = glm::vec3(1.0f);
 								depth = dp;
 							}
 						}
@@ -841,15 +762,15 @@ __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriang
 				}
 				else {
 					// General triangle
-					glm::vec3 bcc = calculateBarycentricCoordinate(t, glm::vec2(x, y));
-					if (isBarycentricCoordInBounds(bcc)){
-						if (t.minDepth <= depth){
+					if (t.minDepth <= depth){
+						glm::vec3 bcc = calculateBarycentricCoordinate(t, glm::vec2(x, y));
+						if (isBarycentricCoordInBounds(bcc)){
 							float dp = getZAtCoordinate(bcc, t);
 							if (dp <= depth) {
 								// Shallowest
-								f.pos = bcc.x * t.v[0].pos + bcc.y*t.v[1].pos + bcc.z*t.v[2].pos;
-								f.nor = bcc.x * t.v[0].nor + bcc.y*t.v[1].nor + bcc.z*t.v[2].nor;
-								f.col = bcc.x * t.v[0].col + bcc.y*t.v[1].col + bcc.z*t.v[2].col;
+								dev_depthbuffer[index].pos = bcc.x * t.v[0].pos + bcc.y*t.v[1].pos + bcc.z*t.v[2].pos;
+								dev_depthbuffer[index].nor = bcc.x * t.v[0].nor + bcc.y*t.v[1].nor + bcc.z*t.v[2].nor;
+								dev_depthbuffer[index].col = bcc.x * t.v[0].col + bcc.y*t.v[1].col + bcc.z*t.v[2].col;
 								depth = dp;
 							}
 						}
@@ -857,8 +778,7 @@ __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriang
 				}
 			}
 		}
-		f.isCovered = covered;
-		dev_depthbuffer[index] = f;
+		dev_depthbuffer[index].isCovered = covered;
 		Queue::clear(tileVsTriangle[tileIdx]);
 	}
 }
@@ -871,9 +791,9 @@ __global__ void shadeFragmentT(Fragment *fBuf, const int pxCount, const int widt
 			// Add the two lights and do Lambert shading
 			glm::vec3 L1 = glm::normalize(light1 - fBuf[index].pos);
 			glm::vec3 L2 = glm::normalize(light2 - fBuf[index].pos);
-			glm::vec3 C1 = glm::dot(L1, fBuf[index].nor)*fBuf[index].col*lightCol1;
-			glm::vec3 C2 = glm::dot(L2, fBuf[index].nor)*fBuf[index].col*lightCol2;
-			fBuf[index].col = C1 + C2;
+			glm::vec3 C1 = lightCol1*glm::dot(L1, fBuf[index].nor);
+			glm::vec3 C2 = lightCol2*glm::dot(L2, fBuf[index].nor);
+			fBuf[index].col = (C1 + C2)*fBuf[index].col;
 		}
 		else {
 			fBuf[index].col = glm::vec3(0.0f);
@@ -952,7 +872,12 @@ void rasterizeTile(uchar4 *pbo) {
 	//testTile << <1, 1 >> >(dev_depthbuffer, tileVsTriangle, binGridHeight*binGridWidth*BIN_SIZE, binGridWidth*BINSIDE_LEN, width*height);
 
 	// Tile to fragment raster
-	pixCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, width, height, binGridWidth, mvp->doScissor, mvp->scissor);
+
+	dim3 blockSize2d3(8, 16);
+
+	dim3 blockCount2d3((width + blockSize2d3.x - 1) / blockSize2d3.x,
+		(height + blockSize2d3.y - 1) / blockSize2d3.y);
+	pixCover << <blockCount2d3, blockSize2d3 >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, width, height, binGridWidth*BINSIDE_LEN, mvp->doScissor, mvp->scissor);
 	checkCUDAError("Pixel cover test");
 
 	//testPx << <blockCount2d, blockSize2d >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, binGridWidth, width, height);
