@@ -140,6 +140,9 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					//crntNDC = M_win*crntNDC;
 					//int crntDepth = (int)(tri[0].z * 1000);
 					//int crntDepth = (int)(crntNDC.z * 1000);
+					//!!! later clipping
+					if (x<0 || x>w || y<0 || y>h)
+						continue;
 					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000);
 					int orig = atomicMin(&(depthbuffer[x+y*w].depth), crntDepth);
 					//if (orig >= crntDepth)
