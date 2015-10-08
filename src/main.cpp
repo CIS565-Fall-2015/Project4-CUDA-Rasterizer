@@ -72,7 +72,7 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
-glm::mat4 ViewMatrix = glm::mat4();
+glm::mat4 ViewMatrix = glm::mat4(-1,0,0,0,	0,-1,0,0,	0,0,1,0,	0,0,-1,1);
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
@@ -287,56 +287,60 @@ bool isRotating = false;
 glm::vec3 center(0,0,0);
 float x_lsPos;
 float y_lsPos;
+float lastTime;
 
 //http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
 //http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
 //https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.3-Input-handling-with-GLFW
+
 void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 {
-	float mouseSpeed = 0.02;
+	float mouseSpeed = 0.04;
+	double currentTime = glfwGetTime();
+	float deltaTime = float(currentTime - lastTime);
+	float xMove = 0;
+	float yMove = 0;
 	if (isRotating)
 	{
-		printf("isRotating\n");
-		float deltaTime = (1.f / 10.f);//!!!later
-
+		//printf("isRotating\n");
 		horizontalAngle -= mouseSpeed * deltaTime * float(xpos - x_lsPos);//!!!
 		verticalAngle += mouseSpeed * deltaTime * float(ypos - y_lsPos);
-		// Direction : Spherical coordinates to Cartesian coordinates conversion
-		glm::vec3 direction(
-			cos(verticalAngle) * sin(horizontalAngle),
-			sin(verticalAngle),
-			cos(verticalAngle) * cos(horizontalAngle)
-			);
-		// Right vector
-		glm::vec3 right = glm::vec3(
-			sin(horizontalAngle - 3.14f / 2.0f),
-			0,
-			cos(horizontalAngle - 3.14f / 2.0f)
-			);
-		// Up vector : perpendicular to both direction and right
-		glm::vec3 up = glm::cross(right, direction);
-
-		// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-		//ProjectionMatrix = glm::perspective(FoV, 4.0f / 3.0f, 0.1f, 100.0f);
-		// Camera matrix
-		//glm::vec3 eye(0, 0, 1);//eye+direction = center
-		//glm::vec3 center(0,0,0);
-		//eye = center - direction;
-		//glm::mat4 
-		ViewMatrix = glm::lookAt(
-			center - direction,           // Camera is here
-			center, // and looks here : at the same position, plus "direction"
-			up                  // Head is up (set to 0,-1,0 to look upside-down)
-			);
 	}
 	else if (isMoving)
 	{
 		printf("isMoving\n");
+		xMove = mouseSpeed * deltaTime * float(xpos - x_lsPos);
+		yMove = mouseSpeed * deltaTime * float(ypos - y_lsPos);
 	}
+	// Direction : Spherical coordinates to Cartesian coordinates conversion
+	glm::vec3 direction(
+		cos(verticalAngle) * sin(horizontalAngle),
+		sin(verticalAngle),
+		cos(verticalAngle) * cos(horizontalAngle)
+		);
+	// Right vector
+	glm::vec3 right = glm::vec3(
+		sin(horizontalAngle - 3.14f / 2.0f),
+		0,
+		cos(horizontalAngle - 3.14f / 2.0f)
+		);
+	// Up vector : perpendicular to both direction and right
+	glm::vec3 up = glm::cross(right, direction);
+	
+	center += (xMove*right);
+	center -= (yMove*up);
+
+	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
+	//ProjectionMatrix = glm::perspective(FoV, 4.0f / 3.0f, 0.1f, 100.0f);
+	ViewMatrix = glm::lookAt(
+		center - direction,           // Camera is here
+		center, // and looks here : at the same position, plus "direction"
+		up                  // Head is up (set to 0,-1,0 to look upside-down)
+		);
 
 	x_lsPos = xpos;
 	y_lsPos = ypos;
-
+	lastTime = currentTime;
 }
 
 void mouseDownCallback(GLFWwindow *window, int button, int action, int mods)
