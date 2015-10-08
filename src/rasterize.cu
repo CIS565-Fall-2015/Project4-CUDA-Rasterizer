@@ -21,6 +21,7 @@
 #include "rasterizeTools.h"
 
 #include "glm/gtc/matrix_transform.hpp"
+//#include "glm/gtx/component_wise.hpp"
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
@@ -38,6 +39,7 @@ struct VertexOut {
 	glm::vec4 pos;	//in NDS
 	glm::vec3 color;
 
+	glm::vec3 pos_eye_space;
 	glm::vec3 noraml_eye_space;
 	
 	float divide_w_clip;
@@ -76,25 +78,9 @@ struct Edge
 //};
 
 
-enum LightType
-{
-	POINT_LIGHT = 0,
-	DIRECTION_LIGHT
-};
 
-struct Light
-{
-	LightType type;
 
-	glm::vec3 ambient;
-	glm::vec3 diffuse;
-	glm::vec3 specular;
 
-	//Point light
-	glm::vec3 vec;
-
-	bool enabled;
-};
 
 
 struct Triangle {
@@ -102,11 +88,13 @@ struct Triangle {
 };
 struct Fragment {
 	//bool shade;
+	bool has_fragment;
 
 	glm::vec3 color;
 	glm::vec3 normal_eye_space;
 	glm::vec2 uv;
 
+	glm::vec3 pos_eye_space;
 	//float depth;
 
     //glm::vec3 color;
@@ -127,10 +115,24 @@ static int triCount = 0;
 //static FragmentIn * dev_fragments = NULL;
 static int * dev_depth = NULL;
 
+static ShaderMode shaderMode = SHADER_NORMAL;
+static Light hst_lights[NUM_LIGHTS] = {
+	Light{ DIRECTION_LIGHT
+	, glm::vec3(0.5f, 0.5f, 0.5f)
+	, glm::normalize(glm::vec3(1.0f, -2.0f, 1.0f)), false },
+	Light{ DIRECTION_LIGHT
+	,  glm::vec3(0.5f, 0.5f, 0.5f)
+	, glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f)), true } };
 
-
-static int lightsCount = 0;
+static int lightsCount = NUM_LIGHTS;
 static Light* dev_lights = NULL;
+
+
+
+void changeShaderMode()
+{
+	shaderMode = (ShaderMode)((shaderMode+1)%2);
+}
 
 
 /**
@@ -224,9 +226,9 @@ void rasterizeSetBuffers(
 
 
 	////init lights
-	//cudaFree(dev_lights);
-	//cudaMalloc(&dev_lights, lightsCount*sizeof(Light));
-	//cudaMemcpy(dev_lights, lights, lightsCount * sizeof(Light), cudaMemcpyHostToDevice);
+	cudaFree(dev_lights);
+	cudaMalloc(&dev_lights, lightsCount*sizeof(Light));
+	cudaMemcpy(dev_lights, hst_lights, lightsCount * sizeof(Light), cudaMemcpyHostToDevice);
 	////////////
 
 
@@ -246,7 +248,7 @@ void rasterizeSetBuffers(
 * each thread copy info for one vertex
 */
 __global__ 
-void kernVertexShader(int N,glm::mat4 M,glm::mat4 M_normal_view, VertexIn * dev_vertex, Triangle * dev_triangles)
+void kernVertexShader(int N,glm::mat4 M, glm::mat4 M_model_view, glm::mat4 M_normal_view, VertexIn * dev_vertex, Triangle * dev_triangles)
 {
 	int vertexId = blockDim.x * blockIdx.x + threadIdx.x;
 	
@@ -259,8 +261,13 @@ void kernVertexShader(int N,glm::mat4 M,glm::mat4 M_normal_view, VertexIn * dev_
 		VertexOut & vo = dev_triangles[triangleId].v[i];
 
 		vo.pos = M * glm::vec4(vi.pos, 1);
-		vo.noraml_eye_space = glm::vec3(M_normal_view * glm::vec4(vi.nor, 0));
 		
+		//printf("%f,%f\n", vo.pos.x, vo.pos.w);
+		
+		vo.noraml_eye_space = glm::vec3(M_normal_view * glm::vec4(vi.nor, 0));
+		vo.pos_eye_space = glm::vec3(M_model_view * glm::vec4(vi.pos, 1));
+
+
 		vo.color = vi.col;
 
 		//TODO: UV etc...
@@ -274,34 +281,17 @@ void kernVertexShader(int N,glm::mat4 M,glm::mat4 M_normal_view, VertexIn * dev_
 * VertexIn dev_bufVertex => Triangle VertexOut
 * M model-view
 */
-void vertexShader(const glm::mat4 & M, const glm::mat4 & inv_trans_M)
+void vertexShader(const glm::mat4 & M, const glm::mat4 & M_model_view, const glm::mat4 & inv_trans_M)
 {
 	const int blockSize = 192;
 	dim3 blockCount( (vertCount + blockSize - 1 )/blockSize );
 
 	// get M, M_normal_view
 
-	kernVertexShader << <blockCount, blockSize >> >(vertCount, M, inv_trans_M, dev_bufVertex, dev_primitives);
+	kernVertexShader << <blockCount, blockSize >> >(vertCount, M, M_model_view, inv_trans_M, dev_bufVertex, dev_primitives);
 }
 
 //------------------------------------------------------------------------------
-
-
-
-//MY
-//atomic write FragmentIn
-
-//__device__ 
-//void atomicWriteFragmentIn(int * fragmentInLocks, FragmentIn * address, const FragmentIn & value)
-//{
-//	//atomicCAS
-//
-//}
-
-
-
-
-
 
 
 
@@ -323,15 +313,15 @@ VertexOut interpolateVertexOut(const VertexOut & a, const VertexOut & b,float u)
 	if (u < 0.0f){ u = 0.0f; }
 	else if (u > 1.0f){ u = 1.0f; }
 
-	c.divide_w_clip = (1 - u) * a.divide_w_clip + u * b.divide_w_clip;
-
-	c.pos = (1 - u) * a.pos + u * b.pos;
-	c.color = (1 - u) * a.color + u * b.color;
-	c.uv = (1 - u) * a.uv + u * b.uv;
-
+	c.divide_w_clip = (1.0f - u) * a.divide_w_clip + u * b.divide_w_clip;
 	
-	c.noraml_eye_space = glm::normalize( (1 - u) * a.noraml_eye_space + u * b.noraml_eye_space );
+	c.pos = (1.0f - u) * a.pos + u * b.pos;
+	c.color = (1.0f - u) * a.color + u * b.color;
+	c.uv = (1.0f - u) * a.uv + u * b.uv;
 
+	c.pos_eye_space = (1.0f - u) * a.pos_eye_space + u * b.pos_eye_space;
+	c.noraml_eye_space = glm::normalize((1.0f - u) * a.noraml_eye_space + u * b.noraml_eye_space);
+	
 	return c;
 }
 
@@ -360,14 +350,21 @@ void constructEdge(Edge & e, const VertexOut & v0, const VertexOut & v1)
 
 
 __device__
-void initEdge(Edge & e, float y)
+float initEdge(Edge & e, float y)
 {
 	e.gap_y = e.v[1].pos.y - e.v[0].pos.y;
 	
-	e.dx = (e.v[1].pos.x - e.v[0].pos.x) / (e.v[1].pos.y - e.v[0].pos.y);
-	e.dz = (e.v[1].pos.z - e.v[0].pos.z) / (e.v[1].pos.y - e.v[0].pos.y);
+	e.dx = (e.v[1].pos.x - e.v[0].pos.x) / e.gap_y;
+	e.dz = (e.v[1].pos.z - e.v[0].pos.z) / e.gap_y;
 	e.x = e.v[0].pos.x + (y - e.v[0].pos.y) * e.dx;
 	e.z = e.v[0].pos.z + (y - e.v[0].pos.y) * e.dz;
+
+	//if (e.x < 0)
+	//{
+	//	printf("%f,%f \n", e.x, e.dx);
+	//}
+
+	return (y - e.v[0].pos.y) / e.gap_y;
 }
 
 __device__
@@ -380,12 +377,14 @@ void updateEdge(Edge & e)
 
 
 __device__
-void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragment * fragments, int * depth)
+void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1,float u2, Fragment * fragments, int * depth)
 {
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
 	int x_left = (int)(ceilf(e1.x) + EPSILON);
 	int x_right = (int)(ceilf(e2.x) + EPSILON);
+
+	
 
 	if (x_left < 0)
 	{
@@ -399,12 +398,12 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 
 	// Discard scanline with no actual rasterization and also
 	// ensure that the length is larger than zero
-	if (x_left >= x_right) return;
+	if (x_left >= x_right) { return; }
 
 
 	//TODO: get two interpolated segment end points
-	VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], (float)y / e1.gap_y);
-	VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], (float)y / e2.gap_y);
+	VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], u1);
+	VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], u2);
 
 
 	//Initialize attributes
@@ -422,7 +421,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 
 
 		// Z-buffer comparision
-		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, (float)x / gap_x);
+		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)(x-x_left)) / gap_x);
 		
 
 
@@ -459,7 +458,10 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 			//fragments[idx].depth = z;
 			fragments[idx].color = p.color / p.divide_w_clip;
 			fragments[idx].normal_eye_space = glm::normalize( p.noraml_eye_space / p.divide_w_clip );
+			fragments[idx].pos_eye_space = p.noraml_eye_space / p.divide_w_clip;
 			fragments[idx].uv = p.uv / p.divide_w_clip;
+
+			fragments[idx].has_fragment = true;
 		}
 		
 
@@ -491,10 +493,10 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, Fragmen
 * e1 - longest y span
 */
 __device__
-void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fragments, int * depth)
+void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * fragments, int * depth)
 {
 	// Discard horizontal edge as there is nothing to rasterize
-	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) return;
+	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) { return; }
 
 	// Find the starting and ending y positions and
 	// clamp them to be within the visible region
@@ -513,19 +515,23 @@ void drawAllScanLines(int width, int height, Edge & e1, Edge & e2, Fragment * fr
 
 
 	//Initialize edge's structure
-	initEdge(e1, (float)y_bot);
+	float u1_base = initEdge(e1, (float)y_bot);
 	initEdge(e2, (float)y_bot);
+
+
 
 
 	for (int y = y_bot; y < y_top; ++y)
 	{
+		float u2 = ((float)(y - y_bot)) / e2.gap_y;
+		float u1 = u1_base + ((float)(y - y_bot)) / e1.gap_y;
 		if (e1.x <= e2.x)
 		{
-			drawOneScanLine(width, e1, e2, y, fragments, depth);
+			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth);
 		}
 		else
 		{
-			drawOneScanLine(width, e2, e1, y, fragments, depth);
+			drawOneScanLine(width, e2, e1, y, u2,u1, fragments, depth);
 		}
 
 		//update edge
@@ -554,16 +560,34 @@ void kernScanLineForOneTriangle(int width,int height
 	//need to transform to viewport coordinate
 	for (int i = 0; i < 3; i++)
 	{
-		tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		if (tri.v[i].pos.w == 0.0f)
+		{
+			tri.v[i].divide_w_clip = 0;
+		}
+		else
+		{
+			tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		}
+		
+		
+		
 		//view port
-		tri.v[i].pos.x = 0.5f * width * (tri.v[i].pos.x * tri.v[i].divide_w_clip + 1.0f);
-		tri.v[i].pos.y = 0.5f * height * (tri.v[i].pos.y * tri.v[i].divide_w_clip + 1.0f);
+		tri.v[i].pos.x = 0.5f * (float)width * (tri.v[i].pos.x * tri.v[i].divide_w_clip + 1.0f);
+		tri.v[i].pos.y = 0.5f * (float)height * (tri.v[i].pos.y * tri.v[i].divide_w_clip + 1.0f);
 		tri.v[i].pos.z = 0.5f * (tri.v[i].pos.z * tri.v[i].divide_w_clip + 1.0f);
 		tri.v[i].pos.w = 1.0f;
+
+		////1.#QNANO
+		//if (tri.v[i].divide_w_clip == 0.0f)
+		//{
+		//	//printf("%f,%f\n", tri.v[i].pos.x, tri.v[i].divide_w_clip);
+		//}
+		
 
 		//perspective correct interpolation
 		tri.v[i].color *= tri.v[i].divide_w_clip;
 		tri.v[i].noraml_eye_space *= tri.v[i].divide_w_clip;
+		tri.v[i].pos_eye_space *= tri.v[i].divide_w_clip;
 		tri.v[i].uv *= tri.v[i].divide_w_clip;
 		
 
@@ -580,6 +604,20 @@ void kernScanLineForOneTriangle(int width,int height
 	constructEdge(edges[0], tri.v[0], tri.v[1]);
 	constructEdge(edges[1], tri.v[1], tri.v[2]);
 	constructEdge(edges[2], tri.v[2], tri.v[0]);
+
+	//if (!(edges[0].x >= 0.0f))
+	//{
+	//	printf("%f,%f\n", edges[0].x, edges[0].dx);
+	//}
+	//if (!(edges[1].x >= 0.0f))
+	//{
+	//	printf("%f,%f\n", edges[1].x, edges[1].dx);
+	//}
+	//if (!(edges[2].x >= 0.0f))
+	//{
+	//	printf("%f,%f\n", edges[2].x, edges[2].dx);
+	//}
+
 
 	//Find the edge with longest y span
 	float maxLength = 0.0f;
@@ -642,28 +680,99 @@ void kernScanLineForOneTriangle(int width,int height
 
 
 // Writes fragment colors to the framebuffer
+__host__ __device__
+glm::vec3 phongShading(Light* lights, int num_lights
+		, const glm::vec3 & pos, const glm::vec3 & n
+		, const glm::vec3 & ambient, const glm::vec3 & diffuse,const glm::vec3 & specular, float shiniess
+		)
+{
+	glm::vec3 ambient_term(0.0f);
+	glm::vec3 diffuse_term(0.0f);
+	glm::vec3 specular_term(0.0f);
+
+	for (int i = 0; i < num_lights; i++)
+	{
+		if (!lights[i].enabled)
+		{
+			continue;
+		}
+		
+		//ambient
+		ambient_term += lights[i].intensity * ambient;
+
+		//diffuse
+		glm::vec3 l;
+		if (lights[i].type == POINT_LIGHT)
+		{
+			l = glm::normalize(lights[i].vec - pos);
+		}
+		else
+		{
+			//directional light
+			//should be normalized already
+			l = -lights[i].vec;
+		}
+		diffuse_term += max(glm::dot(l, n), 0.0f) * diffuse * lights[i].intensity;
+		
+
+		//specular
+		glm::vec3 v = glm::normalize(pos);	//?
+		glm::vec3 r = (2 * glm::dot(l, n) * n) - l;
+		//glm::vec3 h = (l + v) / glm::length(l + v);
+		specular_term += powf(max(glm::dot(r,v), 0.0f), shiniess) * specular * lights[i].intensity;
+	}
+
+	return ambient_term + diffuse_term + specular_term;
+}
+
+
 __global__
-void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
+void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* lights,int num_lights, ShaderMode s) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * w);
 
 	if (x < w && y < h) {
 		//framebuffer[index] = depthbuffer[index].color;
+		Fragment & db = depthbuffer[index];
+
+		if (!db.has_fragment)
+		{
+			framebuffer[index] = BACKGROUND_COLOR;
+			return;
+		}
 
 		
+		switch (s)
+		{
+		case SHADER_NORMAL:
+		{
+			framebuffer[index] = db.normal_eye_space;
+			break;
+		}
+			
+		case SHADER_WHITE_MATERIAL:
+		{
+			//using lights
+			glm::vec3 zero(0.0f);
+			framebuffer[index] = phongShading(lights,  num_lights
+				, db.pos_eye_space, db.normal_eye_space
+				, zero//glm::vec3(0.1f, 0.1f, 0.1f)
+				, glm::vec3(1.0f, 0.0f, 0.0f)
+				, glm::vec3(1.0f, 1.0f, 1.0f), 32
+				);
+			break;
+		}
 
-			//if (depthbuffer[index].shade)
-			//{
-				//depthBuffer[index].color = glm::vec3(1.0f);
+		case SHADER_TEXTURE:
+		{
+			//using texture
+			//using lights
+			break;
+		}
 
-				//test: normal
-				framebuffer[index] = depthbuffer[index].normal_eye_space;
-			//}
-			//else
-			//{
-			//	framebuffer[index] = BACKGROUND_COLOR;
-			//}
+		}
+		
 		
 	}
 }
@@ -723,8 +832,7 @@ void rasterize(uchar4 *pbo) {
 
     // Copy depthbuffer colors into framebuffer
 	cudaDeviceSynchronize();
-    render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
-
+    render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer,dev_lights, lightsCount, shaderMode);
 
 
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
@@ -760,6 +868,11 @@ void rasterizeFree() {
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
+
+
+	cudaFree(dev_lights);
+	dev_lights = NULL;
+
 
     checkCUDAError("rasterizeFree");
 }

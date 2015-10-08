@@ -99,6 +99,10 @@ glm::mat4 M_perspective;
 glm::mat4 inv_trans_M_view;	//for normal transformation
 
 
+//lights
+
+
+
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
@@ -109,7 +113,7 @@ void runCuda() {
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
 
-	vertexShader(M_perspective * M_view * M_model, inv_trans_M_view);
+	vertexShader(M_perspective * M_view * M_model, M_view*M_model, inv_trans_M_view);
 
     rasterize(dptr);
 
@@ -139,8 +143,8 @@ void setupCamera()
 
 	//projection
 	//left, right, bottom, top, near, far
-	M_perspective = glm::frustum<float>(-scale * width / height,
-		scale * width / height,
+	M_perspective = glm::frustum<float>(-scale * ((float)width) / ((float)height),
+		scale * ((float)width / (float)height),
 		-scale, scale, 1.0, 1000.0);
 
 	inv_trans_M_view = glm::transpose(glm::inverse(M_view * M_model));
@@ -344,6 +348,21 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+	else if (key == GLFW_KEY_N && action == GLFW_PRESS)
+	{
+		//printf("normal\n");
+		//changeShaderMode(  );
+	}
+	else if (key == GLFW_KEY_S && action == GLFW_PRESS)
+	{
+		printf("change shading mode\n");
+		changeShaderMode( ) ;
+	}
+	else if (key == GLFW_KEY_T && action == GLFW_PRESS)
+	{
+		//changeShaderMode( );
+	}
+	
 }
 
 enum ControlState {NONE=0,ROTATE,TRANSLATE};
@@ -369,8 +388,8 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 	//printf("%d\n", mouseState);
 }
 
-double lastx = width / 2;
-double lasty = height / 2;
+double lastx = (double)width / 2;
+double lasty = (double)height / 2;
 void mouseMotionCallback(GLFWwindow* window, double xpos, double ypos)
 {
 	const double s_r = 0.01;
