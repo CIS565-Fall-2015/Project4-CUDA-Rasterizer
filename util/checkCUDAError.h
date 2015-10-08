@@ -5,7 +5,7 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) _checkCUDAErrorHelper(msg, FILENAME, __LINE__)
-#define FORCEDEBUG 0
+#define FORCEDEBUG 1
 
 static
 void _checkCUDAErrorHelper(const char *msg, const char *filename, int line) {
