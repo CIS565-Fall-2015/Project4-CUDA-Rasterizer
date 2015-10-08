@@ -17,16 +17,16 @@
 #include "rasterize.h"
 #include "rasterizeTools.h"
 
-#define BINSIDE_LEN 16
+#define BINSIDE_LEN 8
 #define TILESIDE_LEN 8
-#define BIN_SIZE BINSIDE_LEN*BINSIDE_LEN	// 16*16 tiles
-#define TILE_SIZE TILESIDE_LEN*TILESIDE_LEN	// 8*8 pixels
+#define BIN_SIZE BINSIDE_LEN*BINSIDE_LEN	// this many tiles
+#define TILE_SIZE TILESIDE_LEN*TILESIDE_LEN	// this many pixels
 
 #define BINRASTER_BLOCK 128
 #define VERTSHADER_BLOCK 128
 #define FRAGSHADER_BLOCK 256
 
-#define QSEG_SIZE 128
+#define QSEG_SIZE 1024
 
 // Data structure for rasterization filter
 namespace Queue {
@@ -36,13 +36,16 @@ namespace Queue {
 		Segment *next = NULL;
 	};
 
-	// LIMITATION: only works for 128 triangles or less covering every 128*128 px bin
-	// Needs real implementation on linked list to make it work for varying sizes
+	// LIMITATION: fixed length queue; need a real lockfree linked list
 	__device__ void push(Segment &seg, int triId){
 		int writeIdx = atomicAdd(&(seg.queueSize), 1);
 		if (writeIdx < QSEG_SIZE){
 			seg.queue[writeIdx] = triId;
 		}
+	}
+
+	__device__ void clear(Segment &seg){
+		atomicExch(&(seg.queueSize), 0);
 	}
 }
 
@@ -567,13 +570,10 @@ __global__ void assemblePrimitiveT(Triangle *pOut, VertexOut *vIn, int *triIdx, 
 		t.v[1] = vIn[triIdx[base + 1]];
 		t.v[2] = vIn[triIdx[base + 2]];
 		// Snapping
-		t.v[0].pos = glm::round(t.v[0].pos);
-		t.v[1].pos = glm::round(t.v[1].pos);
-		t.v[2].pos = glm::round(t.v[2].pos);
 		// Revert coordinates to fix OpenGL coord quirks
-		t.v[0].pos = glm::vec3(width - t.v[0].pos.x, height - t.v[0].pos.y, t.v[0].pos.z);
-		t.v[1].pos = glm::vec3(width - t.v[1].pos.x, height - t.v[1].pos.y, t.v[1].pos.z);
-		t.v[2].pos = glm::vec3(width - t.v[2].pos.x, height - t.v[2].pos.y, t.v[2].pos.z);
+		t.v[0].pos = glm::vec3(width - ceil(t.v[0].pos.x), height - ceil(t.v[0].pos.y), t.v[0].pos.z);
+		t.v[1].pos = glm::vec3(width - ceil(t.v[1].pos.x), height - ceil(t.v[1].pos.y), t.v[1].pos.z);
+		t.v[2].pos = glm::vec3(width - ceil(t.v[2].pos.x), height - ceil(t.v[2].pos.y), t.v[2].pos.z);
 		// Find bounding box
 		t.box = getAABBForTriangle(t);
 		// Backface culling & degenerate (zero area)
@@ -592,7 +592,7 @@ __global__ void assemblePrimitiveT(Triangle *pOut, VertexOut *vIn, int *triIdx, 
 			t.isValidGeom = false;
 		}
 		// Minimum Z of all 3 vertices; for quick depth test
-		t.minDepth = -glm::min(glm::min(t.v[0].pos.z, t.v[1].pos.z), t.v[2].pos.z);
+		t.minDepth = glm::min(glm::min(-t.v[0].pos.z, -t.v[1].pos.z), -t.v[2].pos.z);
 		pOut[index] = t;
 	}
 }
@@ -603,8 +603,7 @@ __global__ void assemblePrimitivePointT(Triangle *pOut, VertexOut *vIn, int *tri
 	if (index < triCount) {
 		Triangle t;
 		t.v[0] = vIn[triIdx[3 * index + 0]];
-		t.v[0].pos = glm::round(t.v[0].pos);
-		t.v[0].pos = glm::vec3(width - t.v[0].pos.x, height - t.v[0].pos.y, t.v[0].pos.z);
+		t.v[0].pos = glm::vec3(width - ceil(t.v[0].pos.x), height - ceil(t.v[0].pos.y), t.v[0].pos.z);
 		t.isPoint = true;
 		t.isValidGeom = true;
 		pOut[index] = t;
@@ -690,53 +689,84 @@ __global__ void binCover(Queue::Segment* binVsTriangle, Triangle *dev_primitives
 	}
 }
 
-/*
-__global__ void testTrig(Fragment *fBuf, Triangle *prim){
-	for (int i = 0; i < 3; i++){
-		int idx = prim[0].v[i].pos.x + prim[0].v[i].pos.y * 800;
-		fBuf[idx].col = glm::vec3(1.0f, 0.0f, 0.0f);
+__global__ void testTrig(Fragment *fBuf, Triangle *prim, const int primC){
+	for (int p = 0; p < primC; p++){
+		for (int i = 0; i < 3; i++){
+			int idx = prim[p].v[i].pos.x + prim[p].v[i].pos.y * 800;
+			fBuf[idx].col = glm::vec3(1.0f, 0.0f, 0.0f);
+		}
 	}
 }
-*/
 
-/*
 __global__ void testBin(Fragment *fBuf, Queue::Segment *binFlag, const int binGridSize, const int width){
 	for (int i = 0; i < binGridSize; i++){
 		if (binFlag[i].queueSize > 0){
+			glm::vec3 col = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (binFlag[i].queueSize > QSEG_SIZE){
+				col = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
 			int binX = i % width, binY = (i - binX) / width;
 			int minX = binX*BINSIDE_LEN*TILESIDE_LEN, maxX = minX + BINSIDE_LEN*TILESIDE_LEN;
 			int minY = binY*BINSIDE_LEN*TILESIDE_LEN, maxY = minY + BINSIDE_LEN*TILESIDE_LEN;
 			int idx = minX + minY * 800;
 			for (int x = idx; x < minX + 4 + minY * 800; x++){
-				fBuf[x].col = glm::vec3(1.0f);
+				fBuf[x].col = col;
 			}
 			for (int y = idx; y < minX + (minY + 4) * 800; y += 800){
-				fBuf[y].col = glm::vec3(1.0f);
+				fBuf[y].col = col;
 			}
 		}
 	}
 }
-*/
 
-/*
 __global__ void testTile(Fragment *fBuf, Queue::Segment *binFlag, const int binGridSize, const int width, const int max){
 	for (int i = 0; i < binGridSize; i++){
 		if (binFlag[i].queueSize > 0){
+			glm::vec3 col = glm::vec3(1.0f);
+			if (binFlag[i].queueSize > QSEG_SIZE){
+				col = glm::vec3(1.0f, 1.0f, 0.0f);
+			}
 			int binX = i % width, binY = (i - binX) / width;
 			int minX = binX*TILESIDE_LEN, maxX = minX + TILESIDE_LEN;
 			int minY = binY*TILESIDE_LEN, maxY = minY + TILESIDE_LEN;
-			int idx = minX + minY * 800;
-			if (idx < max){
-				fBuf[idx].col = glm::vec3(1.0f);
-				fBuf[idx+1].col = glm::vec3(1.0f);
-				fBuf[idx+2].col = glm::vec3(1.0f);
-				fBuf[idx+800].col = glm::vec3(1.0f);
-				fBuf[idx + 1600].col = glm::vec3(1.0f);
+			if (minX < 800 && minY < 800){
+				int idx = minX + minY * 800;
+				if (idx < max){
+					fBuf[idx].col = col;
+					fBuf[idx + 1].col = col;
+					fBuf[idx + 2].col = col;
+					fBuf[idx + 800].col = col;
+					fBuf[idx + 1600].col = col;
+				}
 			}
 		}
 	}
 }
-*/
+
+__global__ void testPx(Fragment *fBuf, Queue::Segment *tileFlag, Triangle *prim, const int binGridWidth, const int width, const int height){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * width);
+	int tileIdx = x / TILESIDE_LEN + (y / TILESIDE_LEN)*binGridWidth*BINSIDE_LEN;
+
+	if (x < width && y < height){
+		Fragment f;
+		if (tileFlag[tileIdx].queueSize > 0){
+			f.isCovered = true;
+			f.col = glm::vec3(1.0f);
+			f.nor = glm::vec3(1.0f);
+			f.pos = glm::vec3(x, y, 0);
+		}
+		else {
+			f.isCovered = false;
+			f.col = glm::vec3(0.0f);
+			f.nor = glm::vec3(0.0f);
+			f.pos = glm::vec3(x, y, 0);
+		}
+		tileFlag[tileIdx].queueSize = 0;
+		fBuf[index] = f;
+	}
+}
 
 __global__ void tileCover(Queue::Segment *tileVsTriangle, Queue::Segment *binVsTriangle, Triangle *dev_primitives, const int width){
 	int binId = blockIdx.x;
@@ -749,7 +779,9 @@ __global__ void tileCover(Queue::Segment *tileVsTriangle, Queue::Segment *binVsT
 	AABB tile;
 	tile.min.x = tileMinX; tile.max.x = tileMaxX; tile.min.y = tileMinY; tile.max.y = tileMaxY;
 
-	for (int i = 0; i < binVsTriangle[binId].queueSize; i++){
+	int bound = binVsTriangle[binId].queueSize > QSEG_SIZE ? QSEG_SIZE : binVsTriangle[binId].queueSize;
+
+	for (int i = 0; i < bound; i++){
 		Triangle t = dev_primitives[binVsTriangle[binId].queue[i]];
 		if (t.isPoint){
 			if (
@@ -775,7 +807,11 @@ __global__ void tileCover(Queue::Segment *tileVsTriangle, Queue::Segment *binVsT
 			}
 		}
 	}
-	binVsTriangle[binId].queueSize = 0;
+
+	__syncthreads();
+	if (threadIdx.x + threadIdx.y*BINSIDE_LEN == 0){
+		Queue::clear(binVsTriangle[binId]);
+	}
 }
 
 __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriangle, Triangle *dev_primitives, const int width, const int height, const int binGridWidth, const bool doScissor, const Scissor scissor){
@@ -783,8 +819,6 @@ __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriang
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * width);
 	int tileIdx = x/TILESIDE_LEN + (y/TILESIDE_LEN)*binGridWidth*BINSIDE_LEN;
-
-	int flatIdx = width - x + (height - y)*width;
 
 	if (x < width && y < height) {
 		bool discard = false;
@@ -878,8 +912,9 @@ __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriang
 		}
 		f.isCovered = covered;
 		dev_depthbuffer[index] = f;
-		tileVsTriangle[tileIdx].queueSize = 0;
 	}
+	__syncthreads();
+	Queue::clear(tileVsTriangle[tileIdx]);
 }
 
 __global__ void shadeFragmentT(Fragment *fBuf, const int pxCount, const int width, const glm::vec3 light1, const glm::vec3 lightCol1, const glm::vec3 light2, const glm::vec3 lightCol2){
@@ -960,7 +995,7 @@ void rasterizeTile(uchar4 *pbo) {
 	binCover << <binCoverGridSize, BINRASTER_BLOCK>> >(binVsTriangle, dev_primitives, primCount, binGridWidth, binGridHeight);
 	checkCUDAError("Bin cover test");
 
-	//testTrig << <1, 1 >> >(dev_depthbuffer, dev_primitives);
+	//testTrig << <1, 1 >> >(dev_depthbuffer, dev_primitives, primCount);
 	//testBin << <1, 1 >> >(dev_depthbuffer, binVsTriangle, binGridHeight*binGridWidth, binGridWidth);
 
 	// Bin to tile raster
@@ -973,6 +1008,8 @@ void rasterizeTile(uchar4 *pbo) {
 	// Tile to fragment raster
 	pixCover << <blockCount2d, blockSize2d >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, width, height, binGridWidth, mvp->doScissor, mvp->scissor);
 	checkCUDAError("Pixel cover test");
+
+	//testPx << <blockCount2d, blockSize2d >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, binGridWidth, width, height);
 
 	// Fragment shading
 	int fragGridSize = (width*height + FRAGSHADER_BLOCK - 1) / FRAGSHADER_BLOCK;
