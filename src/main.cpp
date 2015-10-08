@@ -72,14 +72,15 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
-glm::mat4 ViewMatrix = glm::mat4(-1,0,0,0,	0,-1,0,0,	0,0,1,0,	0,0,-1,1);
+glm::mat4 ViewMatrix;// = glm::mat4(-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, -1, 1);
+glm::mat4 ProjectionMatrix = glm::mat4();
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr, ViewMatrix);
+	rasterize(dptr, ViewMatrix, ProjectionMatrix);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -108,6 +109,7 @@ bool init(obj *mesh) {
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
 	//
+	CalcViewPersMat(0,0);
 	glfwSetCursorPosCallback(window, mouseMoveCallback);
 	glfwSetMouseButtonCallback(window, mouseDownCallback);
 	glfwSetScrollCallback(window, mouseScrollCallback);
@@ -285,13 +287,54 @@ float verticalAngle = -PI;
 bool isMoving = false;
 bool isRotating = false;
 glm::vec3 center(0,0,0);
+glm::vec3 direction;
+glm::vec3 right_vec;
+glm::vec3 up;
 float x_lsPos;
 float y_lsPos;
 float lastTime;
-
+float zoom = 0;
+float FOV = PI/4;
 //http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
 //http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
 //https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.3-Input-handling-with-GLFW
+
+void CalcViewPersMat(float x_move, float y_move)
+{
+	// Direction : Spherical coordinates to Cartesian coordinates conversion
+	direction = glm::vec3(
+		cos(verticalAngle) * sin(horizontalAngle),
+		sin(verticalAngle),
+		cos(verticalAngle) * cos(horizontalAngle)
+		);
+	//direction = glm::normalize(direction);
+	// Right vector
+	right_vec = glm::vec3(
+		sin(horizontalAngle - 3.14f / 2.0f),
+		0,
+		cos(horizontalAngle - 3.14f / 2.0f)
+		);
+	// Up vector : perpendicular to both direction and right
+	up = glm::cross(right_vec, direction);
+
+	//direction *= 2;
+	//right_vec *= 2;
+	//up *= 2;
+
+	center += (x_move*right_vec);
+	center -= (y_move*up);
+	glm::vec3 position = center - direction;
+	//zoom = -0.5;
+	position += (zoom*direction);
+
+	ProjectionMatrix = glm::perspective(FOV, 1.f, -0.1f,- 100.0f);
+	//ProjectionMatrix = glm::mat4();
+	ViewMatrix = glm::lookAt(
+		position,           // Camera is here
+		center, // and looks here : at the same position, plus "direction"
+		up                  // Head is up (set to 0,-1,0 to look upside-down)
+		);
+}
 
 void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 {
@@ -308,35 +351,11 @@ void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 	}
 	else if (isMoving)
 	{
-		printf("isMoving\n");
+		//printf("isMoving\n");
 		xMove = mouseSpeed * deltaTime * float(xpos - x_lsPos);
 		yMove = mouseSpeed * deltaTime * float(ypos - y_lsPos);
 	}
-	// Direction : Spherical coordinates to Cartesian coordinates conversion
-	glm::vec3 direction(
-		cos(verticalAngle) * sin(horizontalAngle),
-		sin(verticalAngle),
-		cos(verticalAngle) * cos(horizontalAngle)
-		);
-	// Right vector
-	glm::vec3 right = glm::vec3(
-		sin(horizontalAngle - 3.14f / 2.0f),
-		0,
-		cos(horizontalAngle - 3.14f / 2.0f)
-		);
-	// Up vector : perpendicular to both direction and right
-	glm::vec3 up = glm::cross(right, direction);
-	
-	center += (xMove*right);
-	center -= (yMove*up);
-
-	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-	//ProjectionMatrix = glm::perspective(FoV, 4.0f / 3.0f, 0.1f, 100.0f);
-	ViewMatrix = glm::lookAt(
-		center - direction,           // Camera is here
-		center, // and looks here : at the same position, plus "direction"
-		up                  // Head is up (set to 0,-1,0 to look upside-down)
-		);
+	CalcViewPersMat(xMove, yMove);
 
 	x_lsPos = xpos;
 	y_lsPos = ypos;
@@ -369,4 +388,6 @@ void mouseDownCallback(GLFWwindow *window, int button, int action, int mods)
 
 void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
+	//zoom += 0.1;
+	//CalcViewMat(0,0);
 }

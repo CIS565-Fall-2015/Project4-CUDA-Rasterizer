@@ -65,7 +65,7 @@ void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
 	}
 }
 
-__global__
+__global__			//(vertCount,     glm::mat4() ,       M_view,          projMat,            dev_bufVertex, dev_bufVtxOut, M_win);
 void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat4 M_Projection, VertexIn *vtxI, VertexOut *vtxO, glm::mat4 M_win)
 {
 	//demo:http://www.realtimerendering.com/udacity/transforms.html
@@ -143,7 +143,7 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					//!!! later clipping
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
-					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000);
+					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000.f);
 					int orig = atomicMin(&(depthbuffer[x+y*w].depth), crntDepth);
 					//if (orig >= crntDepth)
 					if (depthbuffer[x + y*w].depth==crntDepth)
@@ -258,7 +258,7 @@ void rasterizeSetBuffers(
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo,glm::mat4 viewMat) {
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -277,7 +277,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat) {
 	//****** 2. Vertex Shading
 	//	VertexIn[n] vs_input -> VertexOut[n] vs_output
 
-	kernVertexShader <<<gSize_vtx, bSize_vtx >>>(vertCount,glm::mat4(), M_view, glm::mat4(), dev_bufVertex, dev_bufVtxOut,M_win);
+	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win);
 
 	VertexOut * textVtxOut = new VertexOut[vertCount];
 	cudaMemcpy(textVtxOut, dev_bufVtxOut, vertCount*sizeof(VertexOut), cudaMemcpyDeviceToHost);

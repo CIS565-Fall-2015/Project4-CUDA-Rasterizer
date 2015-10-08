@@ -96,3 +96,4 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos);
 void mouseDownCallback(GLFWwindow *window, int button, int action,int mods);
 void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void CalcViewPersMat(float x_move, float y_move);
