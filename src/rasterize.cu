@@ -144,6 +144,13 @@ __global__ void setDepth(Fragment* depth, int width) {
 	depth[index].depth = MAX_DEPTH;
 	depth[index].idepth = MAX_DEPTH;
 }
+ 
+ __device__ __host__ glm::vec4 mul(glm::mat4 m, glm::vec4 v) {
+    return glm::vec4(m[0].x*v.x + m[1].x*v.y + m[2].x*v.z + m[3].x*v.w,
+                 m[0].y*v.x + m[1].y*v.y + m[2].y*v.z + m[3].y*v.w,
+                 m[0].z*v.x + m[1].z*v.y + m[2].z*v.z + m[3].z*v.w,
+                 m[0].w*v.x + m[1].w*v.y + m[2].w*v.z + m[3].w*v.w);
+ }
 
 __global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 matrix) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -152,10 +159,11 @@ __global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCou
 		//printf("matrix: (%f, %f, %f, %f) \n", matrix[2][0], matrix[2][1], matrix[2][2], matrix[2][3]);
 		//printf("matrix: (%f, %f, %f, %f) \n", matrix[3][0], matrix[3][1], matrix[3][2], matrix[3][3]);
 		
-		glm::vec4 newVert = matrix * glm::vec4(inVerts[thrId].pos[0], inVerts[thrId].pos[1], inVerts[thrId].pos[2], 1.0f);
+		//glm::vec4 newVert = matrix * glm::vec4(inVerts[thrId].pos[0], inVerts[thrId].pos[1], inVerts[thrId].pos[2], 1.0f);
 		//newVert[2] = (matrix[2][2] * inVerts[thrId].pos[2]) + matrix[2][3];
 		//newVert[3] = (matrix[3][2] * inVerts[thrId].pos[2]) + matrix[3][3];
-		
+		glm::vec4 oldVert(inVerts[thrId].pos, 1.0f);
+		glm::vec4 newVert = mul(matrix, oldVert);
 		//printf("newVert 2: %f, new vert 3: %f \n", newVert[2], newVert[3]);
 		if (newVert[3] != 0) {
 			outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
@@ -199,7 +207,7 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 		triangle[0] = tris[thrId].v[0].pos;
 		triangle[1] = tris[thrId].v[1].pos;
 		triangle[2] = tris[thrId].v[2].pos;
-		printf("1 (%f, %f, %f) \n", tris[thrId].v[0].pos[2], tris[thrId].v[1].pos[2], tris[thrId].v[2].pos[2]);
+		//printf("1 (%f, %f, %f) \n", tris[thrId].v[0].pos[2], tris[thrId].v[1].pos[2], tris[thrId].v[2].pos[2]);
 		/*printf("thrId: %i \n", thrId);
 		printf("1 (%f, %f, %f) \n", tris[thrId].v[0].nor[0], tris[thrId].v[0].nor[1], tris[thrId].v[0].nor[2]);
 		printf("2 (%f, %f, %f) \n", tris[thrId].v[1].nor[0], tris[thrId].v[1].nor[1], tris[thrId].v[1].nor[2]);
@@ -226,10 +234,10 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 					atomicMin(&buf[x + y*width].idepth, myDepth);
 					__syncthreads();
 					//printf("buffer depth: %i \n", buf[x + y*width].idepth);
-					if(isBarycentricCoordInBounds(baryCoord) ){ //&& myDepth == buf[x + y*width].idepth) {
+					if(isBarycentricCoordInBounds(baryCoord) && myDepth == buf[x + y*width].idepth) {
 						//printf("index: %i   depth: %f   pixel: (%i, %i) \n", thrId, buf[x + y*width].depth, x, y);
 						
-						glm::vec3 normal = glm::cross((triangle[1] - triangle[0]), (triangle[2] - triangle[0])); //(tris[thrId].v[0].nor + tris[thrId].v[1].nor + tris[thrId].v[2].nor) / 3.0f; 
+						glm::vec3 normal = (tris[thrId].v[0].nor + tris[thrId].v[1].nor + tris[thrId].v[2].nor) / 3.0f; //glm::cross((triangle[1] - triangle[0]), (triangle[2] - triangle[0])); //
 						buf[x + y*width].color = glm::vec3(1.0f, 0.0f, 0.0f);
 						buf[x + y*width].nor = normal;
 						buf[x + y*width].depth = bbox.min.z;
@@ -253,9 +261,9 @@ __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int h
 	if (index < width * height) {
 		if (depth[index].depth < MAX_DEPTH) {
 			float diffuseTerm = glm::dot(glm::normalize(depth[index].nor), glm::normalize(light));
-			//printf("diff: %f \n", diffuseTerm);
-			frag[index].color = diffuseTerm * depth[index].nor;//depth[index].nor; //glm::dot(light, depth[index].nor)*depth[index].color;
-			//printf("(%f, %f, %f) \n", depth[index].nor[0], depth[index].nor[1], depth[index].nor[2]);
+			printf("diff: %f \n", diffuseTerm);
+			frag[index].color = diffuseTerm * depth[index].color;//depth[index].nor; //glm::dot(light, depth[index].nor)*depth[index].color;
+			//printf("(%f, %f, %f) \n", frag[index].color[0], frag[index].color[1], frag[index].color[2]);
 		}
 	}
 }
@@ -271,7 +279,7 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockSize1d(64);
 	dim3 blockCount1d((vertCount + 64 - 1) / 64);
     glm::mat4 view = glm::lookAt(glm::vec3(0, 3, 3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.0f, 10000.0f);
+    glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.5f, 1000.0f);
     glm::mat4 model = glm::mat4();
 	glm::mat4 matrix = projection * view * model;
 
