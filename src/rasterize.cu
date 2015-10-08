@@ -60,7 +60,7 @@ void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
 
 	if (x < w && y < h) 
 	{
-		depthbuffer[index].depth = 100000; //INFINITY;//!!!
+		depthbuffer[index].depth = 1000000; //INFINITY;//!!!
 		depthbuffer[index].color = glm::vec3(0.2, 0, 0);
 	}
 }
@@ -128,7 +128,7 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 		AABB triBox = getAABBForTriangle(tri);
 		for (int x = triBox.min.x; x <= triBox.max.x; x++)
 		{
-			for (int y = triBox.min.y; y < triBox.max.y; y++)
+			for (int y = triBox.min.y; y <= triBox.max.y; y++)
 			{
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
@@ -143,7 +143,7 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					//!!! later clipping
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
-					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000.f);
+					int crntDepth = (int)(getZAtCoordinate(bPoint, tri)*1000000.f);
 					int orig = atomicMin(&(depthbuffer[x+y*w].depth), crntDepth);
 					//if (orig >= crntDepth)
 					if (depthbuffer[x + y*w].depth==crntDepth)
