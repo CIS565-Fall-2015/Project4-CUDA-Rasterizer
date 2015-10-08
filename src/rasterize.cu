@@ -102,7 +102,7 @@ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, Vert
 }
 
 __global__
-void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int bufIdxSize )
+void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightNDC,glm::mat4 winMat )
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -113,8 +113,10 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 		tri[1] = primitives[index].v[1].winPos;
 		tri[2] = primitives[index].v[2].winPos;
 
-		//!!! later interpolation
+		//!!! currently linear . later interpolation
 		glm::vec3 normal = glm::normalize(primitives[index].v[0].nor + primitives[index].v[1].nor + primitives[index].v[2].nor);
+		glm::vec3 color = glm::normalize(primitives[index].v[0].col + primitives[index].v[1].col + primitives[index].v[2].col);
+
 		/*
 		//http://keisan.casio.com/exec/system/1223596129
 		glm::vec3 A = primitives[index].v[0].ndc;
@@ -135,7 +137,6 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
 				if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
-				//if (true)
 				{
 					//glm::vec4 crntNDC = glm::inverse(M_win)*glm::vec4(x, y, 1,1);
 					//crntNDC.z = (a*crntNDC.x + b*crntNDC.y + d) / (-c);
@@ -148,13 +149,15 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					float crntDepth = getZAtCoordinate(bPoint, tri);
 					crntDepth *= MAX_DEPTH;
 					int orig = atomicMin(&(depthbuffer[x+y*w].depth), (int)crntDepth);
-					//if (orig >= crntDepth)
-					if (depthbuffer[x + y*w].depth==crntDepth)
+					if (orig >= crntDepth)
+					//if (depthbuffer[x + y*w].depth==crntDepth)
 					{
-						depthbuffer[x + y*w].color = normal;// (normal + glm::vec3(1, 1, 1))*0.5f; //glm::vec3(0, 1, 0);
+						glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
+						glm::vec4 PosNDC = glm::inverse(winMat)* glm::vec4(Pos, 1);
+						glm::vec3 light = glm::normalize(lightNDC - glm::vec3(PosNDC));
+						float diffuse = max(dot(light, normal), 0.0);
+						depthbuffer[x + y*w].color =  color*diffuse;// (normal + glm::vec3(1, 1, 1))*0.5f; //glm::vec3(0, 1, 0);
 					}
-					//else depthbuffer[x + y*w].color = glm::vec3(0, 0, 0);
-					//printf("point(%d,%d):orig=%d,new=%d\n", x, y, orig, depthbuffer[x, y].depth);
 				}
 			}
 		}
@@ -275,12 +278,17 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 	int bSize_pri = 128;
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
 	dim3 gSize_pri((bufIdxSize/3 + bSize_pri - 1) / bSize_pri);
+
+	glm::vec4 light(0, 5, 0,1);
+	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
+	glm::vec4 lightNDC = light;// projMat * M_view * glm::mat4() *light;
+	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();
 	//****** 1. Clear depth buffer
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	//****** 2. Vertex Shading
 	//	VertexIn[n] vs_input -> VertexOut[n] vs_output
 
-	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win);
+	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
 
 	VertexOut * textVtxOut = new VertexOut[vertCount];
 	cudaMemcpy(textVtxOut, dev_bufVtxOut, vertCount*sizeof(VertexOut), cudaMemcpyDeviceToHost);
@@ -296,7 +304,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
-	kernRasterizer <<<gSize_pri, bSize_pri >>>(width,height,dev_depthbuffer, dev_primitives, bufIdxSize);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, glm::vec3(lightNDC),M_all);
 	//****** 5. Fragment shading
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments
