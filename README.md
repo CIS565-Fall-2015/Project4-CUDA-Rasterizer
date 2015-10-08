@@ -8,9 +8,14 @@ CUDA Rasterizer
 
 ## Video Demo
 
+###### Tile-based render demo
+
+###### Scanline demo
 [![](img/Splash.png)](https://vimeo.com/141638182)
 
-## Pipeline Overview
+## Pipeline Overview (Tile-based)
+
+## Pipeline Overview (Scanline)
 
 * Vertex shading
   * Vertex shader with perspective transformation. Takes in vertices and transform the coordinates to window coordinates

@@ -430,6 +430,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			break;
 		case GLFW_KEY_L:	// Pipeline switch
 			useScanline = !useScanline;
+			flushDepthBuffer();
 			break;
 		}
 	}

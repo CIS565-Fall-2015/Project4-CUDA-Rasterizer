@@ -55,6 +55,36 @@ AABB getAABBForTriangle(const Triangle tri) {
 	return aabb;
 }
 
+__host__ __device__ static
+AABB getAABB2D(const Triangle tri) {
+	AABB aabb;
+	aabb.min = glm::vec3(
+		glm::min(tri.v[0].pos.x, tri.v[1].pos.x),
+		glm::min(tri.v[0].pos.y, tri.v[1].pos.y),
+		glm::min(tri.v[0].pos.z, tri.v[1].pos.z));
+	aabb.max = glm::vec3(
+		glm::max(tri.v[0].pos.x, tri.v[1].pos.x),
+		glm::max(tri.v[0].pos.y, tri.v[1].pos.y),
+		glm::max(tri.v[0].pos.z, tri.v[1].pos.z));
+	return aabb;
+}
+
+__host__ __device__ static
+AABB getAABB1D(const Triangle tri) {
+	AABB aabb;
+	aabb.min = tri.v[0].pos;
+	aabb.max = tri.v[0].pos;
+	return aabb;
+}
+
+__host__ __device__ static
+AABB getAABB1D(const glm::vec3 point) {
+	AABB aabb;
+	aabb.min = point;
+	aabb.max = point;
+	return aabb;
+}
+
 // CHECKITOUT
 /**
  * Calculate the signed area of a given triangle.
@@ -143,4 +173,24 @@ float getZAtCoordinate(const glm::vec3 barycentricCoord, const Triangle tri) {
 	return -(barycentricCoord.x * tri.v[0].pos.z
 		+ barycentricCoord.y * tri.v[1].pos.z
 		+ barycentricCoord.z * tri.v[2].pos.z);
+}
+
+__device__ bool boxOverlapTest(AABB a, AABB b){
+	bool result;
+	if (a.max.x < b.min.x) {
+		result = false;
+	}
+	else if (a.min.x > b.max.x){
+		result = false;
+	}
+	else if (a.max.y < b.min.y){
+		result = false;
+	}
+	else if (a.min.y > b.max.y) {
+		result = false;
+	}
+	else {
+		result = true;
+	}
+	return result;
 }
