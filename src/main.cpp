@@ -97,8 +97,8 @@ bool init(obj *mesh) {
         return false;
     }
 
-    width = 40;
-    height = 40;
+    width = 250;
+    height = 250;
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
