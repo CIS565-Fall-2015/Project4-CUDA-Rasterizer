@@ -140,6 +140,7 @@ void minVertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_verticesIn, Vert
 	if (i < vertCount) {
 		dev_verticesOut[i].pos = tfPoint(tf, dev_verticesIn[i].pos);
 		dev_verticesOut[i].nor = tfDir(tf, dev_verticesIn[i].nor);
+		dev_verticesOut[i].col = tfDir(tf, dev_verticesIn[i].col);
 	}
 }
 
@@ -164,16 +165,24 @@ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primit
 		v[0] = dev_primitives[i].v[0].pos;
 		v[1] = dev_primitives[i].v[1].pos;
 		v[2] = dev_primitives[i].v[2].pos;
-		printf("crash on allocating array?\n");
+
 		AABB triangleBB = getAABBForTriangle(v);
 		// triangle should have been "smooshed" to screen coordinates already.
 		// walk and fill frags.
 		float pixWidth = 1.0f / (float) w;
 		float pixHeight = 1.0f / (float) h;
 
-		for (int y = 0; y < h; y++) {
-			for (int x = 0; x < w; x++) {
+		//int BBYmin = triangleBB.min.y * h + h / 2;
+		//int BBYmax = triangleBB.max.y * h + h / 2;
+		//
+		//int BBXmin = triangleBB.min.x * w + w / 2;
+		//int BBXmax = triangleBB.max.x * w + w / 2;
+
+		// scan over the AABB
+		for (int y = triangleBB.min.y * h; y < triangleBB.max.y * h; y++) {
+			for (int x = triangleBB.min.x * w; x < triangleBB.max.x * w; x++) {
 				// compute x y coordinates of the center of "this fragment"
+				//printf("%i %i\n", x, y);
 				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
 					y * pixHeight + pixHeight * 0.5f);
 				// check if it's in dev_primitives[i].v using bary
@@ -184,16 +193,15 @@ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primit
 				// check depth using bary
 				float zDepth = getZAtCoordinate(baryCoordinate, v);
 
-				int fragIndex = x + (y * w);
+				int fragIndex = (x + w / 2) + ((y + h / 2) * w);
 				// if all things pass ok, then insert into fragment.
-				if (zDepth < dev_frags[fragIndex].depth) {
+				if (zDepth <= dev_frags[fragIndex].depth) {
 					dev_frags[fragIndex].depth = zDepth;
 					// interpolate color
 					glm::vec3 interpColor = dev_primitives[i].v[0].col * baryCoordinate[0];
 					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
 					interpColor += dev_primitives[i].v[2].col * baryCoordinate[2];
 					dev_frags[fragIndex].color = interpColor;
-					printf("crash on loading into frag buffer?\n");
 				}
 			}
 		}
