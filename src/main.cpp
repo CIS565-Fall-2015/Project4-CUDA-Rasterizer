@@ -293,7 +293,7 @@ glm::vec3 up;
 float x_lsPos;
 float y_lsPos;
 float lastTime;
-float zoom = 0;
+float zoom = -2.5;
 float FOV = PI/4;
 //http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
 //http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
@@ -324,9 +324,8 @@ void CalcViewPersMat(float x_move, float y_move)
 	center += (x_move*right_vec);
 	center -= (y_move*up);
 	glm::vec3 position = center - direction;
-	//zoom = -0.5;
 	position += (zoom*direction);
-
+	
 	ProjectionMatrix = glm::perspective(FOV, 1.f, -0.1f,- 100.0f);
 	//ProjectionMatrix = glm::mat4();
 	ViewMatrix = glm::lookAt(
@@ -388,6 +387,13 @@ void mouseDownCallback(GLFWwindow *window, int button, int action, int mods)
 
 void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
-	//zoom += 0.1;
-	//CalcViewMat(0,0);
+
+	zoom += yoffset*0.1;
+	if (zoom >= 0)
+	{
+		zoom = 0;
+	}
+	printf("zoom: %3f\n", zoom);
+	//float zoom = yoffset*0.1;
+	CalcViewPersMat(0, 0);
 }

@@ -12,6 +12,9 @@
 #include <glm/glm.hpp>
 #include <util/utilityCore.hpp>
 #include "glm/gtc/matrix_transform.hpp"
+
+#define MAX_DEPTH 10000000;
+
 struct AABB {
     glm::vec3 min;
     glm::vec3 max;
