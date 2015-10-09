@@ -19,6 +19,7 @@ struct VertexIn {
 //Vertex in screen coordinates
 struct VertexOut {
 	glm::vec3 pos;
+	glm::vec3 transformedPos;
 	glm::vec3 nor;
 };
 
@@ -50,6 +51,8 @@ struct Camera {
 	glm::vec3 dir;
 
 	glm::mat4 model;
+	glm::mat4 inverseModel;
+	glm::mat4 inverseTransposeModel;
 	glm::mat4 view;
 	glm::mat4 projection;
 	glm::mat4 cameraMatrix;

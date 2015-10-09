@@ -7,6 +7,7 @@
 
 #include "Scene.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <util/utilityCore.hpp>
 #include <iostream>
 
@@ -35,6 +36,8 @@ void Scene::setWidthHeight(int w, int h)
 void Scene::configureCameraMatrix()
 {
 	cam.cameraMatrix = cam.projection * cam.view * cam.model;
+	cam.inverseModel = glm::inverse(cam.model);
+	cam.inverseTransposeModel = glm::inverseTranspose(cam.model);
 	cam.dir = glm::normalize(cam.lookat - cam.pos);
 }
 
