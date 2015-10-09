@@ -28,14 +28,12 @@ struct VertexIn {
 };
 struct VertexOut {
 	glm::vec3 pos;
-	glm::vec3 nor;
-	glm::vec3 col;
 };
 struct Triangle {
     VertexOut vOut[3];
     VertexIn vIn[3];
     bool keep;
-    glm::vec3 triNor;	//Used for back face culling
+//    glm::vec3 triNor;	//Used for back face culling
 };
 struct Fragment {
     glm::vec3 color;
@@ -44,6 +42,17 @@ struct Fragment {
 struct Light {
 	glm::vec3 pos;
 	glm::vec3 col;
+};
+struct Camera {
+	glm::vec3 pos;
+	glm::vec3 lookat;
+	glm::vec3 up;
+	glm::vec3 dir;
+
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 projection;
+	glm::mat4 cameraMatrix;
 };
 
 struct keep
@@ -66,6 +75,7 @@ static int vertCount = 0;
 static glm::mat4 matrix;
 static glm::vec3 camDir;
 static Light light;
+static Camera cam;
 
 //Things added
 static VertexOut *dev_outVertex = NULL;
@@ -126,8 +136,8 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 		outVertex[index].pos.y = outPoint.y * h;
 		outVertex[index].pos.z = outPoint.z;
 
-		outVertex[index].col = glm::vec3(0,0,1);
-		outVertex[index].nor = inVertex[index].nor;
+//		outVertex[index].col = glm::vec3(0,0,1);
+//		outVertex[index].nor = inVertex[index].nor;
 
 //		printf ("InVertex : %f %f \nOutVertex : %f %f \n\n", inVertex[index].pos.x, inVertex[index].pos.y, outVertex[index].pos.x, outVertex[index].pos.y);
 	}
@@ -157,16 +167,28 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inV
 		{
 			t.keep = true;
 
-			t.vOut[0].pos = outVertex[indices[k_3]].pos;
-			t.vOut[1].pos = outVertex[indices[k_3+1]].pos;
-			t.vOut[2].pos = outVertex[indices[k_3+2]].pos;
+			t.vOut[0] = outVertex[indices[k_3]];
+			t.vOut[1] = outVertex[indices[k_3+1]];
+			t.vOut[2] = outVertex[indices[k_3+2]];
 
-			//TODO:  figure out the normals
-			t.vOut[0].nor = outVertex[indices[k_3]].nor;
-			t.vOut[1].nor = outVertex[indices[k_3+1]].nor;
-			t.vOut[2].nor = outVertex[indices[k_3+2]].nor;
+			t.vIn[0] = inVertex[indices[k_3]];
+			t.vIn[1] = inVertex[indices[k_3+1]];
+			t.vIn[2] = inVertex[indices[k_3+2]];
 
-			t.triNor = triNor;
+//			t.vOut[0].pos = outVertex[indices[k_3]].pos;
+//			t.vOut[1].pos = outVertex[indices[k_3+1]].pos;
+//			t.vOut[2].pos = outVertex[indices[k_3+2]].pos;
+
+//			TODO:  figure out the normals
+//			t.vOut[0].nor = outVertex[indices[k_3]].nor;
+//			t.vOut[1].nor = outVertex[indices[k_3+1]].nor;
+//			t.vOut[2].nor = outVertex[indices[k_3+2]].nor;
+
+//			t.vOut[0].col = glm::vec3(1,0,0);
+//			t.vOut[1].col = glm::vec3(0,1,0);
+//			t.vOut[2].col = glm::vec3(0,0,1);
+
+//			t.triNor = triNor;
 		}
 	}
 }
@@ -229,7 +251,7 @@ void kernRasterizePerFragment()
 }
 
 __global__
-void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, glm::vec3 camDir, Light light)
+void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, Light light)
 {
 	//Rasterization per triangle
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -266,14 +288,27 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 					//Implement lambert shading
 
 					//Interpolate normal
-					glm::vec3 norm = barycentric.x * t.vOut[0].nor +
-										barycentric.y * t.vOut[1].nor +
-						                barycentric.z * t.vOut[2].nor;
+					glm::vec3 norm = barycentric.x * t.vIn[0].nor +
+										barycentric.y * t.vIn[1].nor +
+						                barycentric.z * t.vIn[2].nor;
 
-//					glm::vec3 lightVector =
-					fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = glm::normalize(norm);//triangles[index].v[0].col;
-//						fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = t.triNor;
-//						fragments[(x+1) * y].depth = getZAtCoordinate(barycentric, tri);
+					glm::vec3 pos = barycentric.x * t.vIn[0].pos +
+										barycentric.y * t.vIn[1].pos +
+										barycentric.z * t.vIn[2].pos;
+
+					glm::vec3 col = barycentric.x * t.vIn[0].col +
+										barycentric.y * t.vIn[1].col +
+										barycentric.z * t.vIn[2].col;
+
+					glm::vec3 lightVector = glm::normalize(light.pos - pos);
+					//glm::vec3 camVector = glm::normalize(cam.pos - pos);
+
+					float diffusedTerm = glm::dot(lightVector, norm);
+
+					if(diffusedTerm > -0.0001f)
+					{
+						fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = diffusedTerm * col;
+					}
 				}
 			}
 		}
@@ -340,16 +375,14 @@ bool run = true;
 void createCameraAndLight()
 {
 	//Camera stuff
-	glm::vec3 camEye, camCenter, camUp;
-	camEye = glm::vec3(0,0,5);
-	camCenter = glm::vec3(0,0,0);
-	camUp = glm::vec3(0,-1,0);
+	cam.pos = glm::vec3(0,0,5);
+	cam.lookat = glm::vec3(0,0,0);
+	cam.up = glm::vec3(0,-1,0);
 
-	glm::mat4 view = glm::lookAt(camEye, camCenter, camUp);
-//	glm::mat4 projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
-	glm::mat4 projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
-	glm::mat4 model = glm::mat4();
-	glm::mat4 temp;
+	cam.view = glm::lookAt(cam.pos, cam.lookat, cam.up);
+//	cam.projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
+	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
+	cam.model = glm::mat4();
 
 //	std::cout<<"View : "<<std::endl;
 //	utilityCore::printMat4(view);
@@ -359,8 +392,9 @@ void createCameraAndLight()
 //	utilityCore::printMat4(model);
 //	std::cout<<std::endl;
 
-	matrix = projection * view * model;
-	camDir = glm::normalize(camCenter - camEye);
+	cam.cameraMatrix = cam.projection * cam.view * cam.model;
+	cam.dir = glm::normalize(cam.lookat - cam.pos);
+
 	light.pos = glm::vec3(1,1,1);
 	light.col = glm::vec3(1,1,1);
 }
@@ -383,25 +417,30 @@ void rasterize(uchar4 *pbo) {
 
     if(run)
     {
+    	//Create the light and Camera
     	createCameraAndLight();
 
+    	//Do vertex shading
     	numBlocks = (vertCount + numThreads -1)/numThreads;
-    	kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, matrix);
+    	kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam.cameraMatrix);
 
+    	//Do primitive assembly
     	numBlocks = (numTriangles + numThreads -1)/numThreads;
-    	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, camDir);
+    	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
 
-    	std::cout<<"Num Triangles before : "<<numTriangles<<std::endl;
+    	//Back face culling
     	dev_primitivesEnd = dev_primitives + numTriangles;
     	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
     	numTriangles = dev_primitivesEnd - dev_primitives;
-    	std::cout<<"Num Triangles after : "<<numTriangles<<std::endl;
 
+    	//Drawing axis
     	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
+    	//Rasterization per triangle
     	numBlocks = (numTriangles + numThreads -1)/numThreads;
-    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, camDir, light);
+    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, light);
 
+    	//Rasterization per fragment
 //    	numBlocks = (width*height + numThreads -1)/numThreads;
 //    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
 
