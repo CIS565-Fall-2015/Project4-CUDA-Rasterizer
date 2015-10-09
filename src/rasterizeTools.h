@@ -51,7 +51,9 @@ __host__ __device__ static
 float calculateSignedArea(const glm::vec3 tri[3]) {
     return 0.5 * ((tri[2].x - tri[0].x) * (tri[1].y - tri[0].y) - (tri[1].x - tri[0].x) * (tri[2].y - tri[0].y));
 }
-
+//1)if its points are collinear: 0 
+//2)if the points are in a counterclockwise direction:positive;clockwise: negative
+//3)get the are
 // CHECKITOUT
 /**
  * Helper function for calculating barycentric coordinates.
@@ -68,6 +70,7 @@ float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c,
 // CHECKITOUT
 /**
  * Calculate barycentric coordinates.
+ * give a point r in triangle r=tri[0]*alpha+tri[1]*beta+tri[2]*gamma, alpha+ beta+ gamma=1
  */
 __host__ __device__ static
 glm::vec3 calculateBarycentricCoordinate(const glm::vec3 tri[3], glm::vec2 point) {
