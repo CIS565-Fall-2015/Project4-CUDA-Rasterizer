@@ -71,4 +71,6 @@ texture with fog
 PART IX: Performance Analysis
 1 Render time in each step:
 Here I divide the render process into six steps: vertex shader, primitive assembly, rasterization, fragment shader, blend, frame buffer.
-![](image/ana_crossobject1.png)
+![](image/ana_crossobjects1.png)
+![](image/ana_crossobjects2.png)
+The first image show the time percent used in each process across each objects. Image 2 show how many faces are there in each objects
