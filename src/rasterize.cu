@@ -191,6 +191,69 @@ void pointRasterization(int w, int h, int primitiveCount, Triangle *primitives, 
 	}
 }
 
+__global__
+void lineRasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+
+	if (index < primitiveCount) {
+		Triangle primitive = primitives[index];
+		glm::vec3 minPosition = primitive.v[0].pos, maxPosition = primitive.v[1].pos;
+
+		if (round(minPosition.x) == round(maxPosition.x)) {
+			// Get straight vertical line
+			int x = round(minPosition.x);
+			if (minPosition.y > maxPosition.y) {
+				// Flip
+				minPosition = primitive.v[1].pos;
+				maxPosition = primitive.v[0].pos;
+			}
+
+			for (int y = round(maxPosition.y); y >= round(minPosition.y); y--) {
+				float minMaxRatio = __fdividef(y - minPosition.y, maxPosition.y - minPosition.y);
+				int depthIndex = w - x + (h - y) * w;
+				int z = -(minMaxRatio * round(minPosition.z) + (1.0f - minMaxRatio) * round(maxPosition.z));
+
+				atomicMin(&depth[depthIndex], z);
+
+				if (depth[depthIndex] == z) {
+					Fragment fragment;
+					fragment.color = primitive.v[1].col;
+					fragment.position = glm::vec3(x, y, -z);
+					fragment.normal = glm::normalize(primitive.v[0].nor + primitive.v[1].nor);
+					depthbuffer[depthIndex] = fragment;
+				}
+			}
+		}
+		else {
+			//Have to calculate a Bresenham line
+			if (round(minPosition.x) > round(maxPosition.x)) {
+				// Swap
+				minPosition = primitive.v[1].pos;
+				maxPosition = primitive.v[0].pos;
+			}
+			
+			float slope = (maxPosition.y - minPosition.y) / (maxPosition.x - minPosition.x);
+
+			for (int x = round(minPosition.x); x <= round(maxPosition.x); x++) {
+				int y = slope * (x - round(minPosition.x)) + minPosition.y;
+				float minMaxRatio = __fdividef(y - minPosition.y, maxPosition.y - minPosition.y);
+				int depthIndex = w - x + (h - y) * w;
+				int z = -(minMaxRatio * minPosition.z + (1.0f - minMaxRatio) * maxPosition.z);
+
+				atomicMin(&depth[depthIndex], z);
+
+				if (depth[depthIndex] == z) {
+					Fragment fragment;
+					fragment.color = primitive.v[1].col;
+					fragment.position = glm::vec3(x, y, -z);
+					fragment.normal = glm::normalize(primitive.v[0].nor + primitive.v[1].nor);
+					depthbuffer[depthIndex] = fragment;
+				}
+			}
+		}
+	}
+}
+
 /**
 * Fragment shader
 */
@@ -319,7 +382,7 @@ void rasterize(uchar4 *pbo) {
 		pointRasterization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
 	}
 	else if (scene->lineRasterization) {
-
+		lineRasterization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
 	}
 	else {
 		// Standard triangle rasterization
