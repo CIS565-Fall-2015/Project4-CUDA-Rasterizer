@@ -72,5 +72,7 @@ PART IX: Performance Analysis
 1 Render time in each step:
 Here I divide the render process into six steps: vertex shader, primitive assembly, rasterization, fragment shader, blend, frame buffer.
 ![](image/ana_crossobjects1.png)
+![](image/ana_crossobjects3.png)
 ![](image/ana_crossobjects2.png)
-The first image show the time percent used in each process across each objects. Image 2 show how many faces are there in each objects
+The first image show the time percent used in each process across each objects. Image 2 show the actual time used for each of the process in every step in 100 frames. And image 3 show how many faces are there in each objects.
+It is obvious that the size of the faces has direct impact on the time used in vertex shader.
