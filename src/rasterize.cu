@@ -175,7 +175,8 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 					{
 						glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
 						glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
-						color = ColorInTex(0, texs, tInfo, glm::vec2(uv));
+						if (texs != NULL &&tInfo != NULL)
+							color = ColorInTex(0, texs, tInfo, glm::vec2(uv));
 						glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
 						glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
 						float diffuse = max(dot(lightDir, normal), 0.0);
@@ -268,21 +269,25 @@ void rasterizeSetBuffers( obj * mesh ) {
 	
 	int texSize = mesh->textureImages.size()*sizeof(glm::vec3 *);
 	int texInfoSize = mesh->textureImages.size()*sizeof(glm::vec2);
-	cudaMalloc((void**)&dev_textures, texSize);
-	cudaMalloc((void**)&dev_texInfo, texInfoSize);
-	std::vector<glm::vec3*> tempImg;
-	std::vector<glm::vec2> tempInfo;
-	for (int i = 0; i < mesh->textureImages.size(); i++)
+	if (texSize > 0 && texInfoSize > 0)
 	{
-		glm::vec3 * dev_img;
-		int imgSize = mesh->textureImages[i].getSize()*sizeof(glm::vec3);
-		cudaMalloc((void**)&dev_img, imgSize);
-		cudaMemcpy(dev_img, mesh->textureImages[i].pixels, imgSize, cudaMemcpyHostToDevice);
-		tempImg.push_back(dev_img);
-		tempInfo.push_back(glm::vec2(mesh->textureImages[i].xSize, mesh->textureImages[i].ySize));
+		cudaMalloc((void**)&dev_textures, texSize);
+		cudaMalloc((void**)&dev_texInfo, texInfoSize);
+		std::vector<glm::vec3*> tempImg;
+		std::vector<glm::vec2> tempInfo;
+		for (int i = 0; i < mesh->textureImages.size(); i++)
+		{
+			glm::vec3 * dev_img;
+			int imgSize = mesh->textureImages[i].getSize()*sizeof(glm::vec3);
+			cudaMalloc((void**)&dev_img, imgSize);
+			cudaMemcpy(dev_img, mesh->textureImages[i].pixels, imgSize, cudaMemcpyHostToDevice);
+			tempImg.push_back(dev_img);
+			tempInfo.push_back(glm::vec2(mesh->textureImages[i].xSize, mesh->textureImages[i].ySize));
+		}
+		cudaMemcpy(dev_textures, tempImg.data(), texSize, cudaMemcpyHostToDevice);
+		cudaMemcpy(dev_texInfo, tempInfo.data(), texInfoSize, cudaMemcpyHostToDevice);
 	}
-	cudaMemcpy(dev_textures, tempImg.data(), texSize, cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_texInfo, tempInfo.data(), texInfoSize, cudaMemcpyHostToDevice);
+
 	
 	//
     cudaFree(dev_bufIdx);
