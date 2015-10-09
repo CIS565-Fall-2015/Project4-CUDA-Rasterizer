@@ -44,4 +44,4 @@ To make our scene more interesting, we apply the color to our object. Using the 
 
 PART V: Blending
 This is not a necessary step, but using the fog effect here will make our scene more interesting. Before we output the depthBuffer color to ImageBuffer, we blend the color of our object with some "fog". The weight of the fog is decided by the distance of the intersection point(depth value) to the camera. If the depth value goes beyond a threshold, just only use the fog color.
-![](image/dragon_infog)
+![](image/dragon_infog.bmp)
