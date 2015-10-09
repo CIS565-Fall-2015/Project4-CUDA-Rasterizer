@@ -67,15 +67,16 @@ __global__ void vertexShading(VertexIn *vs_input,VertexOut *vs_output,glm::vec3 
 	int index=blockIdx.x*blockDim.x+threadIdx.x;
 	if(index<N){
 		vs_output[index].col=vs_input[index].col;
-		vs_output[index].nor=vs_input[index].nor;
+		//vs_output[index].nor=vs_input[index].nor;
 		vs_output[index].tex=vs_input[index].tex;
-		glm::mat4 m;
-		//m=glm::translate(m,glm::vec3(0,0,1));
-        //m=m*glm::rotate(m, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 m,m1;
 		m=m*glm::perspective(glm::radians(fovy),1.0f,0.1f,100.0f);
-		m=m*glm::lookAt(cameraFront,glm::vec3(0,0,0),cameraUp);
-		m=m*glm::rotate(glm::mat4(1.0), glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+		m=m*glm::lookAt(-cameraFront,glm::vec3(0,0,0),cameraUp);
+		m1=glm::rotate(glm::mat4(1.0), glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+		m=m*m1;
+
 		vs_output[index].pos=multiplyMV(m,glm::vec4(vs_input[index].pos,1));
+		vs_output[index].nor=multiplyMV(m,glm::vec4(vs_input[index].nor,0));
 		vs_output[index].pos/=cameraDis;
 	}
 }
@@ -354,30 +355,37 @@ void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 camer
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
-	cudaEvent_t start, stop;
+	/*cudaEvent_t start, stop;
 	float milliseconds = 0;
 	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
+	cudaEventCreate(&stop);*/
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
-	cudaEventRecord(start);
+	//cudaEventRecord(start);
 	vertexShading<<<(vertCount+127)/128,128>>>(dev_bufVertex,dev_vertexOut,cameraUp,cameraFront,fovy,cameraDis,rotation,vertCount);
-	cudaEventCreate(&stop);
+	/*cudaEventCreate(&stop);
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	time[0]+=milliseconds;
+	time[0]+=milliseconds;*/
 
-	cudaEventRecord(start);
+	//cudaEventRecord(start);
 	primitiveAssemblyTest<<<(bufIdxSize/3+127)/128,128>>>(dev_vertexOut,dev_bufIdx,dev_primitives,bufIdxSize/3);
 	setColorToBlue<<<(width*height+127)/128,128>>>(dev_depthbuffer,fog,width*height);
 	setDepthMax<<<(width*height+127)/128,128>>>(dev_depth,width*height);
-	cudaEventRecord(stop);
+	/*cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	time[1]+=milliseconds;
+	time[1]+=milliseconds;*/
 
-	cudaEventRecord(start);
+	//cudaEventRecord(start);
+	glm::mat4 m,m1;
+	m=m*glm::perspective(glm::radians(fovy),1.0f,0.1f,100.0f);
+	m=m*glm::lookAt(-cameraFront,glm::vec3(0,0,0),cameraUp);
+	m1=glm::rotate(glm::mat4(1.0), glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+	lightPos=multiplyMV(m,glm::vec4(lightPos,1));
+	//m=m*m1;
+	cameraFront=multiplyMV(m,glm::vec4(cameraFront,0));
 	float dx=0,dy=0;
 	glm::vec3 *dev_tmp;
 	cudaMalloc(&dev_tmp, width*height*sizeof(glm::vec3));
@@ -386,32 +394,32 @@ void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 camer
 		dx=-0.25+0.5*(i%2);
 		dy=-0.25+0.5*(i/2);
 		setDepthMax<<<(width*height+127)/128,128>>>(dev_depth,width*height);
-		rasterization<<<(bufIdxSize/3+127)/128,128>>>(dev_primitives,dev_depthbuffer,dev_depth,dev_texture,texWidth,texHeight,lightPos,-cameraDis*cameraFront,fog,bufIdxSize/3,width,dx,dy);
+		rasterization<<<(bufIdxSize/3+127)/128,128>>>(dev_primitives,dev_depthbuffer,dev_depth,dev_texture,texWidth,texHeight,lightPos,cameraDis*cameraFront,fog,bufIdxSize/3,width,dx,dy);
 		addColor<<<(width*height+127)/128,128>>>(dev_tmp,dev_depthbuffer,width*height,i+1);
 	}
 	copyBack<<<(width*height+127)/128,128>>>(dev_tmp,dev_depthbuffer,width*height);
 	cudaFree(dev_tmp);
-	cudaEventRecord(stop);
+	/*cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	time[2]+=milliseconds;
+	time[2]+=milliseconds;*/
 
-	cudaEventRecord(start);
+	//cudaEventRecord(start);
 	if(fog) blending<<<(width*height+127)/128,128>>>(dev_depthbuffer,dev_depth,width*height);
-	cudaEventRecord(stop);
+	/*cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	time[3]+=milliseconds;
+	time[3]+=milliseconds;*/
 
-	cudaEventRecord(start);
+	//cudaEventRecord(start);
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
-	cudaEventRecord(stop);
+	/*cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	time[4]+=milliseconds;
+	time[4]+=milliseconds;*/
 
 
 	if(outputImage&&frame%5==0) imageOutput(dev_framebuffer,frame/5);

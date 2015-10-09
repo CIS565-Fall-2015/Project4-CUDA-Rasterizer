@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
         // GLFW main loop
         mainLoop();
     }
-	for(int i=0;i<5;++i) cout<<Gtime[i]<<endl;
+	//for(int i=0;i<5;++i) cout<<Gtime[i]<<endl;
     return 0;
 }
 
@@ -84,7 +84,7 @@ void mainLoop() {
         // VAO, shader program, and texture already bound
         glDrawElements(GL_TRIANGLES, 6,  GL_UNSIGNED_SHORT, 0);
         glfwSwapBuffers(window);
-		if(frame==100) break;
+		//if(frame==1) break;
     }
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -308,7 +308,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         lightPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if(key == GLFW_KEY_D)
         lightPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;  
-	//cout<<lightPos.x<<","<<lightPos.y<<","<<lightPos.z<<endl;
+	cout<<lightPos.x<<","<<lightPos.y<<","<<lightPos.z<<endl;
 
 	if(key == GLFW_KEY_UP)
 		cameraDis-=0.1f;

@@ -53,8 +53,8 @@ GLfloat lastX=width/2;
 GLfloat lastY=height/2;
 GLfloat yaw   = -90.0f;	// Yaw is initialized to -90.0 degrees since a yaw of 0.0 results in a direction vector pointing to the right (due to how Eular angles work) so we initially rotate a bit to the left.
 GLfloat pitch = 0.0f;
-GLfloat fov=45;
-GLfloat cameraDis=5.0f;
+GLfloat fov=90;
+GLfloat cameraDis=3.0f;
 GLfloat rotation=0.0f;
 bool firstMouse=true;
 bool outputImage=false;
@@ -62,7 +62,7 @@ bool fog=false;
 float *Gtime=new float[5];
 int anti=1;
 string texture;
-glm::vec3 lightPos   = glm::vec3(-2.0f, 0.0f, -5.0f);
+glm::vec3 lightPos   = glm::vec3(0.0f, 0.0f, 3.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
 
