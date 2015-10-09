@@ -75,4 +75,4 @@ Here I divide the render process into six steps: vertex shader, primitive assemb
 ![](image/ana_crossobjects3.png)
 ![](image/ana_crossobjects2.png)
 The first image show the time percent used in each process across each objects. Image 2 show the actual time used for each of the process in every step in 100 frames. And image 3 show how many faces are there in each objects.
-It is obvious that the size of the faces has direct impact on the time used in vertex shader.
+It is obvious that the size of the faces has direct impact on the time used in vertex shader. The time used in blend and frame buffer are almost the same in number. The percentage of rasterization in each object are very close, but the percentage of fragment shader differs much. For the dragon object, which is very large, its time is spent evenly on all steps, but each one takes more time than other object with their counterparts. One very interesting finding here is that the larger the triangle in one object is, the more time it takes to rasterize and fragment. The sphere_low has less number of triangles but large triangles. The cube has only 12 triangles, but each triangle is very large. We can see
