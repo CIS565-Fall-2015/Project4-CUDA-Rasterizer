@@ -18,8 +18,8 @@ An efficient CUDA rasterizer with two pipeline options. By default it uses tile-
 [![](img/Splash.png)](https://vimeo.com/141638182)
 
 ## Quick Jump List  
-* [Scanline pipeline](#features)
-* [Tile-based pipeline](#file-format)
+* [Scanline pipeline](#pipeline-overview-scanline)
+* [Tile-based pipeline](#pipeline-overview-tile-based)
 * [Misc features](#misc-features)
 * [Performance analysis](#performance-analysis)
 * [References](#references)
@@ -206,7 +206,7 @@ An efficient CUDA rasterizer with two pipeline options. By default it uses tile-
     * Substitute fixed divisions with corresponding multiplications for marginal performance gain
     * Cache repetitive calculations; reorder executions to reduce execution dependency
     * Optimize calculations to reduce register usage
-  * Backface culling
+  * Backface culling (for scanline)
     * Only useful when the object is big in window
       * Reduces rasterization time
     * Stream compaction overhead might be more significant and cancel out the benefit
