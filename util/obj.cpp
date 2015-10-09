@@ -162,6 +162,12 @@ void obj::buildBufPoss() {
             getBufPossize() / 3);
 }
 
+void obj::loadTextures()
+{
+	if (textrueFilenames.size() == 0)
+		return;
+}
+
 void obj::compareMaxMin(float x, float y, float z) {
     if (maxminSet == true) {
         if (x > xmax) {
@@ -351,6 +357,15 @@ void obj::addNormal(glm::vec3 normal) {
 
 void obj::addTextureCoord(glm::vec3 texcoord) {
     texturecoords.push_back(glm::vec4(texcoord[0], texcoord[1], texcoord[2], 1));
+}
+
+void obj::addTexture(string texFilename, TEXTYPE type)
+{
+	textrueFilenames.push_back(texFilename);
+	textureType.push_back(type);
+	image newTexture(texFilename);
+	textureImages.push_back(newTexture);
+
 }
 
 float *obj::getBoundingBox() {

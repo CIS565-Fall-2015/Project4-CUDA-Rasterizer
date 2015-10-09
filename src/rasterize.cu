@@ -33,7 +33,7 @@ struct VertexOut {
 	glm::vec3 ndc;
 	glm::vec3 winPos;
 
-	glm::vec3 textCoord;
+	glm::vec3 tex;
     // TODO
 };
 struct Triangle {
@@ -52,6 +52,8 @@ VertexOut *dev_bufVtxOut = NULL;
 static Triangle *dev_primitives = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
+glm::vec3 **dev_textures = NULL;
+glm::vec2 * dev_texInfo = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static int bufTexSize = 0;
@@ -83,13 +85,13 @@ void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat
 		glm::vec4 P_NDC = P_clip*(1 / P_clip.w);//!!!w-divide for NDC	: P_clip/w
 		//!!!window coords		: M_win*P_NDC
 		
-
 		vtxO[index].ndc = glm::vec3(P_NDC);
 		//vtxO[index].ndc = vtxI[index].pos;
 		vtxO[index].nor = vtxI[index].nor;
 		vtxO[index].col = vtxI[index].col;
 		P_NDC = M_win*P_NDC;
 		vtxO[index].winPos = glm::vec3(P_NDC);
+		vtxO[index].tex = vtxI[index].tex;
 	}
 }
 
@@ -235,18 +237,43 @@ void rasterizeInit(int w, int h) {
 /**
  * Set all of the buffers necessary for rasterization.
  */
-void rasterizeSetBuffers(
-        int _bufIdxSize, int *bufIdx,
-        int _bufTexSize, float * bufTex, int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
-    bufIdxSize = _bufIdxSize;
-    vertCount = _vertCount;
-	bufTexSize = _bufTexSize;
+void rasterizeSetBuffers( obj * mesh ) {
+  
+	bufIdxSize = mesh->getBufIdxsize();
+	int *bufIdx = mesh->getBufIdx();
+	bufTexSize = mesh->getBufTexsize() / 3;
+	float * bufTex = mesh->getBufTex();
+	vertCount = mesh->getBufPossize() / 3;
+	float *bufPos = mesh->getBufPos();
+	float *bufNor = mesh->getBufNor();
+	float *bufCol = mesh->getBufCol();
 
+	//Copy materials to dev_textures
+	
+	int texSize = mesh->textureImages.size()*sizeof(glm::vec3 *);
+	int texInfoSize = mesh->textureImages.size()*sizeof(glm::vec2);
+	cudaMalloc((void**)&dev_textures, texSize);
+	cudaMalloc((void**)&dev_texInfo, texInfoSize);
+	std::vector<glm::vec3*> tempImg;
+	std::vector<glm::vec2> tempInfo;
+	for (int i = 0; i < mesh->textureImages.size(); i++)
+	{
+		glm::vec3 * dev_img;
+		int imgSize = mesh->textureImages[i].getSize()*sizeof(glm::vec3);
+		cudaMalloc((void**)&dev_img, imgSize);
+		cudaMemcpy(dev_img, mesh->textureImages[i].pixels, imgSize, cudaMemcpyHostToDevice);
+		tempImg.push_back(dev_img);
+		tempInfo.push_back(glm::vec2(mesh->textureImages[i].xSize, mesh->textureImages[i].ySize));
+	}
+	cudaMemcpy(dev_textures, tempImg.data(), texSize, cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_texInfo, tempInfo.data(), texInfoSize, cudaMemcpyHostToDevice);
+	
+	//
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
     cudaMemcpy(dev_bufIdx, bufIdx, bufIdxSize * sizeof(int), cudaMemcpyHostToDevice);
 
-    VertexIn *bufVertex = new VertexIn[_vertCount];
+	VertexIn *bufVertex = new VertexIn[vertCount];
     for (int i = 0; i < vertCount; i++) {
         int j = i * 3;
         bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
@@ -329,6 +356,10 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
  * Called once at the end of the program to free CUDA memory.
  */
 void rasterizeFree() {
+
+	cudaFree(dev_bufVtxOut);
+	dev_bufVtxOut = NULL;
+
     cudaFree(dev_bufIdx);
     dev_bufIdx = NULL;
 
@@ -343,6 +374,9 @@ void rasterizeFree() {
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
+
+	cudaFree(dev_textures);
+	cudaFree(dev_texInfo);
 
     checkCUDAError("rasterizeFree");
 }
