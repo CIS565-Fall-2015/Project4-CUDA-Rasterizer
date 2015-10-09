@@ -16,6 +16,7 @@ Scene::Scene() {
 	light2.color = glm::vec3(1.0f);
 
 	culling = true;
+	scissor = false;
 	pointRasterization = false;
 	lineRasterization = false;
 
@@ -40,6 +41,7 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	light2.color = light2Color;
 
 	this->culling = culling;
+	scissor = true;
 	this->pointRasterization = false;
 	this->lineRasterization = false;
 	mouseState.initialPositionsSet = false;

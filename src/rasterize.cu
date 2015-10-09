@@ -231,7 +231,7 @@ void lineRasterization(int w, int h, int primitiveCount, Triangle *primitives, F
 				minPosition = primitive.v[1].pos;
 				maxPosition = primitive.v[0].pos;
 			}
-			
+
 			float slope = (maxPosition.y - minPosition.y) / (maxPosition.x - minPosition.x);
 
 			for (int x = round(minPosition.x); x <= round(maxPosition.x); x++) {
@@ -264,8 +264,8 @@ void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light1, co
 
 	if (index < (w * h)) {
 		Fragment fragment = depthBuffer[index];
-		depthBuffer[index].color = (glm::dot(glm::normalize(light1.position - fragment.position), fragment.normal) 
-			* fragment.color * light1.color) + (glm::dot(glm::normalize(light2.position - fragment.position), 
+		depthBuffer[index].color = (glm::dot(glm::normalize(light1.position - fragment.position), fragment.normal)
+			* fragment.color * light1.color) + (glm::dot(glm::normalize(light2.position - fragment.position),
 			fragment.normal) * fragment.color * light2.color);
 	}
 }
@@ -277,6 +277,19 @@ void backFaceCulling(int w, int primitiveCount, Triangle *primitives, glm::vec3 
 	if (index < primitiveCount) {
 		Triangle primitive = primitives[index];
 		if (glm::dot(primitive.v[0].model_pos - cameraPosition, primitive.v[0].nor) >= 0.0f) {
+			primitives[index].visible = false;
+		}
+	}
+}
+
+__global__
+void scissorTest(int w, int primitiveCount, Triangle *primitives, const glm::vec2 scissorMax, const glm::vec2 scissorMin) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+
+	if (index < primitiveCount) {
+		Triangle primitive = primitives[index];
+		if (primitive.boundingBox.min.y > scissorMax.y || primitive.boundingBox.max.y < scissorMin.y ||
+			primitive.boundingBox.max.x > scissorMax.x || primitive.boundingBox.max.x < scissorMin.x) {
 			primitives[index].visible = false;
 		}
 	}
@@ -353,6 +366,8 @@ void rasterize(uchar4 *pbo) {
 	int vertexBlockSize = VERTBLOCKSIZE, fragmentBlockSize = FRAGBLOCKSIZE;
 	int vertexGridSize = (width * height + VERTBLOCKSIZE - 1) / VERTBLOCKSIZE;
 	int fragmentGridSize = (width * height + FRAGBLOCKSIZE - 1) / FRAGBLOCKSIZE;
+
+	primitiveCount = vertCount / 3;
 	
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
@@ -367,13 +382,17 @@ void rasterize(uchar4 *pbo) {
 	assemblePrimitives<<<vertexGridSize, vertexBlockSize>>>(primitiveCount, dev_bufVertexOut, dev_primitives, dev_bufIdx);
 
 	// Culling after Primitive assembly
-	// TODO: This should probably be behind a flag in the scene file so I can test performance
 	if (scene->culling) {
 		backFaceCulling<<<blockCount2d, blockSize2d>>>(width, primitiveCount, dev_primitives, scene->camera.position);
-		// TODO: Size output. Can I overwrite or should it be seperate?
-		int updatedPrimitiveCount;
-		updatedPrimitiveCount = StreamCompaction::Efficient::Compact(primitiveCount, dev_compactionOutput, dev_primitives);
-		cudaMemcpy(dev_primitives, dev_compactionOutput, updatedPrimitiveCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
+		primitiveCount = StreamCompaction::Efficient::Compact(primitiveCount, dev_compactionOutput, dev_primitives);
+		cudaMemcpy(dev_primitives, dev_compactionOutput, primitiveCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
+	}
+
+	// Scissor test
+	if (scene->scissor) {
+		scissorTest<<<blockCount2d, blockSize2d>>>(width, primitiveCount, dev_primitives, scene->scissorMax, scene->scissorMin);
+		primitiveCount = StreamCompaction::Efficient::Compact(primitiveCount, dev_compactionOutput, dev_primitives);
+		cudaMemcpy(dev_primitives, dev_compactionOutput, primitiveCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
 	}
 
 	// rasterization

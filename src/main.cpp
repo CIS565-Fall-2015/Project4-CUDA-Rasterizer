@@ -164,6 +164,8 @@ void initCuda() {
     cudaGLSetGLDevice(0);
 
 	scene = new Scene();
+	scene->scissorMax = glm::vec2(width * 0.75f, height * 0.75f);
+	scene->scissorMin = glm::vec2(width * 0.25f, height * 0.25f);
     rasterizeInit(width, height, scene);
 
     // Clean up on program exit
