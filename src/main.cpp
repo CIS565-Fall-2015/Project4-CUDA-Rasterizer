@@ -11,7 +11,6 @@
 #include <ctime>
 #include "Scene.h"
 
-glm::vec3 *imageColor;
 static std::string startTimeString;
 Scene *scene;
 
@@ -98,7 +97,7 @@ void saveImage() {
     for (int x = 0; x < width; x++) {
         for (int y = 0; y < height; y++) {
             int index = x + (y * width);
-            glm::vec3 pix = imageColor[index];
+            glm::vec3 pix = scene->imageColor[index];
             img.setPixel(width - 1 - x, y, glm::vec3(pix));// / samples);
         }
     }
@@ -314,13 +313,13 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 
-	if(key == GLFW_KEY_ESCAPE && action = GLFW_PRESS)
+	if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 	{
-		delete(imageColor);
+		delete(scene->imageColor);
 		glfwSetWindowShouldClose(window, GL_TRUE);
 	}
 
-	else if(key == GLFW_KEY_SPACE && action = GLFW_PRESS)
+	else if(key == GLFW_KEY_SPACE && action == GLFW_PRESS)
 	{
 		saveImage();
 	}

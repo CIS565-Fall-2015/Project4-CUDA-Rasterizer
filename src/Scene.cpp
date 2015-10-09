@@ -13,9 +13,16 @@ Scene::Scene(int w, int h)
 	run = true;
 	width = w;
 	height = h;
+	imageColor = new glm::vec3[width*height];
     setDefaultCamera();
     setLights();
 }
+
+//Scene::~Scene()
+//{
+//	delete(imageColor);
+//}
+
 
 void Scene::setWidthHeight(int w, int h)
 {

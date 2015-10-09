@@ -20,7 +20,6 @@
 //#include "sceneStructs.h"
 #include "Scene.h"
 
-extern glm::vec3 *imageColor;
 extern Scene *scene;
 
 struct keep
@@ -341,8 +340,6 @@ void rasterizeSetBuffers(
     cudaFree(dev_outVertex);
     cudaMalloc((void**)&dev_outVertex, vertCount * sizeof(VertexOut));
 
-    imageColor = new glm::vec3[width*height];
-
     checkCUDAError("rasterizeSetBuffers");
 }
 
@@ -377,10 +374,10 @@ void rasterize(uchar4 *pbo) {
     	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
 
     	//Back face culling
-    	dev_primitivesEnd = dev_primitives + numTriangles;
-    	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
-    	numTriangles = dev_primitivesEnd - dev_primitives;
-//    	std::cout<<numTriangles;
+//    	dev_primitivesEnd = dev_primitives + numTriangles;
+//    	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
+//    	numTriangles = dev_primitivesEnd - dev_primitives;
+////    	std::cout<<numTriangles;
 
     	//Clear the color and depth buffers
     	kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
@@ -405,7 +402,7 @@ void rasterize(uchar4 *pbo) {
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
 
     //Save image data to write to file
-    cudaMemcpy(imageColor, dev_framebuffer, width*height*sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    cudaMemcpy(scene->imageColor, dev_framebuffer, width*height*sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     checkCUDAError("rasterize");
 }

@@ -16,11 +16,13 @@ public:
 
 	Scene(){}
 	Scene(int w, int h);
+//	~Scene();
 
 	bool run;
 	Camera cam;
 	Light light;
 	int width, height;
+	glm::vec3 *imageColor;
 
 	void setWidthHeight(int w, int h);
 	void configureCameraMatrix();
