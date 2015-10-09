@@ -41,3 +41,7 @@ To ensure we get the correct intersection, we have to deal with race condition i
 PART IV: Fragment Shader
 To make our scene more interesting, we apply the color to our object. Using the lambert's law, we get the diffuse color of the object. To get the Blinn-Phong effect working, we first need to define a light source, and the position of it can be adjusted. After that, we get the Blinn-Phong result and here we combine the two color with some weight, say 0.4 and 0.4.(0.2 left for ambient color). So we get image like this.
 ![](image/dragon.bmp)
+
+PART V: Blending
+This is not a necessary step, but using the fog effect here will make our scene more interesting. Before we output the depthBuffer color to ImageBuffer, we blend the color of our object with some "fog". The weight of the fog is decided by the distance of the intersection point(depth value) to the camera. If the depth value goes beyond a threshold, just only use the fog color.
+![](image/dragon_infog)
