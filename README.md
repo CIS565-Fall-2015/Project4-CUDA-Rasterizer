@@ -37,3 +37,7 @@ PART III: Depth Test
 To ensure we get the correct intersection, we have to deal with race condition in GPU. When two triangle intersect in the view direction and two thread tries to deal with the pixes at the same time, race condition occurs. Here I used depth buffer and AtomicMin to solve the problem, which IN MOST CASE guarantee only one thread is changing the depth value at one time. After this is implemented, we can get the normal map of an object.
 ![](image/cow_normal1.bmp)
 ![](image/cow_normal2.bmp)
+
+PART IV: Fragment Shader
+To make our scene more interesting, we apply the color to our object. Using the lambert's law, we get the diffuse color of the object. To get the Blinn-Phong effect working, we first need to define a light source, and the position of it can be adjusted. After that, we get the Blinn-Phong result and here we combine the two color with some weight, say 0.4 and 0.4.(0.2 left for ambient color). So we get image like this.
+![](image/dragon.bmp)
