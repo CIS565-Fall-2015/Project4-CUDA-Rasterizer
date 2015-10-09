@@ -45,21 +45,32 @@ void obj::buildBufPoss() {
     recenter();
     vector<float> BufPosvec;
     vector<float> BufNorvec;
+	vector<float> BufTexvec;
     vector<int> BufIdxvec;
 
     int index = 0;
     bool genNormals = false;
+	bool hasTex = false;
     if (faces.size() != facenormals.size() || facenormals[0].size() == 0) {
         genNormals = true;
     }
+	if (facetextures.size() == faces.size())
+	{
+		hasTex = true;
+	}
     for (int k = 0; k < (int) faces.size(); k++) {
-
+		//int t = facetextures.size();
         if (isConvex(faces[k]) == true) {
             //if(0==0){
             vector<int> face = faces[k];
-
             glm::vec4 p0 = points[face[0]];
-
+			glm::vec4 t0;
+			vector<int> facetexture;
+			if (hasTex)
+			{
+				facetexture = facetextures[k];
+				t0 = texturecoords[facetexture[0]];
+			}
             for (int i = 2; i < (int) face.size(); i++) {
                 glm::vec4 p1 = points[face[i - 1]];
                 glm::vec4 p2 = points[face[i]];
@@ -72,6 +83,20 @@ void obj::buildBufPoss() {
                 BufPosvec.push_back(p2[0]);
                 BufPosvec.push_back(p2[1]);
                 BufPosvec.push_back(p2[2]); //BufPosvec.push_back(1.0f);
+				if (hasTex)
+				{
+					glm::vec4 t1 = texturecoords[facetexture[i - 1]];
+					glm::vec4 t2 = texturecoords[facetexture[i]];
+					BufTexvec.push_back(t0[0]);
+					BufTexvec.push_back(t0[1]);
+					BufTexvec.push_back(t0[2]);
+					BufTexvec.push_back(t1[0]);
+					BufTexvec.push_back(t1[1]);
+					BufTexvec.push_back(t1[2]);
+					BufTexvec.push_back(t2[0]);
+					BufTexvec.push_back(t2[1]);
+					BufTexvec.push_back(t2[2]);
+				}
 
                 if (genNormals == false) {
                     vector<int> facenormal = facenormals[k];
@@ -109,12 +134,18 @@ void obj::buildBufPoss() {
         }
     }
 
+	tbo = new float[BufTexvec.size()];
     vbo = new float[BufPosvec.size()];
     nbo = new float[BufNorvec.size()];
     ibo = new int[BufIdxvec.size()];
+	tbosize = (int)BufTexvec.size();
     vbosize = (int)BufPosvec.size();
     nbosize = (int)BufNorvec.size();
     ibosize = (int)BufIdxvec.size();
+	for (int i = 0; i < (int)BufTexvec.size(); i++)
+	{
+		tbo[i] = BufTexvec[i];
+	}
     for (int i = 0; i < (int) BufPosvec.size(); i++) {
         vbo[i] = BufPosvec[i];
     }
@@ -456,6 +487,10 @@ glm::vec3 obj::getColor() {
     return defaultColor;
 }
 
+float *obj::getBufTex() {
+	return tbo;
+}
+
 float *obj::getBufPos() {
     return vbo;
 }
@@ -470,6 +505,10 @@ float *obj::getBufNor() {
 
 int *obj::getBufIdx() {
     return ibo;
+}
+
+int obj::getBufTexsize() {
+	return tbosize;
 }
 
 int obj::getBufPossize() {

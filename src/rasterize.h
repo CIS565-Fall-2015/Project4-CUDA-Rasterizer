@@ -13,6 +13,6 @@
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
-        int vertCount, float *bufPos, float *bufNor, float *bufCol);
+		int bufTexSize, float * bufTex, int vertCount, float *bufPos, float *bufNor, float *bufCol);
 void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat);
 void rasterizeFree();

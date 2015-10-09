@@ -21,6 +21,8 @@ struct VertexIn {
     glm::vec3 pos;
     glm::vec3 nor;
     glm::vec3 col;
+
+	glm::vec3 tex;
     // TODO (optional) add other vertex attributes (e.g. texture coordinates)
 };
 struct VertexOut {
@@ -30,6 +32,8 @@ struct VertexOut {
 
 	glm::vec3 ndc;
 	glm::vec3 winPos;
+
+	glm::vec3 textCoord;
     // TODO
 };
 struct Triangle {
@@ -50,6 +54,7 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static int bufTexSize = 0;
 glm::mat4 M_win;
 glm::mat4 M_view;
 
@@ -156,7 +161,8 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 						glm::vec4 PosNDC = glm::inverse(winMat)* glm::vec4(Pos, 1);
 						glm::vec3 light = glm::normalize(lightNDC - glm::vec3(PosNDC));
 						float diffuse = max(dot(light, normal), 0.0);
-						depthbuffer[x + y*w].color =  color*diffuse;// (normal + glm::vec3(1, 1, 1))*0.5f; //glm::vec3(0, 1, 0);
+						depthbuffer[x + y*w].color =  color*diffuse;
+						//depthbuffer[x + y*w].color = normal;
 					}
 				}
 			}
@@ -231,9 +237,10 @@ void rasterizeInit(int w, int h) {
  */
 void rasterizeSetBuffers(
         int _bufIdxSize, int *bufIdx,
-        int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
+        int _bufTexSize, float * bufTex, int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
+	bufTexSize = _bufTexSize;
 
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
@@ -245,6 +252,7 @@ void rasterizeSetBuffers(
         bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
         bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
         bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
+		bufVertex[i].tex = glm::vec3(bufTex[j + 0], bufTex[j + 1], bufTex[j + 2]);
     }
     cudaFree(dev_bufVertex);
     cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
@@ -279,7 +287,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
 	dim3 gSize_pri((bufIdxSize/3 + bSize_pri - 1) / bSize_pri);
 
-	glm::vec4 light(0, 5, 0,1);
+	glm::vec4 light(0.3, 0.4, 0.5,1);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
 	glm::vec4 lightNDC = light;// projMat * M_view * glm::mat4() *light;
 	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();

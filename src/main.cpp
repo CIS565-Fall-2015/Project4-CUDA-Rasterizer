@@ -130,7 +130,11 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
+
+	//vector<glm::vec4>* texts = mesh->getTextureCoords();
+
     rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
+			mesh->getBufTexsize() / 3,mesh->getBufTex(),
             mesh->getBufPossize() / 3,
             mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
 

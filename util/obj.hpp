@@ -26,11 +26,16 @@ private:
     int vbosize;
     int nbosize;
     int cbosize;
+	int tbosize;
     int ibosize;
+	
+
     float *vbo;
     float *nbo;
     float *cbo;
+	float *tbo;
     int *ibo;
+	
     float *boundingbox;
     float top;
     glm::vec3 defaultColor;
@@ -66,10 +71,13 @@ public:
     float getTop();
     void setColor(glm::vec3);
     glm::vec3 getColor();
+	float *getBufTex();
     float *getBufPos();
     float *getBufCol();
     float *getBufNor();
-    int *getBufIdx();
+	int *getBufIdx();
+
+	int getBufTexsize();
     int getBufPossize();
     int getBufNorsize();
     int getBufIdxsize();

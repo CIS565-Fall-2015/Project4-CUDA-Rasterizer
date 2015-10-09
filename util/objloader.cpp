@@ -61,7 +61,8 @@ objLoader::objLoader(string filename, obj *newMesh) {
                 getline(liness, y, ' ');
                 getline(liness, z, ' ');
                 geomesh->addPoint(glm::vec3(::atof(x.c_str()), ::atof(y.c_str()), ::atof(z.c_str())));
-            } else if (line[0] == 'f') {
+			}
+			else if (line[0] == 'f') {
                 string v;
                 getline(liness, v, ' ');
                 string delim1 = "//";
