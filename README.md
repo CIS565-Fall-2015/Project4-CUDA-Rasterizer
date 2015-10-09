@@ -32,3 +32,8 @@ For this project, there is not a very clear idea about the camera, but you still
 PART II: Primitive Assembly and Rasterization
 The primitive assembly is easy, just to put 3 vertex in a group. For the rasterization, the method used here is one thread per triangle. I used AABB to find the minimal area that a thread needs to scan. Then if the pixes actually fall into the triangle area, to begin with, I output all color white, which can only get a silhouette for now.
 ![](image/cow_shape.bmp)
+
+PART III: Depth Test
+To ensure we get the correct intersection, we have to deal with race condition in GPU. When two triangle intersect in the view direction and two thread tries to deal with the pixes at the same time, race condition occurs. Here I used depth buffer and AtomicMin to solve the problem, which IN MOST CASE guarantee only one thread is changing the depth value at one time. After this is implemented, we can get the normal map of an object.
+![](image/cow_normal1.bmp)
+![](image/cow_normal2.bmp)
