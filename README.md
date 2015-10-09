@@ -121,4 +121,5 @@ Although this greatly improve the speed of the program. For object with larget t
 
 PART X: Reference:
 Camera movement control: http://learnopengl.com/#!Getting-started/Camera
+
 Object Transformation & Fragment Shading Method: CIS 560 PPT
