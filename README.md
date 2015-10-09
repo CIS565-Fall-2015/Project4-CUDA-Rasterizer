@@ -110,12 +110,14 @@ Here I divide the render process into six steps: vertex shader, primitive assemb
 ![](image/ana_crossobjects1.png)
 ![](image/ana_crossobjects3.png)
 ![](image/ana_crossobjects2.png)
+
 The first image show the time percent used in each process across each objects. Image 2 show the actual time used for each of the process in every step in 100 frames. And image 3 show how many faces are there in each objects.
 It is obvious that the size of the faces has direct impact on the time used in vertex shader. The time used in blend and frame buffer are almost the same in number. The percentage of rasterization in each object are very close, but the percentage of fragment shader differs much. For the dragon object, which is very large, its time is spent evenly on all steps, but each one takes more time than other object with their counterparts. One very interesting finding here is that the larger the triangle in one object is, the more time it takes to rasterize and fragment. The sphere_low has less number of triangles but large triangles. The cube has only 12 triangles, but each triangle is very large. We can see from the the third image the actual used in rasterize and fragment for cube is higher than the high dimensional sphere, which has far more faces than the cube. That happens due to the AABB used in rasterization. The large triangle will cost more time to rasterize while the small triangle uses less. So the bottleneck here may come from large triangle together with large number of triangles. Take the sponza object for instance, the object hardly run on my machine. Doing tie-based pipeline is a good solution to this.
 
 2 Acceleration in AABB
 The AABB used in rasterization greatly improve the fps. If not using this method, every thread has to scan all 800*800(the camera resolution) for each triangle. The acceleration data is in the graph below:
 ![](image/acceleration.png)
+
 The larger the object is, the faster the AABB is.
 Although this greatly improve the speed of the program. For object with larget triangle, or when a triangle take the whole screen, the AABB is useless.
 
