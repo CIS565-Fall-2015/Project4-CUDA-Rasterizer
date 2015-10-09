@@ -61,3 +61,9 @@ Without cutting off:
 With cutting off:
 ![](image/cow_cut.bmp)
 We can see in the first image, the tile part of the cow, which should disappear actually reappear in the left part. Also, after doing that, the problem will be mush faster(See Performance Analysis).
+
+PART VIII: Texture Mapping
+The sole color is boring, and the texture is more interesting that that. First I import a texture to GPU, then in the Fragment Shader process, if the object has texture coordinates, just apply the texture color to it.
+![](image/dragon_onfire.bmp)
+texture with fog
+![](image/dragon_onfire_infog.bmp)
