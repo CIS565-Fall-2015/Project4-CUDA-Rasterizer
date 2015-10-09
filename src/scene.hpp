@@ -19,13 +19,13 @@ struct Light {
 
 class Scene {
 private:
-	Camera camera;
-	
 	glm::mat4 view;
 	glm::mat4 projection;
 	const glm::mat4 model = glm::mat4(1.0f);
 
 public:
+	Camera camera;
+
 	float nearPlane;
 	float farPlane;
 	glm::mat4 modelView;
@@ -34,10 +34,12 @@ public:
 	Light light1;
 	Light light2;
 
+	bool culling;
+
 	Scene();
 	Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, 
 		glm::vec3 cameraLookAt, glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, 
-		glm::vec3 light2Position, glm::vec3 light2Color);
+		glm::vec3 light2Position, glm::vec3 light2Color, bool culling);
 	~Scene();
 
 	void updateModelView();

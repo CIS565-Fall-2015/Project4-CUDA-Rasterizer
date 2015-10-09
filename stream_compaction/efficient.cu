@@ -1,28 +1,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "efficient.h"
+#include "./util/checkCUDAError.h"
 
 #define blockSize 128
 
 namespace StreamCompaction {
 namespace Efficient {
-
-/**
- * Check for CUDA errors; print and exit if there was a problem.
- */
-void checkCUDAErrorFn(const char *msg, const char *file, int line) {
-    cudaError_t err = cudaGetLastError();
-    if (cudaSuccess == err) {
-        return;
-    }
-
-    fprintf(stderr, "CUDA error");
-    if (file) {
-        fprintf(stderr, " (%s:%d)", file, line);
-    }
-    fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
-    exit(EXIT_FAILURE);
-}
 
 /**
 * Maps an array to an array of 0s and 1s for stream compaction. Elements

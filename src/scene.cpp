@@ -15,12 +15,14 @@ Scene::Scene() {
 	light2.position = glm::vec3(-1000.0f, 1000.0f, -1000.0f);
 	light2.color = glm::vec3(1.0f);
 
+	culling = true;
+
 	// Then have to calculate hte model view matrix
 	updateModelView();
 }
 
 Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, 
-	glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, glm::vec3 light2Position, glm::vec3 light2Color) {
+	glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, glm::vec3 light2Position, glm::vec3 light2Color, bool culling) {
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
 	camera.fieldOfView = fieldOfView;
@@ -32,6 +34,8 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	light1.color = light1Color;
 	light2.position = light2Position;
 	light2.color = light2Color;
+
+	this->culling = culling;
 
 	// Then have to calculate hte model view matrix
 	updateModelView();

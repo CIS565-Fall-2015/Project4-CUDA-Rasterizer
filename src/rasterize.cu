@@ -15,6 +15,7 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+#include "../stream_compaction/efficient.h"
 
 //TODO: Experiment with these values
 #define VERTBLOCKSIZE 128
@@ -33,6 +34,7 @@ static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static int primitiveCount = 0;
+static Triangle *dev_compactionOutput = NULL;
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -248,6 +250,10 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
 
+	cudaFree(dev_compactionOutput);
+	cudaMalloc(&dev_compactionOutput, vertCount / 3 * sizeof(Triangle));
+	cudaMemset(dev_compactionOutput, 0, vertCount / 3 * sizeof(Triangle));
+
     checkCUDAError("rasterizeSetBuffers");
 }
 
@@ -276,6 +282,14 @@ void rasterize(uchar4 *pbo) {
 	assemblePrimitives<<<vertexGridSize, vertexBlockSize>>>(primitiveCount, dev_bufVertexOut, dev_primitives, dev_bufIdx);
 
 	// Culling after Primitive assembly
+	// TODO: This should probably be behind a flag in the scene file so I can test performance
+	if (scene->culling) {
+		backFaceCulling<<<blockCount2d, blockSize2d>>>(width, primitiveCount, dev_primitives, scene->camera.position);
+		// TODO: Size output. Can I overwrite or should it be seperate?
+		int updatedPrimitiveCount;
+		updatedPrimitiveCount = StreamCompaction::Efficient::Compact(primitiveCount, dev_compactionOutput, dev_primitives);
+		cudaMemcpy(dev_primitives, dev_compactionOutput, updatedPrimitiveCount * sizeof(Triangle), cudaMemcpyDeviceToDevice);
+	}
 
 	// rasterization
 	raserization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
@@ -309,6 +323,12 @@ void rasterizeFree() {
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
+
+	cudaFree(dev_depth);
+	dev_depth = NULL;
+
+	cudaFree(dev_compactionOutput);
+	dev_compactionOutput = NULL;
 
     checkCUDAError("rasterizeFree");
 }
