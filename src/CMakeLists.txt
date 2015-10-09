@@ -4,6 +4,7 @@ set(SOURCE_FILES
     "rasterizeTools.h"
     "image.cpp"
     "image.h"
+    "sceneStructs.h"
     )
 
 cuda_add_library(src

@@ -18,42 +18,9 @@
 #include "rasterizeTools.h"
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "sceneStructs.h"
+
 extern glm::vec3 *imageColor;
-
-struct VertexIn {
-    glm::vec3 pos;
-    glm::vec3 nor;
-    glm::vec3 col;
-    // TODO (optional) add other vertex attributes (e.g. texture coordinates)
-};
-struct VertexOut {
-	glm::vec3 pos;
-};
-struct Triangle {
-    VertexOut vOut[3];
-    VertexIn vIn[3];
-    bool keep;
-//    glm::vec3 triNor;	//Used for back face culling
-};
-struct Fragment {
-    glm::vec3 color;
-    float depth;
-};
-struct Light {
-	glm::vec3 pos;
-	glm::vec3 col;
-};
-struct Camera {
-	glm::vec3 pos;
-	glm::vec3 lookat;
-	glm::vec3 up;
-	glm::vec3 dir;
-
-	glm::mat4 model;
-	glm::mat4 view;
-	glm::mat4 projection;
-	glm::mat4 cameraMatrix;
-};
 
 struct keep
 {
@@ -198,10 +165,10 @@ void kernDrawAxis(int w, int h, Fragment *fragments)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * w);
 
 	if (x < w && y < h)
     {
+		int index = x + (y * w);
 		if((x - w*0.5f) == 0)
 	    {
 			fragments[index].color = glm::vec3(0, 1, 0);
@@ -210,6 +177,21 @@ void kernDrawAxis(int w, int h, Fragment *fragments)
 		{
 			fragments[index].color = glm::vec3(1, 0, 0);
 		}
+    }
+}
+
+__global__
+void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < w && y < h)
+    {
+		int index = x + (y * w);
+
+		fragments[index].color = glm::vec3(0, 0, 0);
+		fragments[index].depth = FLT_MAX;
     }
 }
 
@@ -278,27 +260,29 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 		{
 			for(int j=min.y-1; j<=max.y+1; ++j)
 			{
-	//				printf("\nMax : %f %f %f\nMin : %f %f %f\n", aabb.max.x, aabb.max.y, aabb.max.z, aabb.min.x, aabb.min.y, aabb.min.z);
 				glm::ivec2 point(i,j);
 				glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
 
 				if(isBarycentricCoordInBounds(barycentric))
 				{
-					//Then fragment in the triangle.
-					//Implement lambert shading
+					glm::vec3 triIn[3];
+					VertexIn tvIn[3] = {t.vIn[0], t.vIn[1], t.vIn[2]};
 
-					//Interpolate normal
-					glm::vec3 norm = barycentric.x * t.vIn[0].nor +
-										barycentric.y * t.vIn[1].nor +
-						                barycentric.z * t.vIn[2].nor;
+					triIn[0] = tvIn[0].pos;
+					triIn[1] = tvIn[1].pos;
+					triIn[2] = tvIn[2].pos;
 
-					glm::vec3 pos = barycentric.x * t.vIn[0].pos +
-										barycentric.y * t.vIn[1].pos +
-										barycentric.z * t.vIn[2].pos;
+					glm::vec3 norm = barycentric.x * tvIn[0].nor +
+										barycentric.y * tvIn[1].nor +
+						                barycentric.z * tvIn[2].nor;
 
-					glm::vec3 col = barycentric.x * t.vIn[0].col +
-										barycentric.y * t.vIn[1].col +
-										barycentric.z * t.vIn[2].col;
+					glm::vec3 pos = barycentric.x * tvIn[0].pos +
+										barycentric.y * tvIn[1].pos +
+										barycentric.z * tvIn[2].pos;
+
+					glm::vec3 col = barycentric.x * tvIn[0].col +
+										barycentric.y * tvIn[1].col +
+										barycentric.z * tvIn[2].col;
 
 					glm::vec3 lightVector = glm::normalize(light.pos - pos);
 					//glm::vec3 camVector = glm::normalize(cam.pos - pos);
@@ -307,7 +291,16 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 
 					if(diffusedTerm > -0.0001f)
 					{
-						fragments[int((i+w*0.5) + (j + h*0.5)*w)].color = diffusedTerm * col;
+						int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
+//						float depth = getZAtCoordinate(barycentric, triIn);
+
+						//TODO : Use cuda atomics to avoid race condition here
+//						if(depth < fragments[fragIndex].depth)
+						{
+//							atomicMin(fragments[fragIndex].depth, depth);
+							fragments[fragIndex].color = diffusedTerm * col;
+//							fragments[fragIndex].depth = depth;
+						}
 					}
 				}
 			}
@@ -384,14 +377,6 @@ void createCameraAndLight()
 	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
 	cam.model = glm::mat4();
 
-//	std::cout<<"View : "<<std::endl;
-//	utilityCore::printMat4(view);
-//	std::cout<<std::endl<<"Projection : "<<std::endl;
-//	utilityCore::printMat4(projection);
-//	std::cout<<std::endl<<"Model : "<<std::endl;
-//	utilityCore::printMat4(model);
-//	std::cout<<std::endl;
-
 	cam.cameraMatrix = cam.projection * cam.view * cam.model;
 	cam.dir = glm::normalize(cam.lookat - cam.pos);
 
@@ -405,9 +390,6 @@ void rasterize(uchar4 *pbo) {
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
-
-    // TODO: Execute your rasterization pipeline here
-    // (See README for rasterization pipeline outline.)
 
     int numThreads = 256;
     int numBlocks;
@@ -433,8 +415,11 @@ void rasterize(uchar4 *pbo) {
     	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
     	numTriangles = dev_primitivesEnd - dev_primitives;
 
+    	//Clear the color and depth buffers
+    	kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+
     	//Drawing axis
-    	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+    	//kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
     	//Rasterization per triangle
     	numBlocks = (numTriangles + numThreads -1)/numThreads;
