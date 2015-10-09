@@ -108,8 +108,18 @@ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, Vert
 	}
 }
 
+__host__ __device__ glm::vec3 ColorInTex(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv)
+{
+	int xSize = info[texId].x;
+	int ySize = info[texId].y;
+	if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
+	int x = (float)(uv.x*(float)xSize);
+	int y = (float)(uv.y*(float)ySize);
+	return texs[texId][(y * xSize) + x];
+}
+
 __global__
-void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightNDC,glm::mat4 winMat )
+void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -120,6 +130,10 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 		tri[1] = primitives[index].v[1].winPos;
 		tri[2] = primitives[index].v[2].winPos;
 
+		glm::vec3 tex[3];
+		tex[0] = primitives[index].v[0].tex;
+		tex[1] = primitives[index].v[1].tex;
+		tex[2] = primitives[index].v[2].tex;
 		//!!! currently linear . later interpolation
 		glm::vec3 normal = glm::normalize(primitives[index].v[0].nor + primitives[index].v[1].nor + primitives[index].v[2].nor);
 		glm::vec3 color = glm::normalize(primitives[index].v[0].col + primitives[index].v[1].col + primitives[index].v[2].col);
@@ -160,9 +174,11 @@ void kernRasterizer(int w,int h,Fragment * depthbuffer, Triangle*primitives, int
 					//if (depthbuffer[x + y*w].depth==crntDepth)
 					{
 						glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
-						glm::vec4 PosNDC = glm::inverse(winMat)* glm::vec4(Pos, 1);
-						glm::vec3 light = glm::normalize(lightNDC - glm::vec3(PosNDC));
-						float diffuse = max(dot(light, normal), 0.0);
+						glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
+						color = ColorInTex(0, texs, tInfo, glm::vec2(uv));
+						glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
+						glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
+						float diffuse = max(dot(lightDir, normal), 0.0);
 						depthbuffer[x + y*w].color =  color*diffuse;
 						//depthbuffer[x + y*w].color = normal;
 					}
@@ -316,7 +332,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 
 	glm::vec4 light(0.3, 0.4, 0.5,1);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
-	glm::vec4 lightNDC = light;// projMat * M_view * glm::mat4() *light;
+	glm::vec4 lightW = light;// projMat * M_view * glm::mat4() *light;
 	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();
 	//****** 1. Clear depth buffer
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
@@ -339,7 +355,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
-	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, glm::vec3(lightNDC),M_all);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, glm::vec3(lightW),M_all,dev_textures,dev_texInfo);
 	//****** 5. Fragment shading
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments
