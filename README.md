@@ -1,4 +1,4 @@
-CUDA Rasterizer
+Tile-based CUDA Rasterizer
 ===============
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
@@ -6,14 +6,23 @@ CUDA Rasterizer
 * Tongbo Sui
 * Tested on: Windows 10, i5-3320M @ 2.60GHz 8GB, NVS 5400M 2GB (Personal)
 
+## Overview
+An efficient CUDA rasterizer with two pipeline options. By default it uses tile-based rendering, but also supports scanline rendering (`L` to switch between).
+
 ## Video Demo
 
 ###### Tile-based render demo
+[![](img/splash-tile.png)](https://youtu.be/xNBfuONQN48)
 
 ###### Scanline demo
 [![](img/Splash.png)](https://vimeo.com/141638182)
 
-## Pipeline Overview (Tile-based) use `L` to switch between pipelines
+## Quick Jump List  
+* [Scanline pipeline](#features)
+* [Tile-based pipeline](#file-format)
+* [Misc features](#misc-features)
+* [Performance analysis](#performance-analysis)
+* [References](#references)
 
 ## Pipeline Overview (Scanline)
 
@@ -89,6 +98,45 @@ CUDA Rasterizer
 ###### Lambert shading with barycentric interpolation. Two lights are used to better demonstrate the effect
 ![](img/lambert.png)
 
+## Pipeline Overview (Tile-based) 
+
+* Use `L` to switch between pipelines
+* Concept
+  * Divide-and-conquer technique applied to the pixel array, instead of primitive array
+  * Image is first divided into fix-sized bins. Such bins are relatively big in pixel size (e.g. 128x128 px). A kernel is launched to examine bounding box overlapping for each primitive against all bins
+    * Each bin maintains a queue of overlapping primitives
+  * Each bin is then divided into smaller sized tiles (e.g. 8x8 px). A kernel is launched to further examine bounding box overlapping for each bin for each primitive *in the bin's queue*
+    * Each tile maintains a similar queue
+  * Then a kernel is launched to find exact intersections for each pixel. In this case each pixel only needs to examine the primitives in the tile's queue
+* **NOTE**
+  * The lightings are different for the two pipelines to make it easier distinguishing the current pipeline. Tile-based render has major lighting coming from top left. Scanline render has major lighting coming from top right
+  * LIMITATION: current tile-based implementation imposes limitation that there can be at most 1024 triangles covering each bin at the same time. More triangles will result in undefined clipping
+    * Current workaround:
+      * Adjust bin size so that less triangles will cover one single bin
+      * Zoom in more so that triangles get spaced out instead of clutching within several bins
+    * Possible solution: all it needed is a thread-safe, dynamically resizable queue for each bin. This is not included in the implementation and hence the limitation. Theoretical limitation with such data structure is the memory limit of the hardware 
+* Vertex shading: same as scanline
+* Primitive assembly
+  * Assembles triangles from the input vertex list
+  * Initialize various shading property
+  * Flip coordinates to offset coordinate difference in OpenGL
+  * Cache minimum depth. This is the minimum depth of the 3 vertices of each triangle
+  * Pre-calculate signed area, and remove backfaces and degenerate faces
+  * Coarse window & scissor clipping. Removes those that are completely outside of the clipping box
+* Primitive compaction
+  * A simple stream compaction step to actually remove the marked primitives from previous stage
+* Geometry shader
+  * Same as scanline, with slight change that also calculates bounding box of the newly added geometries
+* Bin rasterizer
+  * Take the primitives as input, each thread is responsible for one single primitive. The thread will check coverage with all bins in the image, and push its primitive ID to that bin's coverage list, should there be any overlapping
+* Tile rasterizer
+  * Take the previous coverage list as input. Each thread is responsible for one tile, and will check coverage in the bin's list
+* Fine rasterizer
+  * Take the previous coverage list as input. Each thread is responsible for one pixel, and will check coverage in the tile's list
+* Fragment shader
+  * Same as scanline. Only that it now distinguishes a fragment that isn't overlapping any primitives with one that does
+  * It will directly shade a non-overlapping fragment to black, while shade the "good" fragments with correct lighting
+
 ## Misc Features
 * Mouse-based interactive camera support
   * Controls
@@ -109,14 +157,25 @@ CUDA Rasterizer
 ###### Point shading
 ![](img/point-shading.png)
 
-### Performance Analysis
+## Performance Analysis
 
 * Camera properties
   * Position `(0,0,3)`
   * LookAt `(0,0,0)`
   * FOV = 45.0 degrees
 
-* Performance breakdown
+* Tile-based performance breakdown
+  * Fragement shader time is almost fixed. Only dependent on window size
+  * Breakdown are core pipeline only
+  * Unlike scanline (below), FPS doesn't have obvious changes when changing camera distance. The performance depends more on # of overlapping primitives in each tile. Thus scenes of high depth complexity would have the highest negative impact on performance
+
+###### `cow.obj` performance breakdown
+![](img/cow-perf-tile.png)
+
+###### `cow.obj` FPS comparison by camera distance and pipeline. Positive means camera moving away
+![](img/fps-compare.png)
+
+* Scanline performance breakdown
   * Fragement shader time is almost fixed, since it's only dependent on the pixel count of the output window
   * Breakdown are core pipeline only
   * For the exact same camera properties described above, frame rate largely depends on the transformed size of the primitives, due to the current rasterization implementation
@@ -126,19 +185,19 @@ CUDA Rasterizer
 ###### `cow.obj` performance breakdown
 ![](img/cow-perf.png)
 
-###### `cow.obj` FPS by camera distance
+###### `cow.obj` FPS by camera distance, camera moving away
 ![](img/cow-dist.png)
 
 ###### `suzanne.obj` performance breakdown
 ![](img/suzanne-perf.png)
 
-###### `suzanne.obj` FPS by camera distance
+###### `suzanne.obj` FPS by camera distance, camera moving away
 ![](img/suzanne-dist.png)
 
 ###### `flower.obj` performance breakdown
 ![](img/flower-perf.png)
 
-###### `flower.obj` FPS by camera distance
+###### `flower.obj` FPS by camera distance, camera moving away
 ![](img/flower-dist.png)
 
 * Optimization (`cow.obj`)
@@ -146,6 +205,7 @@ CUDA Rasterizer
     * Alter block size for different kernels to achieve higher warp count
     * Substitute fixed divisions with corresponding multiplications for marginal performance gain
     * Cache repetitive calculations; reorder executions to reduce execution dependency
+    * Optimize calculations to reduce register usage
   * Backface culling
     * Only useful when the object is big in window
       * Reduces rasterization time
@@ -162,3 +222,5 @@ CUDA Rasterizer
   * http://www.songho.ca/opengl/gl_transform.html
 * Bresenham's line algorithm
   * https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+* Tile-based rendering
+  * https://mediatech.aalto.fi/~samuli/publications/laine2011hpg_paper.pdf

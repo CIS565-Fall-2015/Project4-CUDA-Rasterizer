@@ -23,7 +23,7 @@
 #define BIN_SIZE BINSIDE_LEN*BINSIDE_LEN	// this many tiles
 #define TILE_SIZE TILESIDE_LEN*TILESIDE_LEN	// this many pixels
 
-#define BINRASTER_BLOCK 128
+#define BINRASTER_BLOCK 256
 #define VERTSHADER_BLOCK 128
 #define FRAGSHADER_BLOCK 256
 
@@ -102,16 +102,13 @@ __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, Fragment *image) {
 
 	if (x < w && y < h) {
 		Fragment f = image[index];
+		pbo[index].w = 0;
 		glm::vec3 color = glm::vec3(255.0f);
 
-		color.x = color.x * glm::clamp(f.col.x, 0.0f, 1.0f);
-		color.y = color.y * glm::clamp(f.col.y, 0.0f, 1.0f);
-		color.z = color.z * glm::clamp(f.col.z, 0.0f, 1.0f);
 		// Each thread writes one pixel location in the texture (textel)
-		pbo[index].w = 0;
-		pbo[index].x = color.x;
-		pbo[index].y = color.y;
-		pbo[index].z = color.z;
+		pbo[index].x = color.x*glm::clamp(f.col.x, 0.0f, 1.0f);
+		pbo[index].y = color.y*glm::clamp(f.col.y, 0.0f, 1.0f);
+		pbo[index].z = color.z*glm::clamp(f.col.z, 0.0f, 1.0f);
 	}
 }
 
@@ -573,25 +570,24 @@ __global__ void assemblePrimitiveT(Triangle *pOut, VertexOut *vIn, int *triIdx, 
 
 	if (index < triCount) {
 		Triangle t;
-		int base = 3 * index;
+		// Assemble vertices
+		t.v[0] = vIn[triIdx[3 * index]];
+		t.v[1] = vIn[triIdx[3 * index + 1]];
+		t.v[2] = vIn[triIdx[3 * index + 2]];
 		// Set rasterization property
 		t.isPoint = false; t.isLine = false; t.isValidGeom = true;
-		// Assemble vertices
-		t.v[0] = vIn[triIdx[base]];
-		t.v[1] = vIn[triIdx[base + 1]];
-		t.v[2] = vIn[triIdx[base + 2]];
 		// Backface culling & degenerate (zero area)
 		// Calculate signed area for later use also
 		t.signedArea = calculateSignedArea(t.v);
+		// Revert coordinates to fix OpenGL coord quirks
+		t.v[0].pos = glm::vec3((float)width - t.v[0].pos.x, (float)height - t.v[0].pos.y, t.v[0].pos.z);
+		t.v[1].pos = glm::vec3((float)width - t.v[1].pos.x, (float)height - t.v[1].pos.y, t.v[1].pos.z);
+		t.v[2].pos = glm::vec3((float)width - t.v[2].pos.x, (float)height - t.v[2].pos.y, t.v[2].pos.z);
+		// Find bounding box
+		t.box = getAABBForTriangle(t);
 		if (t.signedArea >= 0){
 			t.isValidGeom = false;
 		}
-		// Revert coordinates to fix OpenGL coord quirks
-		t.v[0].pos = glm::vec3(width - t.v[0].pos.x, height - t.v[0].pos.y, t.v[0].pos.z);
-		t.v[1].pos = glm::vec3(width - t.v[1].pos.x, height - t.v[1].pos.y, t.v[1].pos.z);
-		t.v[2].pos = glm::vec3(width - t.v[2].pos.x, height - t.v[2].pos.y, t.v[2].pos.z);
-		// Find bounding box
-		t.box = getAABBForTriangle(t);
 		// Coarse window & scissor clipping
 		if (doScissor){
 			if (t.box.min.x > scissor.max.x || t.box.max.x < scissor.min.x || t.box.min.y > scissor.max.y || t.box.max.y < scissor.min.y){
@@ -705,73 +701,75 @@ __global__ void pixCover(Fragment *dev_depthbuffer, Queue::Segment *tileVsTriang
 		if (covered){
 			float depth = 100;
 			int bound = glm::min(tileVsTriangle[tileIdx].queueSize, QSEG_SIZE);
-
+			int tIdx;
 			for (int i = 0; i < bound; i++){
-				Triangle t = dev_primitives[tileVsTriangle[tileIdx].queue[i]];
-				if (t.isPoint && t.v[0].pos.x == x && t.v[0].pos.y == y){
-					if (-t.v[0].pos.z <= depth) {
-						// Shallowest
-						dev_depthbuffer[index].col = t.v[0].col;
-						dev_depthbuffer[index].nor = t.v[0].nor;
-						dev_depthbuffer[index].pos = t.v[0].pos;
-						depth = -t.v[0].pos.z;
+				tIdx = tileVsTriangle[tileIdx].queue[i];
+
+				if (!dev_primitives[tIdx].isLine && !dev_primitives[tIdx].isPoint) {
+					// General triangle
+					if (dev_primitives[tIdx].minDepth <= depth){
+						glm::vec3 bcc = calculateBarycentricCoordinate(dev_primitives[tIdx], glm::vec2((float)x, (float)y));
+						if (isBarycentricCoordInBounds(bcc)){
+							float dp = getZAtCoordinate(bcc, dev_primitives[tIdx]);
+							if (dp <= depth) {
+								// Shallowest
+								dev_depthbuffer[index].pos = bcc.x * dev_primitives[tIdx].v[0].pos + bcc.y*dev_primitives[tIdx].v[1].pos + bcc.z*dev_primitives[tIdx].v[2].pos;
+								dev_depthbuffer[index].nor = bcc.x * dev_primitives[tIdx].v[0].nor + bcc.y*dev_primitives[tIdx].v[1].nor + bcc.z*dev_primitives[tIdx].v[2].nor;
+								dev_depthbuffer[index].col = bcc.x * dev_primitives[tIdx].v[0].col + bcc.y*dev_primitives[tIdx].v[1].col + bcc.z*dev_primitives[tIdx].v[2].col;
+								depth = dp;
+							}
+						}
 					}
 				}
-				else if (t.isLine){
-					glm::vec3 min = t.v[0].pos, max = t.v[1].pos;
-					float minX = round(min.x), maxX = round(max.x);
-					if (minX > maxX){
-						min = t.v[1].pos; max = t.v[0].pos;
+				else if (dev_primitives[tIdx].isPoint && dev_primitives[tIdx].v[0].pos.x == x && dev_primitives[tIdx].v[0].pos.y == y){
+					if (-dev_primitives[tIdx].v[0].pos.z <= depth) {
+						// Shallowest
+						dev_depthbuffer[index].col = dev_primitives[tIdx].v[0].col;
+						dev_depthbuffer[index].nor = dev_primitives[tIdx].v[0].nor;
+						dev_depthbuffer[index].pos = dev_primitives[tIdx].v[0].pos;
+						depth = -dev_primitives[tIdx].v[0].pos.z;
+					}
+				}
+				else if (dev_primitives[tIdx].isLine){
+					glm::vec3 min = dev_primitives[tIdx].v[0].pos, max = dev_primitives[tIdx].v[1].pos;
+					if (min.x > max.x){
+						min = dev_primitives[tIdx].v[1].pos; max = dev_primitives[tIdx].v[0].pos;
 					}
 					AABB pointBox = getAABB1D(glm::vec3(x, y, 1.0f));
-					if (minX == maxX){
-						// Straight vertical line
-						if (boxOverlapTest(pointBox, t.box)){
-							float ratio = __fdividef(y - min.y, max.y - min.y);
+
+					if (boxOverlapTest(pointBox, dev_primitives[tIdx].box)){
+						float ratio, dp;
+						if (min.x == max.x){
+							// Straight vertical line
+							ratio = __fdividef(y - min.y, max.y - min.y);
 							//float ratio = (y - min.y) / (max.y - min.y);
 							//float dp = -(ratio*min.z + (1 - ratio)*max.z);
-							float dp = -(max.z + ratio*(min.z -max.z));
+							dp = -max.z - ratio*(min.z -max.z);
 							if (dp <= depth) {
 								// Shallowest
 								dev_depthbuffer[index].pos = glm::vec3(x, y, dp);
-								dev_depthbuffer[index].nor = glm::normalize(t.v[0].nor + t.v[1].nor);
+								dev_depthbuffer[index].nor = dev_primitives[tIdx].v[0].nor;
 								dev_depthbuffer[index].col = glm::vec3(1.0f);
 								depth = dp;
 							}
 						}
-					}
-					else {
-						// Bresenham
-						//float slope = (max.y - min.y) / (max.x - min.x);
-						//float ratio = (x - min.x) / (max.x - min.x);
-						float slope = __fdividef(max.y - min.y, max.x - min.x);
-						int assumedY = slope * (x - min.x) + min.y;
-						if (assumedY == y && boxOverlapTest(pointBox, t.box)){
-							float ratio = __fdividef(x - min.x, max.x - min.x);
-							//float dp = -(ratio*min.z + (1 - ratio)*max.z);
-							float dp = -(max.z + ratio*(min.z - max.z));
-							if (dp <= depth) {
-								// Shallowest
-								dev_depthbuffer[index].pos = glm::vec3(x, y, dp);
-								dev_depthbuffer[index].nor = glm::normalize(t.v[0].nor + t.v[1].nor);
-								dev_depthbuffer[index].col = glm::vec3(1.0f);
-								depth = dp;
-							}
-						}
-					}
-				}
-				else {
-					// General triangle
-					if (t.minDepth <= depth){
-						glm::vec3 bcc = calculateBarycentricCoordinate(t, glm::vec2(x, y));
-						if (isBarycentricCoordInBounds(bcc)){
-							float dp = getZAtCoordinate(bcc, t);
-							if (dp <= depth) {
-								// Shallowest
-								dev_depthbuffer[index].pos = bcc.x * t.v[0].pos + bcc.y*t.v[1].pos + bcc.z*t.v[2].pos;
-								dev_depthbuffer[index].nor = bcc.x * t.v[0].nor + bcc.y*t.v[1].nor + bcc.z*t.v[2].nor;
-								dev_depthbuffer[index].col = bcc.x * t.v[0].col + bcc.y*t.v[1].col + bcc.z*t.v[2].col;
-								depth = dp;
+						else {
+							// Bresenham
+							//float slope = (max.y - min.y) / (max.x - min.x);
+							//float ratio = (x - min.x) / (max.x - min.x);
+							float slope = __fdividef(max.y - min.y, max.x - min.x);
+							int assumedY = slope * (x - min.x) + min.y;
+							if (assumedY == y){
+								ratio = __fdividef(x - min.x, max.x - min.x);
+								//float dp = -(ratio*min.z + (1 - ratio)*max.z);
+								dp = -max.z - ratio*(min.z - max.z);
+								if (dp <= depth) {
+									// Shallowest
+									dev_depthbuffer[index].pos = glm::vec3(x, y, dp);
+									dev_depthbuffer[index].nor = dev_primitives[tIdx].v[0].nor;
+									dev_depthbuffer[index].col = glm::vec3(1.0f);
+									depth = dp;
+								}
 							}
 						}
 					}
@@ -861,15 +859,10 @@ void rasterizeTile(uchar4 *pbo) {
 	binCover << <binCoverGridSize, BINRASTER_BLOCK>> >(binVsTriangle, dev_primitives, primCount, binGridWidth, binGridHeight);
 	checkCUDAError("Bin cover test");
 
-	//testTrig << <1, 1 >> >(dev_depthbuffer, dev_primitives, primCount);
-	//testBin << <1, 1 >> >(dev_depthbuffer, binVsTriangle, binGridHeight*binGridWidth, binGridWidth);
-
 	// Bin to tile raster
 	dim3 binSize2d(BINSIDE_LEN, BINSIDE_LEN);
 	tileCover << <binGridHeight*binGridWidth, binSize2d >> >(tileVsTriangle, binVsTriangle, dev_primitives, binGridWidth);
 	checkCUDAError("Tile cover test");
-
-	//testTile << <1, 1 >> >(dev_depthbuffer, tileVsTriangle, binGridHeight*binGridWidth*BIN_SIZE, binGridWidth*BINSIDE_LEN, width*height);
 
 	// Tile to fragment raster
 
@@ -879,8 +872,6 @@ void rasterizeTile(uchar4 *pbo) {
 		(height + blockSize2d3.y - 1) / blockSize2d3.y);
 	pixCover << <blockCount2d3, blockSize2d3 >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, width, height, binGridWidth*BINSIDE_LEN, mvp->doScissor, mvp->scissor);
 	checkCUDAError("Pixel cover test");
-
-	//testPx << <blockCount2d, blockSize2d >> >(dev_depthbuffer, tileVsTriangle, dev_primitives, binGridWidth, width, height);
 
 	// Fragment shading
 	int fragGridSize = (width*height + FRAGSHADER_BLOCK - 1) / FRAGSHADER_BLOCK;
