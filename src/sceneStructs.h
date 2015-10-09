@@ -6,8 +6,6 @@
 #include "glm/glm.hpp"
 #include <glm/gtx/transform.hpp>
 
-#pragma once
-
 struct Scissor {
 	glm::vec2 min;
 	glm::vec2 max;
@@ -81,11 +79,14 @@ struct Triangle {
 	bool isPoint;
 	bool isLine;
 	bool isValidGeom;
+	float signedArea;
+	float minDepth;
 };
 struct Fragment {
 	glm::vec3 pos;
 	glm::vec3 nor;
 	glm::vec3 col;
+	bool isCovered;
 };
 
 struct is_invalid{

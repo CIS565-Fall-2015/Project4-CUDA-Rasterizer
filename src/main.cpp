@@ -16,6 +16,7 @@
 //-------------------------------
 
 MVP mvp;
+bool useScanline = false;
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -83,7 +84,12 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+	if (useScanline){
+		rasterize(dptr);
+	}
+	else {
+		rasterizeTile(dptr);
+	}
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -238,9 +244,11 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
-    rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
-            mesh->getBufPossize() / 3,
-            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+	rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
+		mesh->getBufPossize() / 3,
+		mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+
+	rasterizeTileInit();
 
     GLuint passthroughProgram;
     passthroughProgram = initShader();
@@ -273,7 +281,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height, &mvp);
+	rasterizeInit(width, height, &mvp);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -367,7 +375,7 @@ void deleteTexture(GLuint *tex) {
 }
 
 void shut_down(int return_code) {
-    rasterizeFree();
+	rasterizeFree();
     cudaDeviceReset();
 #ifdef __APPLE__
     glfwTerminate();
@@ -418,6 +426,10 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			break;
 		case GLFW_KEY_B:	// Backface culling
 			mvp.culling = !mvp.culling;
+			flushDepthBuffer();
+			break;
+		case GLFW_KEY_L:	// Pipeline switch
+			useScanline = !useScanline;
 			flushDepthBuffer();
 			break;
 		}
