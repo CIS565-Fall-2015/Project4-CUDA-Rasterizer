@@ -113,9 +113,102 @@ __host__ __device__ glm::vec3 ColorInTex(int texId, glm::vec3**texs, glm::vec2*i
 	int xSize = info[texId].x;
 	int ySize = info[texId].y;
 	if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
-	int x = (float)(uv.x*(float)xSize);
-	int y = (float)(uv.y*(float)ySize);
-	return texs[texId][(y * xSize) + x];
+	float u = (float)(uv.x*(float)xSize);
+	float v = (float)(uv.y*(float)ySize);
+	int k = u;
+	int j = v;
+	//if (k == 0 || k == xSize - 1 || j == 0 || j == ySize - 1)//!!!border
+	if (true)
+	{
+		return texs[texId][(j * xSize) + k];
+	}
+	//else return glm::vec3(0, 0, 0);
+	//bilinear filtering - within
+	/*
+	//https://en.wikipedia.org/wiki/Bilinear_interpolation
+	if (x < (float)k + 0.5)	//left part
+	k -= 1;
+	if (y < (float)j + 0.5)//left top
+	j -= 1;
+
+	//k,k+1
+	//j,j+1
+	glm::vec3 p11 = texs[texId][(j * xSize) + k];
+	glm::vec3 p12 = texs[texId][(j * xSize) + k + 1];
+	glm::vec3 p21 = texs[texId][((j + 1) * xSize) + k];
+	glm::vec3 p22 = texs[texId][((j + 1) * xSize) + k + 1];
+
+	float x1 = k;
+	float x2 = k + 2;
+	float y1 = j;
+	float y2 = j + 2;
+
+	glm::vec3 f_xy1 = p11*(x2 - x) / (x2 - x1) + p21*(x - x1) / (x2 - x1);
+	glm::vec3 f_xy2 = p12*(x2 - x) / (x2 - x1) + p22*(x - x1) / (x2 - x1);
+
+	glm::vec3 f_xy = f_xy1*(y2 - y) / (y2 - y1) + f_xy2*(y - y1) / (y2 - y1);
+	return f_xy;*/
+
+	//bilnear - 9 pixels
+	/*
+	glm::vec3 t[3][3];
+	for (int m = 0; m < 3; m++)
+	{
+		for (int n = 0; n < 3; n++)
+		{
+			t[m][n] = texs[texId][((j + m - 1) * xSize) + (k + n - 1)];
+		}
+
+	}
+
+	glm::vec3 p11 = (t[0][0] + t[0][1] + t[1][0] + t[1][1])*0.25f;
+	glm::vec3 p12 = (t[0][1] + t[0][2] + t[1][1] + t[1][1])*0.25f;
+	glm::vec3 p21 = (t[1][0] + t[1][1] + t[2][0] + t[2][1])*0.25f;
+	glm::vec3 p22 = (t[1][1] + t[1][2] + t[2][1] + t[2][2])*0.25f;
+
+	float x1 = k;
+	float x2 = k + 1;
+	float y1 = j;
+	float y2 = j + 1;
+	float c1 = (x2 - x) / (x2 - x1);
+	float c2 = (x - x1) / (x2 - x1);
+	float c3 = (y2 - y) / (y2 - y1);
+	float c4 = (y - y1) / (y2 - y1);
+
+	glm::vec3 f_xy1 = p11*c1 + p21*c2;
+	glm::vec3 f_xy2 = p12*c1 + p22*c2;
+
+	glm::vec3 f_xy = f_xy1*c3 + f_xy2*c4;
+	return f_xy;*/
+
+}
+
+__host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv)
+{
+	//https://en.wikipedia.org/wiki/Bilinear_filtering
+	int xSize = info[texId].x;
+	int ySize = info[texId].y;
+	if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
+	float u = (float)(uv.x*(float)xSize - 0.5);
+	float v = (float)(uv.y*(float)ySize - 0.5);
+
+	//u = u * tex.size - 0.5;
+	//v = v * tex.size - 0.5;
+	int x = floor(u);
+	int y = floor(v);
+	float u_ratio = u - x;
+	float v_ratio = v - y;
+	float u_opposite = 1 - u_ratio;
+	float v_opposite = 1 - v_ratio;
+
+	texs[texId][(y * xSize) + x];
+	if (x == 0 || x == xSize - 1 || y == 0 || y == ySize - 1)//!!!border
+	{
+		return texs[texId][(y * xSize) + x];
+	}
+	glm::vec3 result = (texs[texId][(y * xSize) + x] * u_opposite + texs[texId][(y * xSize) + x + 1] * u_ratio) * v_opposite +
+		(texs[texId][((y + 1) * xSize) + x] * u_opposite + texs[texId][((y + 1) * xSize) + x + 1] * u_ratio) * v_ratio;
+	return result;
 }
 
 __global__
@@ -175,8 +268,9 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 					{
 						glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
 						glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
+						//texture mapping !!! later : repeat, offset...
 						if (texs != NULL &&tInfo != NULL)
-							color = ColorInTex(0, texs, tInfo, glm::vec2(uv));
+							color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv));
 						glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
 						glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
 						float diffuse = max(dot(lightDir, normal), 0.0);
