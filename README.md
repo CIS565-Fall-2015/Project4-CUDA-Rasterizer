@@ -11,5 +11,6 @@ Representative Images:
 ![](image/earth_sample.bmp)
 ![](image/dragon_onfire.bmp)
 ![](image/dragon_onfire_infog.bmp)
+
 Video Demos:
-![](https://youtu.be/fJt1fT1zZMo)
+[![ScreenShot](image/earth_sample.bmp](https://youtu.be/fJt1fT1zZMo)
