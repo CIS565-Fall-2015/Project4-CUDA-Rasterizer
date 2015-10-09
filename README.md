@@ -26,6 +26,7 @@ use Backspace to end record images
 use mouse scroll to adjust fovy angle
 use mouse move to move around the object.
 
-PART I: Camera Setup
-For this project, there is not a very clear idea about the camera, but you still have to do model-view-projection transformation to get the basic vertex input. In this stage, I have used the interactive control from both keyboard and mouse input(). 
+PART I: Camera Setup(Vertex Shader)
+For this project, there is not a very clear idea about the camera, but you still have to do model-view-projection transformation to get the basic vertex input. In this stage, I have used the interactive control from both keyboard and mouse input(see above). We first apply model rotation, then we apply the camera view, with the lookAt function in glm. Finally we do the perspective transformation from the world to the camera. In the process, I have left out the translation and scale of the object. For the translation, because we only have one object and I have to make sure the window alway show the object, so the translation maybe useless in that case. For the scale part, the up and down arrow control is an alternative.
 
+PART II:
