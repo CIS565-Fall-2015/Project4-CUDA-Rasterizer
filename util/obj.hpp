@@ -22,15 +22,19 @@ private:
     vector<vector<int> > facetextures;
     vector<float *> faceboxes;  //bounding boxes for each face are stored in vbo-format!
     vector<glm::vec4> normals;
-    vector<glm::vec4> texturecoords;
+    //vector<glm::vec4> texturecoords;
+	vector<glm::vec2> texturecoords;
     int vbosize;
     int nbosize;
     int cbosize;
     int ibosize;
+	int tbosize;
     float *vbo;
     float *nbo;
     float *cbo;
+	float *tbo;
     int *ibo;
+
     float *boundingbox;
     float top;
     glm::vec3 defaultColor;
@@ -41,6 +45,22 @@ private:
     float zmax;
     float zmin;
     bool maxminSet;
+
+public:
+	glm::vec3 diffuse_color;
+	glm::vec3 ambient_color;
+	glm::vec3 specular_color;
+	float specular_exponent;
+	std::string diffuse_texture_file;
+	std::string specular_texture_file;
+	int mDiffTexID;
+	int mSpecTexID;
+
+	int diffuse_width, diffuse_height;
+	int specular_width, specular_height;
+	std::vector<glm::vec3> diffuse_tex;
+	std::vector<glm::vec3> specular_tex;
+
 public:
     obj();
     ~obj();
@@ -52,7 +72,8 @@ public:
     void addPoint(glm::vec3);
     void addFace(vector<int>);
     void addNormal(glm::vec3);
-    void addTextureCoord(glm::vec3);
+    //void addTextureCoord(glm::vec3);
+	void addTextureCoord(glm::vec2);
     void addFaceNormal(vector<int>);
     void addFaceTexture(vector<int>);
     void compareMaxMin(float, float, float);
@@ -69,6 +90,7 @@ public:
     float *getBufPos();
     float *getBufCol();
     float *getBufNor();
+	float *getBufTex();
     int *getBufIdx();
     int getBufPossize();
     int getBufNorsize();
@@ -79,6 +101,11 @@ public:
     vector<vector<int> > *getFaceNormals();
     vector<vector<int> > *getFaceTextures();
     vector<glm::vec4> *getNormals();
-    vector<glm::vec4> *getTextureCoords();
+    //vector<glm::vec4> *getTextureCoords();
+	vector<glm::vec2> *getTextureCoords();
     vector<float *> *getFaceBoxes();
+
+
+
+	
 };

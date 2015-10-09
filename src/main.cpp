@@ -42,6 +42,7 @@ int main(int argc, char **argv) {
         mainLoop();
     }
 
+	delete mesh;
     return 0;
 }
 
@@ -199,9 +200,19 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
+
     rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
             mesh->getBufPossize() / 3,
-            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol()
+			, (mesh->getTextureCoords())->size() > 0, mesh->getBufTex());
+
+
+	initTextureData(mesh->diffuse_tex.size() > 0, mesh->diffuse_width, mesh->diffuse_height, mesh->diffuse_tex.data(),
+		mesh->specular_tex.size() > 0, mesh->specular_width, mesh->specular_height, mesh->specular_tex.data(),
+		mesh->ambient_color,mesh->diffuse_color,mesh->specular_color,mesh->specular_exponent);
+
+
+
 
     GLuint passthroughProgram;
     passthroughProgram = initShader();
@@ -355,7 +366,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 	}
 	else if (key == GLFW_KEY_S && action == GLFW_PRESS)
 	{
-		printf("change shading mode\n");
+		
 		changeShaderMode( ) ;
 	}
 	else if (key == GLFW_KEY_T && action == GLFW_PRESS)

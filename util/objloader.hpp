@@ -25,4 +25,11 @@ public:
     //------------------------
 
     obj *getMesh();
+
+
+	//MY
+	void parseMaterial(const string & materialfn);
+
+	
+	void getTexture(const string & filename, vector<glm::vec3> & data, int & width, int & height);
 };

@@ -38,19 +38,29 @@ obj::~obj() {
         delete faceboxes[i];
     }
 
-
+	delete vbo;
+	delete tbo;
+	delete nbo;
+	delete ibo;
 }
 
 void obj::buildBufPoss() {
     recenter();
     vector<float> BufPosvec;
     vector<float> BufNorvec;
+	vector<float> BufTexvec;
     vector<int> BufIdxvec;
     int index = 0;
     bool genNormals = false;
     if (faces.size() != facenormals.size() || facenormals[0].size() == 0) {
         genNormals = true;
     }
+	//MY
+	bool useTexture = false;
+	if (facetextures.size() > 0) {
+		useTexture = true;
+	}
+
     for (int k = 0; k < (int) faces.size(); k++) {
 
         if (isConvex(faces[k]) == true) {
@@ -99,6 +109,15 @@ void obj::buildBufPoss() {
                     BufNorvec.push_back(n[2]); //BufNorvec.push_back(0.0f);
                 }
 
+				vector<int> facetex = facetextures[k];
+				BufTexvec.push_back(texturecoords.at(facetex[0]).x);
+				BufTexvec.push_back(texturecoords.at(facetex[0]).y);
+				BufTexvec.push_back(texturecoords.at(facetex[i-1]).x);
+				BufTexvec.push_back(texturecoords.at(facetex[i-1]).y);
+				BufTexvec.push_back(texturecoords.at(facetex[i]).x);
+				BufTexvec.push_back(texturecoords.at(facetex[i]).y);
+
+
                 BufIdxvec.push_back(index + 0);
                 BufIdxvec.push_back(index + 1);
                 BufIdxvec.push_back(index + 2);
@@ -110,10 +129,12 @@ void obj::buildBufPoss() {
 
     vbo = new float[BufPosvec.size()];
     nbo = new float[BufNorvec.size()];
+	tbo = new float[BufTexvec.size()];
     ibo = new int[BufIdxvec.size()];
     vbosize = (int)BufPosvec.size();
     nbosize = (int)BufNorvec.size();
     ibosize = (int)BufIdxvec.size();
+	tbosize = (int)BufTexvec.size();
     for (int i = 0; i < (int) BufPosvec.size(); i++) {
         vbo[i] = BufPosvec[i];
     }
@@ -123,6 +144,9 @@ void obj::buildBufPoss() {
     for (int i = 0; i < (int) BufIdxvec.size(); i++) {
         ibo[i] = BufIdxvec[i];
     }
+	for (int i = 0; i < (int)BufTexvec.size(); i++) {
+		tbo[i] = BufTexvec[i];
+	}
     setColor(glm::vec3(1, 1, 1));
 
     printf("Mesh built: buffers contain %d faces & %d vertices\n",
@@ -317,8 +341,28 @@ void obj::addNormal(glm::vec3 normal) {
     normals.push_back(glm::vec4(normal[0], normal[1], normal[2], 1));
 }
 
-void obj::addTextureCoord(glm::vec3 texcoord) {
-    texturecoords.push_back(glm::vec4(texcoord[0], texcoord[1], texcoord[2], 1));
+//void obj::addTextureCoord(glm::vec3 texcoord) {
+//    texturecoords.push_back(glm::vec4(texcoord[0], texcoord[1], texcoord[2], 1));
+//}
+void obj::addTextureCoord(glm::vec2 texcoord) {
+	if (texcoord.x < 0.0f)
+	{
+		texcoord.x = 0.0f;
+	}
+	else if (texcoord.x > 1.0f)
+	{
+		texcoord.x = 1.0f;
+	}
+
+	if (texcoord.y < 0.0f)
+	{
+		texcoord.y = 0.0f;
+	}
+	else if (texcoord.y > 1.0f)
+	{
+		texcoord.y = 1.0f;
+	}
+	texturecoords.push_back(texcoord);
 }
 
 float *obj::getBoundingBox() {
@@ -443,7 +487,8 @@ vector<glm::vec4> *obj::getNormals() {
     return &normals;
 }
 
-vector<glm::vec4> *obj::getTextureCoords() {
+//vector<glm::vec4> *obj::getTextureCoords() {
+vector<glm::vec2> *obj::getTextureCoords() {
     return &texturecoords;
 }
 
@@ -467,6 +512,10 @@ float *obj::getBufNor() {
     return nbo;
 }
 
+float *obj::getBufTex() {
+	return tbo;
+}
+
 int *obj::getBufIdx() {
     return ibo;
 }
@@ -486,4 +535,6 @@ int obj::getBufIdxsize() {
 int obj::getBufColsize() {
     return cbosize;
 }
+
+
 

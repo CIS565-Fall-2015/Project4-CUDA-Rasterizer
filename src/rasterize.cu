@@ -31,6 +31,7 @@ struct VertexIn {
     glm::vec3 nor;
     glm::vec3 col;
     // TODO (optional) add other vertex attributes (e.g. texture coordinates)
+	glm::vec2 uv;
 };
 
  
@@ -62,20 +63,6 @@ struct Edge
 
 
 
-
-//struct FragmentIn
-//{
-//	bool shade;
-//
-//	glm::vec3 color;
-//	glm::vec3 normal_eye_space;
-//	glm::vec2 uv;
-//
-//	float depth;
-//
-//	
-//	//__host__ __device__ FragmentIn(){ shade = false; depth = FLT_MAX; }
-//};
 
 
 
@@ -115,11 +102,25 @@ static int triCount = 0;
 //static FragmentIn * dev_fragments = NULL;
 static int * dev_depth = NULL;
 
+//tex
+static bool hasTexture = false;
+static bool hasDiffuseTex = false, hasSpecularTex = false;
+static glm::vec3 *dev_diffuse_texture_data = NULL;
+static glm::vec3 *dev_specular_texture_data = NULL;
+static int diffuse_width = 0,diffuse_height = 0;
+static int specular_width = 0, specular_height = 0;
+static glm::vec3 materialDiffuse;
+static glm::vec3 materialSpecular;
+static float materialNs;
+static glm::vec3 materialAmbient;
+
+
 static ShaderMode shaderMode = SHADER_NORMAL;
+
 static Light hst_lights[NUM_LIGHTS] = {
 	Light{ DIRECTION_LIGHT
 	, glm::vec3(0.5f, 0.5f, 0.5f)
-	, glm::normalize(glm::vec3(1.0f, -2.0f, 1.0f)), false },
+	, glm::normalize(glm::vec3(1.0f, -2.0f, 1.0f)), true },
 	Light{ DIRECTION_LIGHT
 	,  glm::vec3(0.5f, 0.5f, 0.5f)
 	, glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f)), true } };
@@ -131,7 +132,8 @@ static Light* dev_lights = NULL;
 
 void changeShaderMode()
 {
-	shaderMode = (ShaderMode)((shaderMode+1)%2);
+	shaderMode = (ShaderMode)((shaderMode+1) % 3);
+	printf("change shading mode %d\n",(int)shaderMode);
 }
 
 
@@ -193,12 +195,16 @@ void rasterizeInit(int w, int h) {
  */
 void rasterizeSetBuffers(
         int _bufIdxSize, int *bufIdx,
-        int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
+        int _vertCount, float *bufPos, float *bufNor, float *bufCol
+		, bool useTexture,float *bufUV) {
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
 
+
+
 	//MY
-	triCount = vertCount / 3;
+	hasTexture = useTexture;
+	triCount = vertCount / 3;		//? can have vert not in use
 	/////////
 
     cudaFree(dev_bufIdx);
@@ -211,7 +217,19 @@ void rasterizeSetBuffers(
         bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
         bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
         bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
+
     }
+
+	if (useTexture)
+	{
+		for (int i = 0; i < vertCount; i++) {
+			int j = i * 2;
+			bufVertex[i].uv = glm::vec2(bufUV[j + 0], bufUV[j + 1]);
+
+			//printf("%f,%f\n", bufVertex[i].uv.x, bufVertex[i].uv.y);
+		}
+	}
+
     cudaFree(dev_bufVertex);
     cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
     cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
@@ -221,7 +239,7 @@ void rasterizeSetBuffers(
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
 
 
-
+	delete bufVertex;
 
 
 
@@ -236,6 +254,42 @@ void rasterizeSetBuffers(
 }
 
 
+//texture
+//simple version, only support two texture
+void initTextureData(bool has_diffuse_tex,int d_w, int d_h, glm::vec3 * diffuse_tex,
+					bool has_specular_tex, int s_w, int s_h, glm::vec3 * specular_tex,
+					const glm::vec3 & ambient,const glm::vec3 & diffuse,const glm::vec3 & specular, float Ns)
+{
+	diffuse_width = d_w;
+	diffuse_height = d_h;
+	specular_width = s_w;
+	specular_height = s_h;
+
+	materialAmbient = ambient;
+	materialDiffuse = diffuse;
+	materialSpecular = specular;
+	materialNs = Ns;
+	if (hasTexture)
+	{
+		hasDiffuseTex = has_diffuse_tex;
+		hasSpecularTex = has_specular_tex;
+		
+		if (has_diffuse_tex)
+		{
+			cudaFree(dev_diffuse_texture_data);
+			cudaMalloc(&dev_diffuse_texture_data, d_w*d_h * sizeof(glm::vec3));
+			cudaMemcpy(dev_diffuse_texture_data, diffuse_tex, d_w*d_h * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+		}
+
+		if (has_specular_tex)
+		{
+			cudaFree(dev_specular_texture_data);
+			cudaMalloc(&dev_specular_texture_data, s_w*s_h * sizeof(glm::vec3));
+			cudaMemcpy(dev_specular_texture_data, specular_tex, s_w*s_h * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+		}
+	}
+	
+}
 
 
 
@@ -270,8 +324,10 @@ void kernVertexShader(int N,glm::mat4 M, glm::mat4 M_model_view, glm::mat4 M_nor
 
 		vo.color = vi.col;
 
-		//TODO: UV etc...
 		
+		vo.uv = vi.uv;
+
+		//printf("%f,%f\n", vo.uv.x, vo.uv.y);
 	}
 }
 
@@ -346,6 +402,10 @@ void constructEdge(Edge & e, const VertexOut & v0, const VertexOut & v1)
 	//e.cur_v = e.v[0];
 	e.gap_y = 0.0f;
 
+	//if (e.v[0].uv.x / e.v[0].divide_w_clip < 0.0f)
+	//{
+	//	printf("%f,%f,%f\n", e.v[0].uv.x / e.v[0].divide_w_clip, e.v[0].uv.y / e.v[0].divide_w_clip, e.v[0].divide_w_clip);
+	//}
 }
 
 
@@ -391,9 +451,9 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 		x_left = 0;
 	}
 	
-	if (x_right >= width)
+	if (x_right > width)
 	{
-		x_right = width-1;
+		x_right = width;
 	}
 
 	// Discard scanline with no actual rasterization and also
@@ -503,14 +563,17 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 	int y_bot = (int)(ceilf(e2.v[0].pos.y) + EPSILON);
 	int y_top = (int)(ceilf(e2.v[1].pos.y) + EPSILON);
 
+	
+
 	if (y_bot < 0)
 	{
 		y_bot = 0;
+		
 	}
 
-	if (y_top >= height)
+	if (y_top > height)
 	{
-		y_top = height-1;
+		y_top = height;
 	}
 
 
@@ -519,7 +582,7 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 	initEdge(e2, (float)y_bot);
 
 
-
+	//printf("%f,%f\n", e1.v[0].uv.x / e1.v[0].divide_w_clip, e1.v[0].uv.y / e1.v[0].divide_w_clip );
 
 	for (int y = y_bot; y < y_top; ++y)
 	{
@@ -549,25 +612,39 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 * rasterization
 */
 __global__
-void kernScanLineForOneTriangle(int width,int height
+void kernScanLineForOneTriangle(int num_tri, int width,int height
 , Triangle * triangles, Fragment * depth_fragment, int * depth)
 {
 	int triangleId = blockDim.x * blockIdx.x + threadIdx.x;
 
+	if (triangleId >= num_tri)
+	{
+		return;
+	}
+
+
 	Triangle tri = triangles[triangleId];	//copy
+
+
+
 
 	//currently tri.v are in clipped coordinates
 	//need to transform to viewport coordinate
 	for (int i = 0; i < 3; i++)
 	{
-		if (tri.v[i].pos.w == 0.0f)
-		{
-			tri.v[i].divide_w_clip = 0;
-		}
-		else
-		{
-			tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
-		}
+		//if (tri.v[i].uv.x  < 0.0f)
+		//{
+		//	printf("%f,%f,%f\n", tri.v[i].uv.x , tri.v[i].uv.y, tri.v[i].pos.w);
+		//}
+
+		//if (tri.v[i].pos.w == 0.0f)
+		//{
+		//	tri.v[i].divide_w_clip = 0;
+		//}
+		//else
+		//{
+		tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		//}
 		
 		
 		
@@ -577,11 +654,7 @@ void kernScanLineForOneTriangle(int width,int height
 		tri.v[i].pos.z = 0.5f * (tri.v[i].pos.z * tri.v[i].divide_w_clip + 1.0f);
 		tri.v[i].pos.w = 1.0f;
 
-		////1.#QNANO
-		//if (tri.v[i].divide_w_clip == 0.0f)
-		//{
-		//	//printf("%f,%f\n", tri.v[i].pos.x, tri.v[i].divide_w_clip);
-		//}
+
 		
 
 		//perspective correct interpolation
@@ -726,8 +799,101 @@ glm::vec3 phongShading(Light* lights, int num_lights
 }
 
 
+#define BILINEAR_FILTERING
+
+__device__ 
+glm::vec3  getTextureValue_Naive(int w, int h, glm::vec3 * data, glm::vec2 uv)
+{
+	if (uv.x < 0.0f)
+	{
+		uv.x = 0.0f;
+	}
+	else if (uv.x > 1.0f)
+	{
+		uv.x = 1.0f;
+	}
+
+	if (uv.y < 0.0f)
+	{
+		uv.y = 0.0f;
+	}
+	else if (uv.y > 1.0f)
+	{
+		uv.y = 1.0f;
+	}
+
+	int ui = uv.x * w;
+	int vi = uv.y * h;
+
+	return data[ui + vi * w];
+}
+
+
+__device__
+glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
+{
+	if (uv.x < 0.0f)
+	{
+		uv.x = 0.0f;
+	}
+	else if (uv.x > 1.0f)
+	{
+		uv.x = 1.0f;
+	}
+
+	if (uv.y < 0.0f)
+	{
+		uv.y = 0.0f;
+	}
+	else if (uv.y > 1.0f)
+	{
+		uv.y = 1.0f;
+	}
+
+	//if (uv.x < 0.0f || uv.x > 1.0f
+	//	|| uv.y < 0.0f || uv.y > 1.0f)
+	//{
+	//	printf("ERROR: UV  %f,%f!\n",uv.x,uv.y);
+	//	uv.x = 0.0f;
+	//	uv.y = 0.0f;
+	//}
+
+	float u = (float)w * uv.x + 0.5;
+	float v = (float)h * uv.y + 0.5;
+
+
+	int ui = floorf(u);
+	int vi = floorf(v);
+
+	//edge case: treat as tile, loop
+	int ui1 = ui + 1;
+	ui1 = ui1 >= w ? 0 : ui1;
+	int vi1 = vi + 1;
+	vi1 = vi1 >= h ? 0 : vi1;
+
+	float uf = u - ui;
+	float vf = v - vi;
+
+	glm::vec3 z11 = data[ui + vi*w];
+	glm::vec3 z12 = data[ui1 + vi*w];
+	glm::vec3 z21 = data[ui + vi1*w];
+	glm::vec3 z22 = data[ui1 + vi1*w];
+
+	return (
+		(1 - uf)*((1-vf) * z11 + vf * z12)
+		+ uf *((1-vf) * z21 + vf * z22)
+		);
+	
+}
+
+
+
 __global__
-void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* lights,int num_lights, ShaderMode s) {
+void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* lights,int num_lights, ShaderMode s
+			,bool useTexture, bool useDiffuseTex, bool useSpecularTex
+			,int d_wt,int d_ht, int s_wt, int s_ht
+			,glm::vec3 * diffuseTex, glm::vec3 * specularTex
+			,glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, float Ns) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * w);
@@ -754,6 +920,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 		case SHADER_WHITE_MATERIAL:
 		{
 			//using lights
+			//default shading
 			glm::vec3 zero(0.0f);
 			framebuffer[index] = phongShading(lights,  num_lights
 				, db.pos_eye_space, db.normal_eye_space
@@ -766,8 +933,33 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 
 		case SHADER_TEXTURE:
 		{
-			//using texture
-			//using lights
+			if (useTexture)
+			{
+				if (useDiffuseTex)
+				{
+#ifdef BILINEAR_FILTERING
+					diffuse *= getTextureValue_Bilinear(d_wt, d_ht, diffuseTex, db.uv);
+#else
+					diffuse *= getTextureValue_Naive(d_wt, d_ht, diffuseTex, db.uv);
+#endif
+				}
+
+				if (useSpecularTex)
+				{
+#ifdef BILINEAR_FILTERING
+					specular *= getTextureValue_Bilinear(s_wt, s_ht, specularTex, db.uv);
+#else
+					specular *= getTextureValue_Naive(s_wt, s_ht, specularTex, db.uv);
+#endif
+				}
+			}
+
+			framebuffer[index] = phongShading(lights, num_lights
+				, db.pos_eye_space, db.normal_eye_space
+				, ambient
+				, diffuse
+				, specular, Ns
+				);
 			break;
 		}
 
@@ -823,7 +1015,7 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockCount_tri((triCount + blockSize_Rasterize.x - 1) / blockSize_Rasterize.x);
 
 	cudaDeviceSynchronize();
-	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(width, height, dev_primitives, dev_depthbuffer, dev_depth);
+	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(triCount,  width, height, dev_primitives, dev_depthbuffer, dev_depth);
 
 
 	//fragment shader
@@ -832,9 +1024,14 @@ void rasterize(uchar4 *pbo) {
 
     // Copy depthbuffer colors into framebuffer
 	cudaDeviceSynchronize();
-    render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer,dev_lights, lightsCount, shaderMode);
-
-
+	render << <blockCount2d, blockSize2d >> >(width, height,
+		dev_depthbuffer, dev_framebuffer,
+		dev_lights, lightsCount, shaderMode
+		, hasTexture, hasDiffuseTex, hasSpecularTex
+		, diffuse_width,diffuse_height,specular_width,specular_height
+		, dev_diffuse_texture_data, dev_specular_texture_data
+		, materialAmbient, materialDiffuse, materialSpecular, materialNs);
+	
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
 	cudaDeviceSynchronize();
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
@@ -872,6 +1069,15 @@ void rasterizeFree() {
 
 	cudaFree(dev_lights);
 	dev_lights = NULL;
+
+
+	cudaFree(dev_diffuse_texture_data);
+	dev_diffuse_texture_data = NULL;
+
+	cudaFree(dev_specular_texture_data);
+	dev_specular_texture_data = NULL;
+
+
 
 
     checkCUDAError("rasterizeFree");

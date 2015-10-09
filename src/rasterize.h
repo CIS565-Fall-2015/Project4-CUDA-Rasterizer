@@ -52,7 +52,13 @@ struct Light
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
-        int vertCount, float *bufPos, float *bufNor, float *bufCol);
+		int vertCount, float *bufPos, float *bufNor, float *bufCol, bool useTexture, float *bufUV);
+
+//texture init
+void initTextureData(bool has_diffuse_tex, int d_w, int d_h, glm::vec3 * diffuse_tex,
+	bool has_specular_tex, int s_w, int s_h, glm::vec3 * specular_tex,
+	const glm::vec3 & ambient, const glm::vec3 & diffuse, const glm::vec3 & specular, float Ns);
+
 
 void vertexShader(const glm::mat4 & M, const glm::mat4 & M_model_view, const glm::mat4 & inv_trans_M);
 void rasterize(uchar4 * pbo);

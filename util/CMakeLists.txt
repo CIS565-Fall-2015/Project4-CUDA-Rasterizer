@@ -8,6 +8,8 @@ set(SOURCE_FILES
     "obj.cpp"
     "objloader.hpp"
     "objloader.cpp"
+    "lodepng.cpp"
+    "lodepng.h"
    )
 
 cuda_add_library(util

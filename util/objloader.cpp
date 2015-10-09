@@ -13,6 +13,7 @@
 #include <string.h>
 #include <glm/glm.hpp>
 #include "objloader.hpp"
+#include "lodepng.h"
 
 using namespace std;
 
@@ -39,8 +40,9 @@ objLoader::objLoader(string filename, obj *newMesh) {
                 getline(liness, v, ' ');
                 getline(liness, x, ' ');
                 getline(liness, y, ' ');
-                getline(liness, z, ' ');
-                geomesh->addTextureCoord(glm::vec3(::atof(x.c_str()), ::atof(y.c_str()), ::atof(z.c_str())));
+                //getline(liness, z, ' ');
+                //geomesh->addTextureCoord(glm::vec3(::atof(x.c_str()), ::atof(y.c_str()), ::atof(z.c_str())));
+				geomesh->addTextureCoord(glm::vec2(::atof(x.c_str()), ::atof(y.c_str())));
             } else if (line[0] == 'v' && line[1] == 'n') {
                 string v;
                 string x;
@@ -115,6 +117,22 @@ objLoader::objLoader(string filename, obj *newMesh) {
                     //std::cout << "Vertex Format" << std::endl;
                 }
             }
+			//MY, material(texture)
+			else if (line[0] == 'm')
+			{
+				string linetype;
+				liness >> linetype;
+				if (linetype == "mtllib")
+				{
+					string matfile;
+					liness >> matfile;
+					//parse Material file
+					parseMaterial(matfile);
+				}
+			}
+
+
+
         }
 
         printf("Loaded %d faces & %d vertices from %s\n",
@@ -132,4 +150,116 @@ objLoader::~objLoader() {
 
 obj *objLoader::getMesh() {
     return geomesh;
+}
+
+
+
+void objLoader::parseMaterial(const string & materialfn)
+{
+	printf("Loaded material from %s \n", materialfn.c_str());
+	ifstream matStream;
+	matStream.open(materialfn.c_str());
+	if (matStream.fail()){
+		cerr << "Unable to open file: " << materialfn << endl;
+		cin.get();
+		exit(1);
+	}
+
+	while (!matStream.fail()){
+		string line;
+		string linetype;
+
+		getline(matStream, line);
+		stringstream linestream;
+		linestream.str(line);
+		linestream >> linetype;
+
+		if (linetype == "Kd" ||
+			linetype == "Ka" ||
+			linetype == "Ks"){
+
+			float c[3];
+			linestream >> c[0] >> c[1] >> c[2];
+
+			//Normalize in case of file errors
+			//for(int i=0; i< 3; i++)
+			//  if(c[i] > 1.0f) c[i] = 1.0f;
+
+			glm::vec3 *color = NULL;
+
+			if (linetype == "Kd")
+				color = &geomesh->diffuse_color;
+			if (linetype == "Ka")
+				color = &geomesh->ambient_color;
+			if (linetype == "Ks")
+				color = &geomesh->specular_color;
+
+			if (color != NULL) {
+				(*color)[0] = c[0];
+				(*color)[1] = c[1];
+				(*color)[2] = c[2];
+			}
+		}
+
+		if (linetype == "map_Kd")
+			linestream >> geomesh->diffuse_texture_file;
+
+		if (linetype == "map_Ks")
+			linestream >> geomesh->specular_texture_file;
+
+		if (linetype == "Ns")
+			linestream >> geomesh->specular_exponent;
+	}
+
+	//simple version
+	//int w, h;
+	if (geomesh->diffuse_texture_file != "")
+	{
+		getTexture(geomesh->diffuse_texture_file,
+			geomesh->diffuse_tex, geomesh->diffuse_width, geomesh->diffuse_height);
+	}
+
+	if (geomesh->specular_texture_file != "")
+	{
+		getTexture(geomesh->specular_texture_file,
+			geomesh->specular_tex, geomesh->specular_width, geomesh->specular_height);
+	}
+}
+
+#define MGL_GET_RED(P)   (((P) & 0x000000ff))
+#define MGL_GET_GREEN(P) (((P) & 0x0000ff00) >> 8)
+#define MGL_GET_BLUE(P)  (((P) & 0x00ff0000) >> 16)
+
+void objLoader::getTexture(const string & filename, vector<glm::vec3> & data, int & width, int & height)
+{
+	std::vector<unsigned char> image;
+
+	unsigned w, h;
+	unsigned error = lodepng::decode(image, w, h, filename.c_str());
+
+	width = w;
+	height = h;
+
+
+	// If there's an error, display it.
+	if (error != 0)
+	{
+		std::cout << "error " << error << ": " << lodepng_error_text(error) << std::endl;
+		return;
+	}
+
+	data.resize(w*h);
+	for (int i = 0; i < h; i++)
+	{
+		for (int j = 0; j < w; j++)
+		{
+			int index = (i * w + j);
+
+			//no alpha
+
+			data.at(index).r = (float)((int)image.at(4 * index + 0)) / 255.0f;
+			data.at(index).g = (float)((int)image.at(4 * index + 1)) / 255.0f;
+			data.at(index).b = (float)((int)image.at(4 * index + 2)) / 255.0f;
+		}
+	}
 }
