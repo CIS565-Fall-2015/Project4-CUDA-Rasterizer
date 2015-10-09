@@ -67,3 +67,5 @@ The sole color is boring, and the texture is more interesting that that. First I
 ![](image/dragon_onfire.bmp)
 texture with fog
 ![](image/dragon_onfire_infog.bmp)
+
+PART IX: Performance Analysis
