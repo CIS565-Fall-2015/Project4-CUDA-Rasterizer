@@ -69,3 +69,6 @@ texture with fog
 ![](image/dragon_onfire_infog.bmp)
 
 PART IX: Performance Analysis
+1 Render time in each step:
+Here I divide the render process into six steps: vertex shader, primitive assembly, rasterization, fragment shader, blend, frame buffer.
+![](image/ana_crossobject1.png)
