@@ -5,6 +5,8 @@ set(SOURCE_FILES
     "image.cpp"
     "image.h"
     "sceneStructs.h"
+    "Scene.cpp"
+    "Scene.h"
     )
 
 cuda_add_library(src

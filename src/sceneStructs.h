@@ -8,33 +8,40 @@
 #ifndef SCENESTRUCTS_H_
 #define SCENESTRUCTS_H_
 
+#include <glm/glm.hpp>
+
 struct VertexIn {
     glm::vec3 pos;
     glm::vec3 nor;
     glm::vec3 col;
-    // TODO (optional) add other vertex attributes (e.g. texture coordinates)
 };
 
+//Vertex in screen coordinates
 struct VertexOut {
 	glm::vec3 pos;
 };
 
+//Triangle, saves vertex in screen space and world space
 struct Triangle {
     VertexOut vOut[3];
     VertexIn vIn[3];
     bool keep;
 };
 
+//One fragment, saves color and depth
 struct Fragment {
     glm::vec3 color;
     int depth;
 };
 
+//Light struct
 struct Light {
 	glm::vec3 pos;
 	glm::vec3 col;
 };
 
+//Camera struct
+//TODO: model matrix should be moved out of this
 struct Camera {
 	glm::vec3 pos;
 	glm::vec3 lookat;
@@ -46,6 +53,5 @@ struct Camera {
 	glm::mat4 projection;
 	glm::mat4 cameraMatrix;
 };
-
 
 #endif /* SCENESTRUCTS_H_ */

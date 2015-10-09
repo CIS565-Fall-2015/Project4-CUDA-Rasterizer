@@ -9,10 +9,11 @@
 #include "main.hpp"
 #include "image.h"
 #include <ctime>
+#include "Scene.h"
 
 glm::vec3 *imageColor;
 static std::string startTimeString;
-
+Scene *scene;
 
 //-------------------------------
 //-------------MAIN--------------
@@ -152,6 +153,8 @@ bool init(obj *mesh) {
     if (glewInit() != GLEW_OK) {
         return false;
     }
+
+    scene = new Scene(width, height);
 
     // Initialize other stuff
     initVAO();
@@ -311,30 +314,66 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 
-	if(action == GLFW_PRESS)
+	if(key == GLFW_KEY_ESCAPE && action = GLFW_PRESS)
 	{
+		delete(imageColor);
+		glfwSetWindowShouldClose(window, GL_TRUE);
+	}
+
+	else if(key == GLFW_KEY_SPACE && action = GLFW_PRESS)
+	{
+		saveImage();
+	}
+
+	else
+	{
+		float move = 0.1f;
 		switch(key)
 		{
-			case GLFW_KEY_ESCAPE:
-				delete(imageColor);
-				glfwSetWindowShouldClose(window, GL_TRUE);
+			case GLFW_KEY_A:
+			   	scene->updateCameraPos(glm::vec3(move,0,0));
+			    break;
+
+			case GLFW_KEY_D:
+				scene->updateCameraPos(glm::vec3(-move,0,0));
 				break;
 
-			case GLFW_KEY_SPACE:
-				saveImage();
+			case GLFW_KEY_W:
+				scene->updateCameraPos(glm::vec3(0,move,0));
 				break;
 
-//			case GLFW_KEY_A:
-//
+			case GLFW_KEY_S:
+				scene->updateCameraPos(glm::vec3(0,-move,0));
+				break;
+
+			case GLFW_KEY_R:
+				scene->updateCameraPos(glm::vec3(0,0,move));
+				break;
+
+			case GLFW_KEY_F:
+				scene->updateCameraPos(glm::vec3(0,0,-move));
+				break;
+
+			case GLFW_KEY_UP:
+			   	scene->updateCameraLookAt(glm::vec3(0,move,0));
+			    break;
+
+			case GLFW_KEY_DOWN:
+				scene->updateCameraLookAt(glm::vec3(0,-move,0));
+				break;
+
+			case GLFW_KEY_LEFT:
+				scene->updateCameraLookAt(glm::vec3(-move,0,0));
+				break;
+
+			case GLFW_KEY_RIGHT:
+				scene->updateCameraLookAt(glm::vec3(move,0,0));
+				break;
+
 			default:
 				break;
 		}
 	}
-
-//    case GLFW_KEY_DOWN:  camchanged = true; theta = -0.1f; break;
-//    case GLFW_KEY_UP:    camchanged = true; theta = +0.1f; break;
-//    case GLFW_KEY_RIGHT: camchanged = true; phi = -0.1f; break;
-//    case GLFW_KEY_LEFT:  camchanged = true; phi = +0.1f; break;
 
 //            case GLFW_KEY_A:     camchanged = true; cammove -= glm::vec3(.1f, 0, 0); break;
 //            case GLFW_KEY_D:     camchanged = true; cammove += glm::vec3(.1f, 0, 0); break;

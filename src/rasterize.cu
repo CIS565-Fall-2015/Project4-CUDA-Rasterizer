@@ -16,11 +16,12 @@
 #include <thrust/remove.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
-#include <glm/gtc/matrix_transform.hpp>
 
-#include "sceneStructs.h"
+//#include "sceneStructs.h"
+#include "Scene.h"
 
 extern glm::vec3 *imageColor;
+extern Scene *scene;
 
 struct keep
 {
@@ -141,21 +142,6 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inV
 			t.vIn[0] = inVertex[indices[k_3]];
 			t.vIn[1] = inVertex[indices[k_3+1]];
 			t.vIn[2] = inVertex[indices[k_3+2]];
-
-//			t.vOut[0].pos = outVertex[indices[k_3]].pos;
-//			t.vOut[1].pos = outVertex[indices[k_3+1]].pos;
-//			t.vOut[2].pos = outVertex[indices[k_3+2]].pos;
-
-//			TODO:  figure out the normals
-//			t.vOut[0].nor = outVertex[indices[k_3]].nor;
-//			t.vOut[1].nor = outVertex[indices[k_3+1]].nor;
-//			t.vOut[2].nor = outVertex[indices[k_3+2]].nor;
-
-//			t.vOut[0].col = glm::vec3(1,0,0);
-//			t.vOut[1].col = glm::vec3(0,1,0);
-//			t.vOut[2].col = glm::vec3(0,0,1);
-
-//			t.triNor = triNor;
 		}
 	}
 }
@@ -319,6 +305,7 @@ void rasterizeInit(int w, int h) {
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+
     checkCUDAError("rasterizeInit");
 }
 
@@ -362,26 +349,6 @@ void rasterizeSetBuffers(
 /**
  * Perform rasterization.
  */
-bool run = true;
-
-void createCameraAndLight()
-{
-	//Camera stuff
-	cam.pos = glm::vec3(0,10,5);
-	cam.lookat = glm::vec3(0,0,0);
-	cam.up = glm::vec3(0,-1,0);
-
-	cam.view = glm::lookAt(cam.pos, cam.lookat, cam.up);
-//	cam.projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
-	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
-	cam.model = glm::mat4();
-
-	cam.cameraMatrix = cam.projection * cam.view * cam.model;
-	cam.dir = glm::normalize(cam.lookat - cam.pos);
-
-	light.pos = glm::vec3(1,1,1);
-	light.col = glm::vec3(1,1,1);
-}
 
 void rasterize(uchar4 *pbo) {
     int sideLength2d = 8;
@@ -390,16 +357,16 @@ void rasterize(uchar4 *pbo) {
                       (height - 1) / blockSize2d.y + 1);
 
 
-    int numThreads = 256;
-    int numBlocks;
-    int numTriangles = vertCount/3;
-
-    Triangle *dev_primitivesEnd;
-
-    if(run)
+//    if(scene->run)
     {
-    	//Create the light and Camera
-    	createCameraAndLight();
+        Triangle *dev_primitivesEnd;
+
+        int numThreads = 256;
+        int numBlocks;
+        int numTriangles = vertCount/3;
+
+    	Camera &cam = scene->cam;
+    	Light &light = scene->light;
 
     	//Do vertex shading
     	numBlocks = (vertCount + numThreads -1)/numThreads;
@@ -413,12 +380,13 @@ void rasterize(uchar4 *pbo) {
     	dev_primitivesEnd = dev_primitives + numTriangles;
     	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
     	numTriangles = dev_primitivesEnd - dev_primitives;
+//    	std::cout<<numTriangles;
 
     	//Clear the color and depth buffers
     	kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
     	//Drawing axis
-    	//kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+    	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
     	//Rasterization per triangle
     	numBlocks = (numTriangles + numThreads -1)/numThreads;
@@ -428,7 +396,7 @@ void rasterize(uchar4 *pbo) {
 //    	numBlocks = (width*height + numThreads -1)/numThreads;
 //    	kernRasterize<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles);
 
-    	run = false;
+    	scene->run = false;
     }
 
     // Copy depthbuffer colors into framebuffer
@@ -436,7 +404,9 @@ void rasterize(uchar4 *pbo) {
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
 
+    //Save image data to write to file
     cudaMemcpy(imageColor, dev_framebuffer, width*height*sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+
     checkCUDAError("rasterize");
 }
 
