@@ -23,11 +23,17 @@ Video Demos:
 
 PART O: Program Control
 use R to rotate;
+
 use A,D and W,S to move the light source
+
 use Up and Down arrow to adjust the distance to the object
+
 use Enter to start record images
+
 use Backspace to end record images
+
 use mouse scroll to adjust fovy angle
+
 use mouse move to move around the object.
 
 PART I: Camera Setup(Vertex Shader)
@@ -86,3 +92,7 @@ The AABB used in rasterization greatly improve the fps. If not using this method
 ![](image/acceleration.png)
 The larger the object is, the faster the AABB is.
 Although this greatly improve the speed of the program. For object with larget triangle, or when a triangle take the whole screen, the AABB is useless.
+
+PART X: Reference:
+Camera movement control: http://learnopengl.com/#!Getting-started/Camera
+Object Transformation & Fragment Shading Method: CIS 560 PPT
