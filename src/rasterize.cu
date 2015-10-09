@@ -445,7 +445,7 @@ void updateEdge(Edge & e)
 
 
 __device__
-void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1,float u2, Fragment * fragments, int * depth)
+void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1,float u2, Fragment * fragments, int * depth  , const Triangle & tri)
 {
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
@@ -489,10 +489,23 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 
 
 
-		// Z-buffer comparision
-		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)x-x_left_origin) / gap_x);
+		
+		//VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)x-x_left_origin) / gap_x);
 		
 
+		//using barycentric
+		glm::vec3 t[3] = { glm::vec3(tri.v[0].pos), glm::vec3(tri.v[1].pos), glm::vec3(tri.v[2].pos) };
+		glm::vec3 u = calculateBarycentricCoordinate(t, glm::vec2(x,y));
+		
+		VertexOut p;
+		p.divide_w_clip = u.x * tri.v[0].divide_w_clip + u.y * tri.v[1].divide_w_clip + u.z * tri.v[2].divide_w_clip;
+
+		p.pos = u.x * tri.v[0].pos + u.y * tri.v[1].pos + u.z * tri.v[2].pos;
+		p.color = u.x * tri.v[0].color + u.y * tri.v[1].color + u.z * tri.v[2].color;
+		p.uv = u.x * tri.v[0].uv + u.y * tri.v[1].uv + u.z * tri.v[2].uv;
+
+		p.pos_eye_space = u.x * tri.v[0].pos_eye_space + u.y * tri.v[1].pos_eye_space + u.z * tri.v[2].pos_eye_space;
+		p.noraml_eye_space = u.x * tri.v[0].noraml_eye_space + u.y * tri.v[1].noraml_eye_space + u.z * tri.v[2].noraml_eye_space;
 
 
 		////atomic 
@@ -562,7 +575,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 * e1 - longest y span
 */
 __device__
-void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * fragments, int * depth)
+void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * fragments, int * depth, const Triangle &  tri)
 {
 	// Discard horizontal edge as there is nothing to rasterize
 	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) { return; }
@@ -600,11 +613,11 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 		float u1 = u1_base + ((float)y - y_bot_origin) / e1.gap_y;
 		if (e1.x <= e2.x)
 		{
-			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth);
+			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth, tri);
 		}
 		else
 		{
-			drawOneScanLine(width, e2, e1, y, u2,u1, fragments, depth);
+			drawOneScanLine(width, e2, e1, y, u2,u1, fragments, depth , tri);
 		}
 
 		//update edge
@@ -721,8 +734,8 @@ void kernScanLineForOneTriangle(int num_tri, int width,int height
 	int shortEdge1 = (longEdge + 2) % 3;
 
 	// Rasterize two parts separately
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, depth);
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, depth);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, depth  , tri);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, depth , tri);
 
 	
 
