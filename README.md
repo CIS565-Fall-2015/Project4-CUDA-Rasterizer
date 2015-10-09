@@ -52,3 +52,4 @@ Image without Anti-Aliasing:
 ![](image/withoutAnti.bmp)
 Image with Anti-Aliasing:
 ![](image/withAnti.bmp)
+The effect in the upper part of the image is very obvious. The bottom part is not that good, probably because I only used 4 "ray" in one iteration and the 4 rays all fall in the cow area but they are actually on the boundary. Since this method is very time-comsuming, a larget number of ray in one iteration is not implemented.
