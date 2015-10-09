@@ -60,6 +60,7 @@ void Scene::setDefaultCamera()
 	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
 	cam.model = glm::mat4();
 
+	run = true;
 	configureCameraMatrix();
 }
 
