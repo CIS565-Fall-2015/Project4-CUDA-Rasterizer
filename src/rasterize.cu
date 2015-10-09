@@ -119,10 +119,10 @@ static ShaderMode shaderMode = SHADER_NORMAL;
 
 static Light hst_lights[NUM_LIGHTS] = {
 	Light{ DIRECTION_LIGHT
-	, glm::vec3(0.5f, 0.5f, 0.5f)
+	, glm::vec3(1.0f, 1.0f, 1.0f)
 	, glm::normalize(glm::vec3(1.0f, -2.0f, 1.0f)), true },
 	Light{ DIRECTION_LIGHT
-	,  glm::vec3(0.5f, 0.5f, 0.5f)
+	,  glm::vec3(1.0f, 1.0f, 1.0f)
 	, glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f)), true } };
 
 static int lightsCount = NUM_LIGHTS;
@@ -850,6 +850,7 @@ glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
 		uv.y = 1.0f;
 	}
 
+
 	//if (uv.x < 0.0f || uv.x > 1.0f
 	//	|| uv.y < 0.0f || uv.y > 1.0f)
 	//{
@@ -867,17 +868,21 @@ glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
 
 	//edge case: treat as tile, loop
 	int ui1 = ui + 1;
-	ui1 = ui1 >= w ? 0 : ui1;
+	ui1 = (ui1 >= w) ? 0 : ui1;
 	int vi1 = vi + 1;
-	vi1 = vi1 >= h ? 0 : vi1;
+	vi1 = (vi1 >= h) ? 0 : vi1;
 
 	float uf = u - ui;
 	float vf = v - vi;
+
+	//printf("%d,%d\n", ui, vi);
 
 	glm::vec3 z11 = data[ui + vi*w];
 	glm::vec3 z12 = data[ui1 + vi*w];
 	glm::vec3 z21 = data[ui + vi1*w];
 	glm::vec3 z22 = data[ui1 + vi1*w];
+
+
 
 	return (
 		(1 - uf)*((1-vf) * z11 + vf * z12)
@@ -896,15 +901,21 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 			,glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, float Ns) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	//flip
+	int index_framebuffer = (w - 1 - x) + w * (h - 1 - y);
+	///
+
 	int index = x + (y * w);
 
 	if (x < w && y < h) {
 		//framebuffer[index] = depthbuffer[index].color;
 		Fragment & db = depthbuffer[index];
+		glm::vec3 & fb = framebuffer[index_framebuffer];
 
 		if (!db.has_fragment)
 		{
-			framebuffer[index] = BACKGROUND_COLOR;
+			fb = BACKGROUND_COLOR;
 			return;
 		}
 
@@ -913,7 +924,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 		{
 		case SHADER_NORMAL:
 		{
-			framebuffer[index] = db.normal_eye_space;
+			fb = db.normal_eye_space;
 			break;
 		}
 			
@@ -922,7 +933,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 			//using lights
 			//default shading
 			glm::vec3 zero(0.0f);
-			framebuffer[index] = phongShading(lights,  num_lights
+			fb = phongShading(lights, num_lights
 				, db.pos_eye_space, db.normal_eye_space
 				, zero//glm::vec3(0.1f, 0.1f, 0.1f)
 				, glm::vec3(1.0f, 0.0f, 0.0f)
@@ -943,7 +954,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 					diffuse *= getTextureValue_Naive(d_wt, d_ht, diffuseTex, db.uv);
 #endif
 				}
-
+//
 				if (useSpecularTex)
 				{
 #ifdef BILINEAR_FILTERING
@@ -954,7 +965,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 				}
 			}
 
-			framebuffer[index] = phongShading(lights, num_lights
+			fb = phongShading(lights, num_lights
 				, db.pos_eye_space, db.normal_eye_space
 				, ambient
 				, diffuse

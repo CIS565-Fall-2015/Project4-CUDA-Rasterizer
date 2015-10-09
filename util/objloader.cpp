@@ -255,11 +255,13 @@ void objLoader::getTexture(const string & filename, vector<glm::vec3> & data, in
 		{
 			int index = (i * w + j);
 
+			int index_img = (h - 1 - i) * w + j;
+
 			//no alpha
 
-			data.at(index).r = (float)((int)image.at(4 * index + 0)) / 255.0f;
-			data.at(index).g = (float)((int)image.at(4 * index + 1)) / 255.0f;
-			data.at(index).b = (float)((int)image.at(4 * index + 2)) / 255.0f;
+			data.at(index).r = (float)((int)image.at(4 * index_img + 0)) / 255.0f;
+			data.at(index).g = (float)((int)image.at(4 * index_img + 1)) / 255.0f;
+			data.at(index).b = (float)((int)image.at(4 * index_img + 2)) / 255.0f;
 		}
 	}
 }
