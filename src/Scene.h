@@ -20,7 +20,7 @@ public:
 
 	bool run;
 	Camera cam;
-	Light light;
+	Light light1, light2;
 	int width, height;
 	glm::vec3 *imageColor;
 
@@ -30,6 +30,8 @@ public:
 	void setDefaultCamera();
 	void updateCameraPos(glm::vec3);
 	void updateCameraLookAt(glm::vec3);
+	void moveModel(glm::vec3);
+	void rotateModel(glm::vec3);
 };
 
 

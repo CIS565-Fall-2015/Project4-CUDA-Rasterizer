@@ -19,6 +19,7 @@ struct VertexIn {
 //Vertex in screen coordinates
 struct VertexOut {
 	glm::vec3 pos;
+	glm::vec3 nor;
 };
 
 //Triangle, saves vertex in screen space and world space

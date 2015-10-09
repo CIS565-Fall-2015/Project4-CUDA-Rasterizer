@@ -49,15 +49,17 @@ int main(int argc, char **argv) {
     // Launch CUDA/GL
     if (init(mesh)) {
         // GLFW main loop
-        mainLoop();
+        mainLoop(mesh);
     }
 
     return 0;
 }
 
-void mainLoop() {
+void mainLoop(obj *mesh) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+//        rasterizeInit(width, height);
+//        setPrimitiveBuffer(mesh->getBufIdxsize());
         runCuda();
 
         time_t seconds2 = time (NULL);
@@ -327,46 +329,61 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 	else
 	{
 		float move = 0.1f;
+		float angle = 0.1f;
 		switch(key)
 		{
 			case GLFW_KEY_A:
-			   	scene->updateCameraPos(glm::vec3(move,0,0));
+//			   	scene->updateCameraPos(glm::vec3(move,0,0));
+			   	scene->moveModel(glm::vec3(move,0,0));
 			    break;
 
 			case GLFW_KEY_D:
-				scene->updateCameraPos(glm::vec3(-move,0,0));
+				//scene->updateCameraPos(glm::vec3(-move,0,0));
+				scene->moveModel(glm::vec3(-move,0,0));
 				break;
 
 			case GLFW_KEY_W:
-				scene->updateCameraPos(glm::vec3(0,move,0));
+//				scene->updateCameraPos(glm::vec3(0,move,0));
+				scene->moveModel(glm::vec3(0,move,0));
 				break;
 
 			case GLFW_KEY_S:
-				scene->updateCameraPos(glm::vec3(0,-move,0));
+//				scene->updateCameraPos(glm::vec3(0,-move,0));
+				scene->moveModel(glm::vec3(0,-move,0));
 				break;
 
 			case GLFW_KEY_R:
-				scene->updateCameraPos(glm::vec3(0,0,move));
+//				scene->updateCameraPos(glm::vec3(0,0,move));
+				scene->moveModel(glm::vec3(0,0,move));
 				break;
 
 			case GLFW_KEY_F:
-				scene->updateCameraPos(glm::vec3(0,0,-move));
+//				scene->updateCameraPos(glm::vec3(0,0,-move));
+				scene->moveModel(glm::vec3(0,0,-move));
 				break;
 
 			case GLFW_KEY_UP:
-			   	scene->updateCameraLookAt(glm::vec3(0,move,0));
+//			   	scene->updateCameraLookAt(glm::vec3(0,move,0));
+			   	scene->rotateModel(glm::vec3(angle,0,0));
 			    break;
 
 			case GLFW_KEY_DOWN:
-				scene->updateCameraLookAt(glm::vec3(0,-move,0));
+//				scene->updateCameraLookAt(glm::vec3(0,-move,0));
+				scene->rotateModel(glm::vec3(-angle,0,0));
 				break;
 
 			case GLFW_KEY_LEFT:
-				scene->updateCameraLookAt(glm::vec3(-move,0,0));
+//				scene->updateCameraLookAt(glm::vec3(-move,0,0));
+				scene->rotateModel(glm::vec3(0, -angle ,0));
 				break;
 
 			case GLFW_KEY_RIGHT:
-				scene->updateCameraLookAt(glm::vec3(move,0,0));
+//				scene->updateCameraLookAt(glm::vec3(move,0,0));
+				scene->rotateModel(glm::vec3(0,angle,0));
+				break;
+
+			case GLFW_KEY_K:
+				scene->setDefaultCamera();
 				break;
 
 			default:

@@ -7,6 +7,8 @@
 
 #include "Scene.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <util/utilityCore.hpp>
+#include <iostream>
 
 Scene::Scene(int w, int h)
 {
@@ -32,18 +34,17 @@ void Scene::setWidthHeight(int w, int h)
 
 void Scene::configureCameraMatrix()
 {
-	cam.view = glm::lookAt(cam.pos, cam.lookat, cam.up);
-	////	cam.projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
-	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
-	cam.model = glm::mat4();
 	cam.cameraMatrix = cam.projection * cam.view * cam.model;
 	cam.dir = glm::normalize(cam.lookat - cam.pos);
 }
 
 void Scene::setLights()
 {
-	light.pos = glm::vec3(1,1,1);
-	light.col = glm::vec3(1,1,1);
+	light1.pos = glm::vec3(1,1,1);
+	light1.col = glm::vec3(1,1,1);
+
+	light2.pos = glm::vec3(-1,1,-1);
+	light2.col = glm::vec3(1,1,1);
 }
 
 void Scene::setDefaultCamera()
@@ -51,6 +52,10 @@ void Scene::setDefaultCamera()
 	cam.pos = glm::vec3(0,0,5);
 	cam.lookat = glm::vec3(0,0,0);
 	cam.up = glm::vec3(0,-1,0);
+	cam.view = glm::lookAt(cam.pos, cam.lookat, cam.up);
+	////	cam.projection = glm::frustum<float>(-1, 1, -1, 1, -1, 1);
+	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
+	cam.model = glm::mat4();
 
 	configureCameraMatrix();
 }
@@ -65,6 +70,20 @@ void Scene::updateCameraPos(glm::vec3 p)
 void Scene::updateCameraLookAt(glm::vec3 p)
 {
 	cam.lookat += p;
+	run = true;
+	configureCameraMatrix();
+}
+
+void Scene::moveModel(glm::vec3 m)
+{
+	cam.model = utilityCore::buildTransformationMatrix(m, glm::vec3(0,0,0), glm::vec3(1,1,1)) * cam.model;
+	run = true;
+	configureCameraMatrix();
+}
+
+void Scene::rotateModel(glm::vec3 r)
+{
+	cam.model = utilityCore::buildTransformationMatrix(glm::vec3(0,0,0), r, glm::vec3(1,1,1)) * cam.model;
 	run = true;
 	configureCameraMatrix();
 }
