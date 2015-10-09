@@ -8,6 +8,8 @@
 
 #include "main.hpp"
 
+#include <glm/gtx/rotate_vector.hpp>
+
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
@@ -106,6 +108,9 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
+	glfwSetCursorPosCallback(window, mouseMoveCallback);
+	glfwSetMouseButtonCallback(window, mousePressCallback);
+	glfwSetScrollCallback(window, mouseScrollCallback);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -274,4 +279,76 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+}
+
+void mouseMoveCallback(GLFWwindow *window, double x, double y) {
+	if (!scene->mouseState.initialPositionsSet) {
+		// Have to set a baseline position for our offsets to base off of
+		scene->mouseState.x = x;
+		scene->mouseState.y = y;
+		scene->mouseState.initialPositionsSet = true;
+	}
+	else {
+		if (scene->mouseState.leftPressed) {
+			// Holding the left mouse rotates the camera.
+			glm::vec3 inverseLookAt = scene->camera.position - scene->camera.lookAt;
+			float xOffset = 0.005f * (scene->mouseState.x - (float)x);
+			float yOffset = 0.005f * (scene->mouseState.y - (float)y);
+			glm::vec3 tempInverseLookAt = glm::rotateY(inverseLookAt, glm::atan((float)(xOffset / 
+				(TWO_PI * glm::length(inverseLookAt))), glm::length(inverseLookAt)));
+
+			scene->camera.right = glm::normalize(glm::rotateY(glm::vec3(inverseLookAt.x, 0.0f, inverseLookAt.z), (float)(PI / 2.0)));
+			scene->camera.position = scene->camera.lookAt + glm::rotate(tempInverseLookAt, glm::atan(yOffset /
+				(float)(TWO_PI * glm::length(inverseLookAt)), glm::length(tempInverseLookAt)), scene->camera.right);
+			scene->updateModelView();
+		}
+		else if (scene->mouseState.middlePressed) {
+			// Holding middle will translate the camera
+			float xOffset = 0.0001f * (scene->mouseState.x - (float)x);
+			float yOffset = 0.0001f * ((float)y - scene->mouseState.y);
+			glm::vec3 tempPosition = (scene->camera.position + scene->camera.right * xOffset) + (scene->camera.up * yOffset);
+			glm::vec3 tempLookAt = scene->camera.lookAt - tempPosition;
+
+			if (glm::length(tempLookAt) > 1.0f) {
+				// Restrict amount user can pan to stop going through model
+				scene->camera.lookAt = scene->camera.lookAt + tempPosition - scene->camera.position;
+				scene->camera.position = tempPosition;
+				scene->updateModelView();
+			}
+		}
+	}
+}
+
+void mousePressCallback(GLFWwindow *window, int button, int action, int mods) {
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+		// Mark left mouse button as held
+		scene->mouseState.leftPressed = true;
+		scene->mouseState.initialPositionsSet = false;
+	}
+	else if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS) {
+		// Mark right mouse button as held
+		scene->mouseState.middlePressed = true;
+		scene->mouseState.initialPositionsSet = false;
+	}
+	else if (action == GLFW_RELEASE) {
+		// Reset the flags for which button is held
+		scene->mouseState.leftPressed = false;
+		scene->mouseState.middlePressed = false;
+		scene->mouseState.initialPositionsSet = true;
+	}
+}
+
+void mouseScrollCallback(GLFWwindow *window, double x, double y) {
+	if (y > 0.0) {
+		glm::vec3 tempLookAt = scene->camera.lookAt - scene->camera.position;
+		if (glm::length(tempLookAt) > 1.0) {
+			// Stop user from zooming in too close and through/past the model
+			scene->camera.position += glm::normalize(tempLookAt) * 0.1f;
+			scene->updateModelView();
+		}
+	}
+	else if (y < 0.0) {
+		scene->camera.position = scene->camera.position + (glm::normalize(scene->camera.position - scene->camera.lookAt) * 0.1f);
+		scene->updateModelView();
+	}
 }

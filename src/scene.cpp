@@ -17,6 +17,8 @@ Scene::Scene() {
 
 	culling = true;
 
+	mouseState.initialPositionsSet = false;
+
 	// Then have to calculate hte model view matrix
 	updateModelView();
 }
@@ -36,6 +38,9 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	light2.color = light2Color;
 
 	this->culling = culling;
+	mouseState.initialPositionsSet = false;
+	mouseState.leftPressed = false;
+	mouseState.middlePressed = false;
 
 	// Then have to calculate hte model view matrix
 	updateModelView();

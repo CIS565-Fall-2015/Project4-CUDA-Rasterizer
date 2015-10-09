@@ -4,6 +4,13 @@
 
 using namespace std;
 
+struct MouseState {
+	bool initialPositionsSet;
+	int x, y;
+	bool leftPressed;
+	bool middlePressed;
+};
+
 struct Camera {
 	float fieldOfView;
 	glm::vec3 position;
@@ -25,6 +32,8 @@ private:
 
 public:
 	Camera camera;
+
+	MouseState mouseState;
 
 	float nearPlane;
 	float farPlane;
