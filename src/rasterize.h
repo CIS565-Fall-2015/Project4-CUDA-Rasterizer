@@ -42,6 +42,7 @@ struct VertexOut {
 };
 struct Triangle {
 	VertexOut v[3];
+	glm::vec3 ndc_pos[3];
 };
 struct Fragment {
 	glm::vec3 color;

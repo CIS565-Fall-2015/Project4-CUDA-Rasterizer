@@ -17,7 +17,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
 
-#define MAX_THREADS 512
+#define MAX_THREADS 128
+
+static int iter;
 
 static int width = 0;
 static int height = 0;
@@ -27,6 +29,7 @@ static VertexOut *dev_bufVertexOut = NULL;
 static Triangle *dev_primitives = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
+static int* dev_locks = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static Light light;
@@ -37,7 +40,6 @@ static int numVertBlocks;
 static int numPrimBlocks;
 static int numFragBlocks;
 
-//TODO: Change these so we can move the camera around
 //static Cam cam; 
 static glm::mat4 Mview;
 static glm::mat4 Mmod;
@@ -81,7 +83,7 @@ __global__ void initDepths(int n, Fragment* depthbuffer){
 	int index = threadIdx.x + (blockDim.x*blockIdx.x);
 
 	if (index < n){
-		depthbuffer[index].fixed_depth = 1 * INT_MAX;
+		depthbuffer[index].fixed_depth = INT_MAX;
 	}
 }
 
@@ -94,11 +96,17 @@ void rasterizeInit(int w, int h) {
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+
+	//cudaFree(dev_locks);
+	//cudaMalloc(&dev_locks, width * height * sizeof(int));
+	//cudaMemset(dev_locks, 0, width * height * sizeof(int));
+
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
 
 	light.pos = glm::vec3(3.0, 3.0, 3.0);
+	iter = 0;
     checkCUDAError("rasterizeInit");
 }
 
@@ -150,13 +158,13 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
-__global__ void kernShadeVertices(int n, VertexOut* vs_output, VertexIn* vs_input, glm::mat4 Mp, glm::mat4 Mv, glm::mat4 Mm){
+__global__ void kernShadeVertices(int n, VertexOut* vs_output, VertexIn* vs_input, glm::mat4 Mpvm){
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
 		vs_output[index].pos = vs_input[index].pos;
 		
-		glm::vec4 new_pos = Mp * Mv * Mm * glm::vec4(vs_input[index].pos, 1.0f);
+		glm::vec4 new_pos = Mpvm * glm::vec4(vs_input[index].pos, 1.0f);
 		vs_output[index].ndc_pos = glm::vec3(new_pos / new_pos.w);
 		vs_output[index].nor = vs_input[index].nor;
 		vs_output[index].col = vs_input[index].col;
@@ -173,6 +181,9 @@ __global__ void kernAssemblePrimitives(int n, Triangle* primitives, VertexOut* v
 		primitives[index].v[0] = vs_output[idx0];
 		primitives[index].v[1] = vs_output[idx1];
 		primitives[index].v[2] = vs_output[idx2];
+		primitives[index].ndc_pos[0] = vs_output[idx0].ndc_pos;
+		primitives[index].ndc_pos[1] = vs_output[idx1].ndc_pos;
+		primitives[index].ndc_pos[2] = vs_output[idx2].ndc_pos;
 		primitives[index].v[0].col = glm::vec3(1.0, 0.0, 0.0);
 		primitives[index].v[1].col = glm::vec3(1.0, 0.0, 0.0);
 		primitives[index].v[2].col = glm::vec3(1.0, 0.0, 0.0);
@@ -180,22 +191,18 @@ __global__ void kernAssemblePrimitives(int n, Triangle* primitives, VertexOut* v
 }
 
 // Each thread is responsible for rasterizing a single triangle
-__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives, glm::mat4 Mvm, glm::mat4 Mp){//, int* mutex){
+__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives, glm::mat4 Mvm, glm::mat4 Mp){
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
+		
 		Triangle prim = primitives[index];
-		glm::vec3* tri = new glm::vec3[3];
+		glm::vec4 viewport(0,0,cam.width,cam.height);
 
-		tri[0] = glm::vec3(prim.v[0].ndc_pos);
-		tri[1] = glm::vec3(prim.v[1].ndc_pos);
-		tri[2] = glm::vec3(prim.v[2].ndc_pos);
-
-		glm::vec4 viewpoint(0,0,cam.width,cam.height);
-
-		AABB aabb = getAABBForTriangle(tri);
+		AABB aabb = getAABBForTriangle(primitives[index].ndc_pos);
 		glm::vec3 bary;
 		glm::vec2 point;
+		glm::vec3 points;
 
 		// TODO: Snap i,j to nearest fragment coordinate
 		float dx = 2.0f / (float)cam.width;
@@ -204,67 +211,45 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 		float x;
 		float y;
 
-		int mini = max((int)(aabb.min.x / dx) + cam.width / 2, 0);
-		int minj = max((int)(aabb.min.y / dy) + cam.height / 2, 0);
-		int maxi = min((int)(aabb.max.x / dx) + cam.width / 2, cam.width);
-		int maxj = min((int)(aabb.max.y / dy) + cam.height / 2, cam.height);
+		int mini = max((int)(aabb.min.x / dx) + cam.width / 2 - 2, 0);
+		int minj = max((int)(aabb.min.y / dy) + cam.height / 2 - 2, 0);
+		int maxi = min((int)(aabb.max.x / dx) + cam.width / 2 + 2, cam.width-1);
+		int maxj = min((int)(aabb.max.y / dy) + cam.height / 2 + 2, cam.height-1);
 
 		float depth;
 		int fixed_depth;
+		int ind;
 
 		for (int j = minj; j < maxj; j++){
 			for (int i = mini; i < maxi; i++){
-				x = dx*i - dx*cam.width/2.0f;
+
+				ind = i + j * cam.width;
+				
+				x = dx*i - dx*cam.width/2.0f-0.001;
 				y = dy*j - dy*cam.height/2.0f;
 
 				point[0] = x;
 				point[1] = y;
-				bary = calculateBarycentricCoordinate(tri, point);
+
+				bary = calculateBarycentricCoordinate(primitives[index].ndc_pos, point);
 
 				if (isBarycentricCoordInBounds(bary)){
-					//printf("bary: %f %f %f\n", prim.v[0].col.r, prim.v[0].col.g, prim.v[0].col.b);
-					depth = bary[0] * prim.v[0].ndc_pos[2] + bary[1] * prim.v[1].ndc_pos[2] + bary[2] * prim.v[2].ndc_pos[2];
-					fixed_depth = (int)(depth * INT_MAX);
-					
-					/*
-					int ind = i + j * cam.width;
+					depth = getZAtCoordinate(bary, prim.ndc_pos);
+					if (depth > -1.0 && depth < 1.0){
+						fixed_depth = (int)(depth * INT_MAX);
 
-					bool isSet = false;
-					do
-					{
-						if (isSet = atomicCAS(&mutex[ind], 0, 1) == 0)
-						{
-							if (fs_input[ind].depth > depth){
-								fs_input[i + j*cam.width].depth = depth;
-								fs_input[i + j*cam.width].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
-								fs_input[i + j*cam.width].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
-								fs_input[i + j*cam.width].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
-							}
-							mutex[ind] = 0;
+						int old = atomicMin(&fs_input[ind].fixed_depth, fixed_depth);
+
+						if (fs_input[ind].fixed_depth == fixed_depth){
+							fs_input[ind].depth = depth;
+							fs_input[ind].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
+							fs_input[ind].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
+							fs_input[ind].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
+							//fs_input[ind].color = fs_input[ind].norm;
 						}
-						if (isSet)
-						{
-							mutex[ind] = 0;
-						}
-					} while (!isSet);
-					*/
-
-					int old = atomicMin(&fs_input[i + j*cam.width].fixed_depth, fixed_depth);
-
-					if (fs_input[i + j*cam.width].fixed_depth == fixed_depth){
-					//if (fs_input[i + j*cam.width].fixed_depth != old){
-						fs_input[i + j*cam.width].depth = depth;
-						fs_input[i + j*cam.width].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
-						fs_input[i + j*cam.width].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
-						fs_input[i + j*cam.width].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
-						
-						//fs_input[i + j*cam.width].color = glm::vec3(1.0, 0.0, 0.0);
-						//fs_input[i + j*cam.width].color = fs_input[i + j*cam.width].norm;
-						//printf("%f  %f  %f\n", (depth + 1.0f) / 2.0f, depth, prim.v[0].ndc_pos[2]);
-						//fs_input[i + j*cam.width].color = glm::vec3((depth + 1.0f)/2.0f);
 					}
-					
 				}
+				
 			}
 		}
 	}
@@ -276,7 +261,7 @@ __global__ void kernShadeFragments(int n, Fragment* fs_input, Light light){
 	if (index < n){
 		if (fs_input[index].color != glm::vec3(0.0)){
 			glm::vec3 light_ray = glm::normalize(fs_input[index].pos - light.pos);
-			fs_input[index].color = fs_input[index].color * -(glm::dot(glm::normalize(fs_input[index].norm), light_ray));
+			fs_input[index].color = fs_input[index].color * abs((glm::dot(glm::normalize(fs_input[index].norm), light_ray)));
 		}
 	}
 }
@@ -292,11 +277,12 @@ void resetRasterize(){
 	cudaFree(dev_depthbuffer);
 	cudaMalloc(&dev_depthbuffer, fragCount * sizeof(Fragment));
 	cudaMemset(dev_depthbuffer, 0, fragCount * sizeof(Fragment));
-	initDepths << <numFragBlocks, MAX_THREADS >> >(width*height, dev_depthbuffer);
+	initDepths<<<numFragBlocks, MAX_THREADS >> >(width*height, dev_depthbuffer);
 
 	cudaFree(dev_framebuffer);
 	cudaMalloc(&dev_framebuffer, width * height * sizeof(glm::vec3));
 	cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+	checkCUDAError("resetBuffers");
 }
 
 /**
@@ -315,30 +301,31 @@ void rasterize(uchar4 *pbo, Cam cam) {
 	Mview = glm::lookAt(cam.pos, cam.focus, cam.up);
 	Mproj = glm::perspective(cam.fovy, cam.aspect, cam.zNear, cam.zFar);
 
-	//glm::vec4 viewport(0,0,800,800);
-	//glm::vec3 h = glm::project(glm::vec3(0.99, 0.0, 0.0), Mview*Mmod, Mproj, viewport);
-	//printf("%f %f %f\n",h.x,h.y,h.z);
+	glm::mat4 Mvm = Mview * Mmod;
+	glm::mat4 Mpvm = Mproj * Mvm;
 
-	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mproj, Mview, Mmod);
+	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);
+	checkCUDAError("shadeVertices");
 
 	// Primitive Assembly
 	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
+	checkCUDAError("assemblePrimitives");
 
 	// Rasterization
-	//int* dev_mutex;
-	//cudaMalloc((void**)&dev_mutex, fragCount*sizeof(int));
-	//cudaMemset(dev_mutex, 0, fragCount*sizeof(int));
-	//kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mview*Mmod,Mproj, dev_mutex);
-	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mview*Mmod, Mproj);
+	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mvm, Mproj);
+	checkCUDAError("rasterizePrimitives");
 
 	// Fragment shading
 	kernShadeFragments<<<numFragBlocks, MAX_THREADS>>>(fragCount, dev_depthbuffer, light);
+	checkCUDAError("shadeFragments");
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
     checkCUDAError("rasterize");
+
+	iter += 1;
 }
 
 /**
