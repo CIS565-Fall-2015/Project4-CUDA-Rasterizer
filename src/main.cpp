@@ -18,6 +18,25 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+	cout<<"use texture(y/n)"<<endl;
+	char ustexture='n';
+	cin>>ustexture;
+	if(ustexture=='y'){
+		cout<<"input texture file path"<<endl;
+		cin>>texture;
+	}
+	else{
+		texture="";
+	}
+	char usFog;
+	cout<<"use fog(y/n)"<<endl;
+	cin>>usFog;
+	if(usFog=='y') fog=true;
+	char usAnti;
+	cout<<"use anti(y/n)"<<endl;
+	cin>>usAnti;
+	if(usAnti=='y') anti=4;
+
     obj *mesh = new obj();
 
     {
@@ -78,12 +97,12 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr,lightPos,cameraUp,cameraFront,fov,cameraDis,rotation);
+	rasterize(dptr,lightPos,cameraUp,cameraFront,fov,cameraDis,rotation,outputImage,fog,anti,frame);
+	//outputImage=false;
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
     fpstracker++;
-
 }
 
 //-------------------------------
@@ -130,7 +149,7 @@ bool init(obj *mesh) {
     };
     rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
             mesh->getBufPossize() / 3,
-            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol(), mesh->getBufTex(),mesh->getTexIdx());
 
     GLuint passthroughProgram;
     passthroughProgram = initShader();
@@ -163,7 +182,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-	rasterizeInit(width, height);
+	rasterizeInit(width, height, texture);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -292,11 +311,14 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		cameraDis-=0.1f;
 	if(key == GLFW_KEY_DOWN)
 		cameraDis+=0.1f;
-	if(cameraDis>10.0f) cameraDis=10.0f;
+	if(cameraDis>20.0f) cameraDis=20.0f;
 	if(cameraDis<0.2f) cameraDis=0.2f;
 
 	if(key == GLFW_KEY_R)
 		rotation+=5.0f;
+
+	if(key == GLFW_KEY_ENTER)
+		outputImage=true;
 }
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos)
@@ -313,7 +335,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos)
     lastX = xpos;
     lastY = ypos;
 
-    GLfloat sensitivity = 0.25;	
+    GLfloat sensitivity = 0.5;	
     xoffset *= sensitivity;
     yoffset *= sensitivity;
 
