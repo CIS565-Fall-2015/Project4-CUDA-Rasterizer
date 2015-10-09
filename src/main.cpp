@@ -11,6 +11,7 @@
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
+glm::vec3 camCoords(0.0, 0.0,  0.0);
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -24,7 +25,7 @@ int main(int argc, char **argv) {
         objLoader loader(argv[1], mesh);
         mesh->buildBufPoss();
     }
-
+	
     frame = 0;
     seconds = time(NULL);
     fpstracker = 0;
@@ -106,7 +107,8 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
-
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetCursorPosCallback(window, cursor_pos_callback);
     // Set up GL context
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -269,8 +271,54 @@ void errorCallback(int error, const char *description) {
     fputs(description, stderr);
 }
 
+
+
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+	if (action == GLFW_PRESS) {
+		switch (key) {
+		case GLFW_KEY_ESCAPE:
+
+			glfwSetWindowShouldClose(window, GL_TRUE);
+			break;
+		}
+	}
+}
+double xStartpos, yStartpos;
+double xEndpos, yEndpos;
+double angleX, angleY;
+bool mouseDown = false;
+void mouse_button_callback(GLFWwindow *window, int button, int action, int mods){
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+		mouseDown = true;
+		glfwGetCursorPos(window, &xStartpos, &yStartpos);
+
+		//printf("start: (%f, %f) \n", xStartpos, yStartpos);
+
+	}
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
+		
+		glfwGetCursorPos(window, &xEndpos, &yEndpos);
+		mouseDown = false;
+		
+		
+	}
+
+}
+
+void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos) {
+	if (mouseDown == true) {
+		
+		angleX += (xpos - xStartpos) / 4.0;
+		angleY += (ypos - yStartpos) / 4.0;
+		camCoords.x = angleX * (3.14 / 180.0); //sin(angleX * (3.14 / 180.0)) * -3.0;
+		//camCoords.z = //cos((angleX + angleY) * (3.14 / 180.0)) * 3.0;
+
+		//printf("end: (%f, %f) \n", angleX, angleY);
+		//camCoords.z += cos(angleY * (3.14 / 180.0)) * 3.0;
+		camCoords.y = angleY * (3.14 / 180.0); //sin(angleY * (3.14 / 180.0)) * 3.0;
+		//printf("coords: (%f, %f, %f)", camCoords.x, camCoords.y, camCoords.z);
+		//printf("inhereeee");
+
+	}
+
 }
