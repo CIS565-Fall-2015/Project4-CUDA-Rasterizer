@@ -146,7 +146,7 @@ __global__ void rasterization(Triangle *primitives,Fragment *fg_out,int *depth,g
 				glm::vec2 p((j+dx)*_len-1,1-(i+dy)*_len);
 				glm::vec3 tmp=calculateBarycentricCoordinate(tri,p);
 				glm::vec3 pos=tri[0]*tmp.x+tri[1]*tmp.y+tri[2]*tmp.z;
-				if(pos.x>1||pos.x<-1||pos.y>1||pos.y<-1) return;
+				if(pos.x>1||pos.x<-1||pos.y>1||pos.y<-1) continue;
 				if(isBarycentricCoordInBounds(tmp)){
 					int currentDepth=(int)(1e6*getZAtCoordinate(tmp,tri));
 					atomicMin(&depth[i*Len+j],currentDepth);
@@ -184,7 +184,7 @@ __global__ void rasterization(Triangle *primitives,Fragment *fg_out,int *depth,g
 							fg_out[i*Len+j].color*=(textureColor/255.0f);
 
 						//fg_out[i*Len+j].color=normal;
-						fg_out[i*Len+j].color=glm::vec3(1,1,1);
+						//fg_out[i*Len+j].color=glm::vec3(1,1,1);
 					}
 				}
 			}
