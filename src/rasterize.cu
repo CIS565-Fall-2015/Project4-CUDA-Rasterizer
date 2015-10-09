@@ -133,6 +133,12 @@ static Light* dev_lights = NULL;
 void changeShaderMode()
 {
 	shaderMode = (ShaderMode)((shaderMode+1) % 3);
+
+	if (!hasTexture && shaderMode == SHADER_TEXTURE)
+	{
+		shaderMode = SHADER_NORMAL;
+	}
+
 	printf("change shading mode %d\n",(int)shaderMode);
 }
 
@@ -366,8 +372,8 @@ VertexOut interpolateVertexOut(const VertexOut & a, const VertexOut & b,float u)
 {
 	VertexOut c;
 
-	if (u < 0.0f){ u = 0.0f; }
-	else if (u > 1.0f){ u = 1.0f; }
+	//if (u < 0.0f){ u = 0.0f; }
+	//else if (u > 1.0f){ u = 1.0f; }
 
 	c.divide_w_clip = (1.0f - u) * a.divide_w_clip + u * b.divide_w_clip;
 	
@@ -444,7 +450,8 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 	int x_left = (int)(ceilf(e1.x) + EPSILON);
 	int x_right = (int)(ceilf(e2.x) + EPSILON);
 
-	
+	float x_left_origin = e1.x;
+	float x_right_origin = e2.x;
 
 	if (x_left < 0)
 	{
@@ -468,12 +475,12 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 
 	//Initialize attributes
 	float dz = (e2.z - e1.z) / (e2.x - e1.x);
-	float z = e1.z + (x_left - e1.x) * dz;
+	float z = e1.z + (x_left_origin - e1.x) * dz;
 
 
 	//Interpolate
 	//printf("%d,%d\n", x_left, x_right);
-	float gap_x = x_right - x_left;
+	float gap_x = x_right_origin - x_left_origin;
 	for (int x = x_left; x < x_right; ++x)
 	{
 		int idx = x + y * width;
@@ -481,7 +488,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 
 
 		// Z-buffer comparision
-		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)(x-x_left)) / gap_x);
+		VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)x-x_left_origin) / gap_x);
 		
 
 
@@ -563,7 +570,8 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 	int y_bot = (int)(ceilf(e2.v[0].pos.y) + EPSILON);
 	int y_top = (int)(ceilf(e2.v[1].pos.y) + EPSILON);
 
-	
+	float y_bot_origin = ceilf( e2.v[0].pos.y );
+	float y_top_origin = floorf(e2.v[1].pos.y);
 
 	if (y_bot < 0)
 	{
@@ -578,16 +586,16 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 
 
 	//Initialize edge's structure
-	float u1_base = initEdge(e1, (float)y_bot);
-	initEdge(e2, (float)y_bot);
+	float u1_base = initEdge(e1, y_bot_origin);
+	initEdge(e2, y_bot_origin);
 
 
 	//printf("%f,%f\n", e1.v[0].uv.x / e1.v[0].divide_w_clip, e1.v[0].uv.y / e1.v[0].divide_w_clip );
 
 	for (int y = y_bot; y < y_top; ++y)
 	{
-		float u2 = ((float)(y - y_bot)) / e2.gap_y;
-		float u1 = u1_base + ((float)(y - y_bot)) / e1.gap_y;
+		float u2 = ((float)y - y_bot_origin) / e2.gap_y;
+		float u1 = u1_base + ((float)y - y_bot_origin) / e1.gap_y;
 		if (e1.x <= e2.x)
 		{
 			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth);

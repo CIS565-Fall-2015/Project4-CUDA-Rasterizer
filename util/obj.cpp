@@ -109,14 +109,16 @@ void obj::buildBufPoss() {
                     BufNorvec.push_back(n[2]); //BufNorvec.push_back(0.0f);
                 }
 
-				vector<int> facetex = facetextures[k];
-				BufTexvec.push_back(texturecoords.at(facetex[0]).x);
-				BufTexvec.push_back(texturecoords.at(facetex[0]).y);
-				BufTexvec.push_back(texturecoords.at(facetex[i-1]).x);
-				BufTexvec.push_back(texturecoords.at(facetex[i-1]).y);
-				BufTexvec.push_back(texturecoords.at(facetex[i]).x);
-				BufTexvec.push_back(texturecoords.at(facetex[i]).y);
-
+				if (useTexture)
+				{ 
+					vector<int> facetex = facetextures[k];
+					BufTexvec.push_back(texturecoords.at(facetex[0]).x);
+					BufTexvec.push_back(texturecoords.at(facetex[0]).y);
+					BufTexvec.push_back(texturecoords.at(facetex[i-1]).x);
+					BufTexvec.push_back(texturecoords.at(facetex[i-1]).y);
+					BufTexvec.push_back(texturecoords.at(facetex[i]).x);
+					BufTexvec.push_back(texturecoords.at(facetex[i]).y);
+				}
 
                 BufIdxvec.push_back(index + 0);
                 BufIdxvec.push_back(index + 1);
