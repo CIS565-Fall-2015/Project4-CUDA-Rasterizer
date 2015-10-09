@@ -35,6 +35,7 @@ struct VertexOut {
 struct Triangle {
 	VertexOut v[3];
 	AABB boundingBox;
+	bool visible;
 };
 
 struct Fragment {

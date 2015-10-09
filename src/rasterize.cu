@@ -117,6 +117,7 @@ void assemblePrimitives(int primitiveCount, const VertexOut *vertexBufferOut, Tr
 		}
 
 		primitive.boundingBox = getAABBForTriangle(primitive);
+		primitive.visible = true;
 		primitives[index] = primitive;
 	}
 }
@@ -179,6 +180,18 @@ void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light1, co
 		depthBuffer[index].color = (glm::dot(glm::normalize(light1.position - fragment.position), fragment.normal) 
 			* fragment.color * light1.color) + (glm::dot(glm::normalize(light2.position - fragment.position), 
 			fragment.normal) * fragment.color * light2.color);
+	}
+}
+
+__global__
+void backFaceCulling(int w, int primitiveCount, Triangle *primitives, glm::vec3 cameraPosition) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+
+	if (index < primitiveCount) {
+		Triangle primitive = primitives[index];
+		if (glm::dot(primitive.v[0].model_pos - cameraPosition, primitive.v[0].nor) >= 0.0f) {
+			primitives[index].visible = false;
+		}
 	}
 }
 
@@ -261,6 +274,8 @@ void rasterize(uchar4 *pbo) {
 	
 	// Primitive Assembly
 	assemblePrimitives<<<vertexGridSize, vertexBlockSize>>>(primitiveCount, dev_bufVertexOut, dev_primitives, dev_bufIdx);
+
+	// Culling after Primitive assembly
 
 	// rasterization
 	raserization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
