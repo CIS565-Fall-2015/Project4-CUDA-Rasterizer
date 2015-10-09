@@ -16,7 +16,7 @@ Scene::Scene() {
 	light2.color = glm::vec3(1.0f);
 
 	culling = true;
-	pointRasterization = true;
+	pointRasterization = false;
 	lineRasterization = false;
 
 	mouseState.initialPositionsSet = false;
