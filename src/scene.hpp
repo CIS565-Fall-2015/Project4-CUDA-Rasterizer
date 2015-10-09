@@ -44,6 +44,8 @@ public:
 	Light light2;
 
 	bool culling;
+	bool pointRasterization;
+	bool lineRasterization;
 
 	Scene();
 	Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, 

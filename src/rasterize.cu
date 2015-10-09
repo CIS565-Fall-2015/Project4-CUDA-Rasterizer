@@ -125,7 +125,7 @@ void assemblePrimitives(int primitiveCount, const VertexOut *vertexBufferOut, Tr
 }
 
 __global__
-void raserization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
+void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
 
 	if (index < primitiveCount) {
@@ -148,7 +148,7 @@ void raserization(int w, int h, int primitiveCount, Triangle *primitives, Fragme
 				baryCentricCoordiante = calculateBarycentricCoordinate(coordinate, glm::vec2(x, y));
 				if (isBarycentricCoordInBounds(baryCentricCoordiante)) {
 					// TODO: Update to handle triangle
-					int z = getZAtCoordinate(baryCentricCoordiante, coordinate) * 10000;
+					int z = getZAtCoordinate(baryCentricCoordiante, coordinate) * 10000.0f;
 					int depthIndex = w - x + (h - y) * w;
 
 					atomicMin(&depth[depthIndex], z);
@@ -165,6 +165,28 @@ void raserization(int w, int h, int primitiveCount, Triangle *primitives, Fragme
 					}
 				}
 			}
+		}
+	}
+}
+
+__global__
+void pointRasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+
+	if (index < primitiveCount) {
+		Triangle primitive = primitives[index];
+		int x = round(primitive.v[1].pos.x), y = round(primitive.v[1].pos.y);
+		int z = primitive.v[1].pos.z * 10000.0f;
+		int depthIndex = w - x + (h - y) * w;
+
+		atomicMin(&depth[depthIndex], z);
+
+		if (depth[depthIndex] == z) {
+			Fragment fragment;
+			fragment.color = primitive.v[1].col;
+			fragment.position = primitive.v[1].pos;
+			fragment.normal = primitive.v[1].nor;
+			depthbuffer[depthIndex] = fragment;
 		}
 	}
 }
@@ -207,7 +229,7 @@ void rasterizeInit(int w, int h, Scene *s) {
 
 	cudaFree(dev_depth);
 	cudaMalloc(&dev_depth, width * height * sizeof(int));
-	cudaMemset(dev_depth, scene->farPlane * 10000, width * height * sizeof(int));
+	cudaMemset(dev_depth, scene->farPlane * 10000.0f, width * height * sizeof(int));
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
@@ -292,7 +314,17 @@ void rasterize(uchar4 *pbo) {
 	}
 
 	// rasterization
-	raserization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
+	// Choose between primitive types based on scene file
+	if (scene->pointRasterization) {
+		pointRasterization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
+	}
+	else if (scene->lineRasterization) {
+
+	}
+	else {
+		// Standard triangle rasterization
+		rasterization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
+	}
 
 	// Fragment shading
 	fragmentShading<<<fragmentGridSize, fragmentBlockSize>>>(width, height, dev_depthbuffer, scene->light1, scene->light2);

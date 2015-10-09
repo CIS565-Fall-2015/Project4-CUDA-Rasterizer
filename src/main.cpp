@@ -85,7 +85,6 @@ void runCuda() {
 
     frame++;
     fpstracker++;
-
 }
 
 //-------------------------------
