@@ -45,3 +45,10 @@ To make our scene more interesting, we apply the color to our object. Using the 
 PART V: Blending
 This is not a necessary step, but using the fog effect here will make our scene more interesting. Before we output the depthBuffer color to ImageBuffer, we blend the color of our object with some "fog". The weight of the fog is decided by the distance of the intersection point(depth value) to the camera. If the depth value goes beyond a threshold, just only use the fog color.
 ![](image/dragon_infog.bmp)
+
+PART VI: Anti-Aliasing
+The anti-aliasing used here is a little different from what is used in path-tracing. Because we get one frame each time, there is no color accumulation. So we have to make sure all the we get the final color in just one iteration. Also we cannot use gittered position here, or the image will be unstable. Here I used a 0.25 offset for both x and y direction. After doing that, I get some wired vertical and horizontal lines. That is actually caused by the improper scan of a triangle. If we enlarge the scan area by 1/offset in both dimension and both direction, the problem is solved. Here are images of comparison.
+Image without Anti-Aliasing:
+![](image/withoutAnti.bmp)
+Image with Anti-Aliasing:
+![](image/withAnti.bmp)
