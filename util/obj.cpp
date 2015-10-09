@@ -52,7 +52,7 @@ void obj::buildBufPoss() {
 	if (faces.size() != (int) facenormals.size()||facenormals[0].size()==0) {
         genNormals = true;
     }
-	cout<<genNormals<<endl;
+	//cout<<genNormals<<endl;
     for (int k = 0; k < (int) faces.size(); k++) {
 
         if (isConvex(faces[k]) == true) {

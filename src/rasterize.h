@@ -18,6 +18,6 @@ void initTexture(std::string fileName);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol, float *bufTex, int *texIdx);
-void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 cameraFront,float fovy,float cameraDis,float rotation,bool outputImage,bool fog,int anti,int frame);
+void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 cameraFront,float fovy,float cameraDis,float rotation,bool outputImage,bool fog,int anti,int frame,float *time);
 void rasterizeFree();
 //void imageOutput(glm::vec3 *frameBuffer);

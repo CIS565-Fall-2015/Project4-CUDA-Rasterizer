@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
 	cin>>usAnti;
 	if(usAnti=='y') anti=4;
 
+	for(int i=0;i<5;++i) Gtime[i]=0;
+
     obj *mesh = new obj();
 
     {
@@ -53,7 +55,7 @@ int main(int argc, char **argv) {
         // GLFW main loop
         mainLoop();
     }
-
+	for(int i=0;i<5;++i) cout<<Gtime[i]<<endl;
     return 0;
 }
 
@@ -82,6 +84,7 @@ void mainLoop() {
         // VAO, shader program, and texture already bound
         glDrawElements(GL_TRIANGLES, 6,  GL_UNSIGNED_SHORT, 0);
         glfwSwapBuffers(window);
+		if(frame==100) break;
     }
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -97,7 +100,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr,lightPos,cameraUp,cameraFront,fov,cameraDis,rotation,outputImage,fog,anti,frame);
+	rasterize(dptr,lightPos,cameraUp,cameraFront,fov,cameraDis,rotation,outputImage,fog,anti,frame,Gtime);
 	//outputImage=false;
     cudaGLUnmapBufferObject(pbo);
 

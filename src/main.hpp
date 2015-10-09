@@ -59,6 +59,7 @@ GLfloat rotation=0.0f;
 bool firstMouse=true;
 bool outputImage=false;
 bool fog=false;
+float *Gtime=new float[5];
 int anti=1;
 string texture;
 glm::vec3 lightPos   = glm::vec3(-2.0f, 0.0f, -5.0f);

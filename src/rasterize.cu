@@ -150,6 +150,7 @@ __global__ void rasterization(Triangle *primitives,Fragment *fg_out,int *depth,g
 				if(isBarycentricCoordInBounds(tmp)){
 					int currentDepth=(int)(1e6*getZAtCoordinate(tmp,tri));
 					atomicMin(&depth[i*Len+j],currentDepth);
+					//continue;
 					if(currentDepth==depth[i*Len+j]){
 						glm::vec3 n1=primitives[index].v[0].nor;
 						glm::vec3 n2=primitives[index].v[1].nor;
@@ -348,20 +349,35 @@ void imageOutput(glm::vec3 *frameBuffer,int num){
  * Perform rasterization.
  */
 void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 cameraFront,
-			   float fovy,float cameraDis,float rotation,bool outputImage,bool fog,int anti,int frame) {
+			   float fovy,float cameraDis,float rotation,bool outputImage,bool fog,int anti,int frame,float *time) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
-	
+	cudaEvent_t start, stop;
+	float milliseconds = 0;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
-
+	cudaEventRecord(start);
 	vertexShading<<<(vertCount+127)/128,128>>>(dev_bufVertex,dev_vertexOut,cameraUp,cameraFront,fovy,cameraDis,rotation,vertCount);
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	time[0]+=milliseconds;
+
+	cudaEventRecord(start);
 	primitiveAssemblyTest<<<(bufIdxSize/3+127)/128,128>>>(dev_vertexOut,dev_bufIdx,dev_primitives,bufIdxSize/3);
 	setColorToBlue<<<(width*height+127)/128,128>>>(dev_depthbuffer,fog,width*height);
-	
 	setDepthMax<<<(width*height+127)/128,128>>>(dev_depth,width*height);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	time[1]+=milliseconds;
+
+	cudaEventRecord(start);
 	float dx=0,dy=0;
 	glm::vec3 *dev_tmp;
 	cudaMalloc(&dev_tmp, width*height*sizeof(glm::vec3));
@@ -375,12 +391,28 @@ void rasterize(uchar4 *pbo,glm::vec3 lightPos,glm::vec3 cameraUp,glm::vec3 camer
 	}
 	copyBack<<<(width*height+127)/128,128>>>(dev_tmp,dev_depthbuffer,width*height);
 	cudaFree(dev_tmp);
-	if(fog) blending<<<(width*height+127)/128,128>>>(dev_depthbuffer,dev_depth,width*height);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	time[2]+=milliseconds;
 
+	cudaEventRecord(start);
+	if(fog) blending<<<(width*height+127)/128,128>>>(dev_depthbuffer,dev_depth,width*height);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	time[3]+=milliseconds;
+
+	cudaEventRecord(start);
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	time[4]+=milliseconds;
+
 
 	if(outputImage&&frame%5==0) imageOutput(dev_framebuffer,frame/5);
 
