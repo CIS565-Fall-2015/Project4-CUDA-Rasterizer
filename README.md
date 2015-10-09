@@ -10,8 +10,10 @@ siqi Huang Tested on: Windows 7, Inter(R) Core(TM) i7-4870 HQ CPU@ 2.5GHz; GeFor
 Representative Images:
 Earth:
 ![](image/earth_sample_explain.bmp)
+
 Dragon On Fire:
 ![](image/dragon_onfire.bmp)
+
 Dragon On Fire In Fog:
 ![](image/dragon_onfire_infog.bmp)
 
