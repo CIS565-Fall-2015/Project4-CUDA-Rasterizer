@@ -102,6 +102,27 @@ __global__
 }
 
 
+//primitives assembly
+__global__ 
+	void kern_premitive_assemble(VertexOut* dev_bufVertex_out,int* dev_bufIdx,Triangle* dev_primitives,int num_of_primitives)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index<num_of_primitives)
+	{
+		int v1_index = dev_bufIdx[3*index+0];
+		int v2_index = dev_bufIdx[3*index+1];
+		int v3_index = dev_bufIdx[3*index+2];
+
+		dev_primitives[index].v[0] = dev_bufVertex_out[v1_index];
+		dev_primitives[index].v[1] = dev_bufVertex_out[v2_index];
+		dev_primitives[index].v[2] = dev_bufVertex_out[v3_index];
+
+
+	}
+}
+
+
 
 /**
  * Called once at the beginning of the program to allocate memory.
@@ -146,8 +167,8 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_bufVertex_out, vertCount * sizeof(VertexOut));
 
     cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+    cudaMalloc(&dev_primitives, bufIdxSize / 3 * sizeof(Triangle));
+    cudaMemset(dev_primitives, 0, bufIdxSize / 3 * sizeof(Triangle));
 
     checkCUDAError("rasterizeSetBuffers");
 }
