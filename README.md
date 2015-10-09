@@ -8,9 +8,11 @@ University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3
 siqi Huang Tested on: Windows 7, Inter(R) Core(TM) i7-4870 HQ CPU@ 2.5GHz; GeForce GT 750M(GK107) (Personal Computer)
 
 Representative Images:
+Earth:
 ![](image/earth_sample_explain.bmp)
-![](image/earth_sample.bmp)
+Dragon On Fire:
 ![](image/dragon_onfire.bmp)
+Dragon On Fire In Fog:
 ![](image/dragon_onfire_infog.bmp)
 
 Video Demos:
