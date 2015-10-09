@@ -305,7 +305,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         lightPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if(key == GLFW_KEY_D)
         lightPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;  
-	cout<<lightPos.x<<","<<lightPos.y<<","<<lightPos.z<<endl;
+	//cout<<lightPos.x<<","<<lightPos.y<<","<<lightPos.z<<endl;
 
 	if(key == GLFW_KEY_UP)
 		cameraDis-=0.1f;
@@ -319,6 +319,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 
 	if(key == GLFW_KEY_ENTER)
 		outputImage=true;
+	if(key == GLFW_KEY_BACKSPACE)
+		outputImage=false;
 }
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos)
