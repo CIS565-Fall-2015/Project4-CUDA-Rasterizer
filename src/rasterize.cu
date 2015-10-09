@@ -23,6 +23,10 @@ struct VertexIn {
 };
 struct VertexOut {
     // TODO
+	glm::vec3 pos;
+	glm::vec3 nor;
+    glm::vec3 col;
+
 };
 struct Triangle {
     VertexOut v[3];
@@ -35,6 +39,7 @@ static int width = 0;
 static int height = 0;
 static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL;
+static VertexOut *dev_bufVertex_out = NULL;
 static Triangle *dev_primitives = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
@@ -75,6 +80,29 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
     }
 }
 
+//vertex shader function
+__global__
+	void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out, int VertexIn,glm::mat4 trans,glm::mat4 trans_inv_T) //trans = proj*view*model
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//simple version for doing nothing
+
+	
+	if( index < vertCount)
+	{
+		VertexIn cur_v_in = dev_bufVertex_in[index];
+		//calculate pos 
+		dev_bufVertex_out[index].pos = glm::vec3(trans*glm::vec4(cu_v_in.pos,1.f));
+		//calculate normal
+		dev_bufVertex_out[index].nor = glm::vec3(trans_inv_T*glm::vec4(cu_v_in.nor,1.f));
+		//calculate color
+		dev_bufVertex_out[index].col = cur_v_in[index].col;
+	}
+
+}
+
+
+
 /**
  * Called once at the beginning of the program to allocate memory.
  */
@@ -114,6 +142,9 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
     cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
 
+	cudaFree(dev_bufVertex_out);
+    cudaMalloc(&dev_bufVertex_out, vertCount * sizeof(VertexOut));
+
     cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
@@ -129,9 +160,16 @@ void rasterize(uchar4 *pbo) {
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
-
+	
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
+
+	//vertex shader 
+	dim3 blockSize1d ();
+	dim3 blockCount1d ();
+
+
+
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
