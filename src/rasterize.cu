@@ -25,6 +25,8 @@
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
+#define BILINEAR_FILTERING
+
 
 struct VertexIn {
     glm::vec3 pos;
@@ -807,7 +809,7 @@ glm::vec3 phongShading(Light* lights, int num_lights
 }
 
 
-#define BILINEAR_FILTERING
+
 
 __device__ 
 glm::vec3  getTextureValue_Naive(int w, int h, glm::vec3 * data, glm::vec2 uv)
@@ -890,11 +892,15 @@ glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
 	glm::vec3 z21 = data[ui + vi1*w];
 	glm::vec3 z22 = data[ui1 + vi1*w];
 
+	//glm::vec3 z21 = data[ui + vi*w];
+	//glm::vec3 z22 = data[ui1 + vi*w];
+	//glm::vec3 z11 = data[ui + vi1*w];
+	//glm::vec3 z12 = data[ui1 + vi1*w];
 
 
 	return (
-		(1 - uf)*((1-vf) * z11 + vf * z12)
-		+ uf *((1-vf) * z21 + vf * z22)
+		(1 - uf)*((1-vf) * z11 + vf * z21)
+		+ uf *((1-vf) * z12 + vf * z22)
 		);
 	
 }
