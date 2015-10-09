@@ -74,7 +74,7 @@ __global__ void vertexShading(VertexIn *vs_input,VertexOut *vs_output,glm::vec3 
         //m=m*glm::rotate(m, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 		m=m*glm::perspective(glm::radians(fovy),1.0f,0.1f,100.0f);
 		m=m*glm::lookAt(cameraFront,glm::vec3(0,0,0),cameraUp);
-		//m=m*glm::rotate(m, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+		m=m*glm::rotate(glm::mat4(1.0), glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
 		vs_output[index].pos=multiplyMV(m,glm::vec4(vs_input[index].pos,1));
 		vs_output[index].pos/=cameraDis;
 	}
