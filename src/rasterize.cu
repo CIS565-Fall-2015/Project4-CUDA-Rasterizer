@@ -191,7 +191,7 @@ void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
 		int index = x + (y * w);
 
 		fragments[index].color = glm::vec3(0, 0, 0);
-		fragments[index].depth = FLT_MAX;
+		fragments[index].depth = INT_MAX;
     }
 }
 
@@ -292,14 +292,13 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 					if(diffusedTerm > -0.0001f)
 					{
 						int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
-//						float depth = getZAtCoordinate(barycentric, triIn);
+						int depth = getZAtCoordinate(barycentric, triIn) * 10000;
 
 						//TODO : Use cuda atomics to avoid race condition here
-//						if(depth < fragments[fragIndex].depth)
+						if(depth < fragments[fragIndex].depth)
 						{
-//							atomicMin(fragments[fragIndex].depth, depth);
+							atomicMin(&fragments[fragIndex].depth, depth);
 							fragments[fragIndex].color = diffusedTerm * col;
-//							fragments[fragIndex].depth = depth;
 						}
 					}
 				}
@@ -368,7 +367,7 @@ bool run = true;
 void createCameraAndLight()
 {
 	//Camera stuff
-	cam.pos = glm::vec3(0,0,5);
+	cam.pos = glm::vec3(0,10,5);
 	cam.lookat = glm::vec3(0,0,0);
 	cam.up = glm::vec3(0,-1,0);
 

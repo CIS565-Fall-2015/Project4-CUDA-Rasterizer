@@ -27,7 +27,7 @@ struct Triangle {
 
 struct Fragment {
     glm::vec3 color;
-    float depth;
+    int depth;
 };
 
 struct Light {
