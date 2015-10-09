@@ -13,5 +13,5 @@ Representative Images:
 ![](image/dragon_onfire_infog.bmp)
 
 Video Demos:
-[![ScreenShot](image/earth_screenshot.bmp)](https://youtu.be/fJt1fT1zZMo)
-[![ScreenShot](image/dragon_screenshot.bmp)](https://youtu.be/PqhqiYVQujU)
+[![ScreenShot](image/earth_screenshot.png)](https://youtu.be/fJt1fT1zZMo)
+[![ScreenShot](image/dragon_screenshot.png)](https://youtu.be/PqhqiYVQujU)
