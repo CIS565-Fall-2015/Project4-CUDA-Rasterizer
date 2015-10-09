@@ -63,7 +63,7 @@ With cutting off:
 We can see in the first image, the tile part of the cow, which should disappear actually reappear in the left part. Also, after doing that, the problem will be mush faster(See Performance Analysis).
 
 PART VIII: Texture Mapping
-The sole color is boring, and the texture is more interesting that that. First I import a texture to GPU, then in the Fragment Shader process, if the object has texture coordinates, just apply the texture color to it.
+The sole color is boring, and the texture is more interesting that that. First I import a texture to GPU, then in the Fragment Shader process, if the object has texture coordinates, just apply the texture color to it. The texture color is actually calculated in the Fragment shader, if you precalculate that in the vertex shader, which is possible, you can only get the value before interpolation, which will make the image very blurry
 ![](image/dragon_onfire.bmp)
 texture with fog
 ![](image/dragon_onfire_infog.bmp)
