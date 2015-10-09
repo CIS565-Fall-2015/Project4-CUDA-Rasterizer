@@ -9,8 +9,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include "scene.hpp"
 
-void rasterizeInit(int width, int height);
+void rasterizeInit(int width, int height, Scene *scene);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol);

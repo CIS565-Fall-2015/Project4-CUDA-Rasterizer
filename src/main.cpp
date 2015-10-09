@@ -159,7 +159,8 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height);
+	scene = new Scene();
+    rasterizeInit(width, height, scene);
 
     // Clean up on program exit
     atexit(cleanupCuda);

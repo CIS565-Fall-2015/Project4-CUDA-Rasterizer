@@ -16,36 +16,23 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 
-struct VertexIn {
-    glm::vec3 pos;
-    glm::vec3 nor;
-    glm::vec3 col;
-    // TODO (optional) add other vertex attributes (e.g. texture coordinates)
-};
-struct VertexOut {
-    // TODO: Mirrors VertexIn?
-	glm::vec3 pos;
-	glm::vec3 nor;
-	glm::vec3 col;
-};
-struct Triangle {
-    VertexOut v[3];
-};
-struct Fragment {
-    glm::vec3 color;
-	// will probably need to add more here? Will require updating my clear method
-};
+//TODO: Experiment with these values
+#define VERTBLOCKSIZE 128
+#define FRAGBLOCKSIZE 256
 
 static int width = 0;
 static int height = 0;
+static Scene *scene = NULL;
 static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL; //TODO Shouldn't this really be changed to indicate that it is in?
 static VertexOut *dev_bufVertexOut = NULL;
 static Triangle *dev_primitives = NULL;
+static int *dev_depth = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static int primitiveCount = 0;
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -82,35 +69,35 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 }
 
 /**
- * Clears the depth buffer with a black color.
+ * Clears the depth buffers and primitive buffer.
  */
-__global__
-void clearDepthBuffer(int w, int h, Fragment *depthbuffer) {
-	// TODO: Block stuff wrong?
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * w);
-
-	if (x < w && y < h) {
-		depthbuffer[index].color = glm::vec3(0.0f);
-	}
+void clearDepthBuffer() {
+	// TODO: Should I be clearing primitives ever? If I add mouse movement?
+	cudaMemset(dev_depth, scene->farPlane * 10000, width * height * sizeof(int));
+	cudaMemset(dev_depthbuffer, 0.0f, width * height * sizeof(Fragment));
 }
 
 /**
  * Apply vertex transformations and transfer to vertex out buffer
  */
 __global__
-void vertexShading(int w, int h, VertexIn *vertexBufferIn, VertexOut *vertexBufferOut) {
-	// TODO: Block stuff wrong?
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * w);
+void vertexShading(int w, int h, int nearPlane, int farPlane, int vertexCount, const VertexIn *vertexBufferIn, 
+	VertexOut *vertexBufferOut, const glm::mat4 modelView) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+	
+	if (index < vertexCount) {
+		VertexIn vertexIn = vertexBufferIn[index];
+		VertexOut vertexOut;
+		glm::vec4 clipCoordinates = modelView * glm::vec4(vertexIn.pos, 1.0f);
+		glm::vec3 normDeviceCoordinates = glm::vec3(clipCoordinates.x, clipCoordinates.y, clipCoordinates.z) / clipCoordinates.w;
 
-	// in this iteration just copy shit over. Later iterations will do transforms
-	if (x < w && y < h) {
-		vertexBufferOut[index].col = vertexBufferIn[index].col;
-		vertexBufferOut[index].nor = vertexBufferIn[index].nor;
-		vertexBufferOut[index].pos = vertexBufferIn[index].pos;
+		vertexOut.pos = glm::vec3(w * 0.5f * (normDeviceCoordinates.x + 1.0f),
+			h * 0.5f * (normDeviceCoordinates.y + 1.0f), 0.5f * ((farPlane - nearPlane) 
+			* normDeviceCoordinates.z + (farPlane + nearPlane)));
+		vertexOut.col = vertexIn.col;
+		vertexOut.nor = vertexIn.nor;
+		vertexOut.model_pos = vertexIn.pos;
+		vertexBufferOut[index] = vertexOut;
 	}
 }
 
@@ -118,35 +105,94 @@ void vertexShading(int w, int h, VertexIn *vertexBufferIn, VertexOut *vertexBuff
  * Assemble primitives from vertex out buffer data.
  */
 __global__
-void assemblePrimitives(int w, int h, VertexOut *vertexBufferOut, Triangle *primitives) {
-	// TODO: Block stuff is WAY wrong here. 
+void assemblePrimitives(int primitiveCount, const VertexOut *vertexBufferOut, Triangle *primitives, const int *bufIdx) {
 	// Currently only supports triangles
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * w);
+	// TODO: How will I differentiate between points and lines?
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-	if (x < w && y < h) {
-		Triangle primitive = primitives[index / 3];
+	if (index < primitiveCount) {
+		Triangle primitive;
 		for (int i = 0; i < 3; i++) {
-			primitive.v[i] = vertexBufferOut[3 * index + i]; // three times as many verts as triangles, gotta offset by index
-			// You're getting the 3 verts that make up a triangle
+			primitive.v[i] = vertexBufferOut[bufIdx[3 * index + i]];
 		}
+
+		primitive.boundingBox = getAABBForTriangle(primitive);
+		primitives[index] = primitive;
 	}
 }
 
 __global__
-void scanlineRaserization(int w, int h, Triangle *primitives, Fragment *depthbuffer) {
-	// this is going to be the most incomplete one.
-	// how large is hte depthbuffer vs the number of primitives? how do I insert them?
-	// which buffer are they going to right now?
+void raserization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
+	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
+
+	if (index < primitiveCount) {
+		// Only doing scanline triangle atm
+		Triangle primitive = primitives[index];
+		int minX = fmaxf(round(primitive.boundingBox.min.x), 0.0f), minY = fmaxf(round(primitive.boundingBox.min.y), 0.0f);
+		int maxX = fminf(round(primitive.boundingBox.max.x), (float)w), maxY = fminf(round(primitive.boundingBox.max.y), (float)h);
+		glm::vec3 baryCentricCoordiante;
+		// Temp until barycentric coord calc handles triangles
+		glm::vec3 coordinate[3] = {
+			primitive.v[0].pos,
+			primitive.v[1].pos,
+			primitive.v[2].pos,
+		};
+
+		// Loop through each scanline, then each pixel on the line
+		for (int y = maxY; y >= minY; y--) {
+			for (int x = minX; x <= maxX; x++) {
+				// TODO: Update to handle triangles coming in, not an array
+				baryCentricCoordiante = calculateBarycentricCoordinate(coordinate, glm::vec2(x, y));
+				if (isBarycentricCoordInBounds(baryCentricCoordiante)) {
+					// TODO: Update to handle triangle
+					int z = getZAtCoordinate(baryCentricCoordiante, coordinate) * 10000;
+					int depthIndex = w - x + (h - y) * w;
+
+					atomicMin(&depth[depthIndex], z);
+
+					if (depth[depthIndex] == z) {
+						Fragment fragment;
+						fragment.color = baryCentricCoordiante.x * primitive.v[0].col + baryCentricCoordiante.y 
+							* primitive.v[1].col + baryCentricCoordiante.z * primitive.v[2].col;
+						fragment.position = baryCentricCoordiante.x * primitive.v[0].pos + baryCentricCoordiante.y
+							* primitive.v[1].pos + baryCentricCoordiante.z * primitive.v[2].pos;
+						fragment.normal = baryCentricCoordiante.x * primitive.v[0].nor + baryCentricCoordiante.y
+							* primitive.v[1].nor + baryCentricCoordiante.z * primitive.v[2].nor;
+						depthbuffer[depthIndex] = fragment;
+					}
+				}
+			}
+		}
+	}
+}
+
+/**
+* Fragment shader
+*/
+__global__
+void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light1, const Light light2) {
+	// TODO: Handle an array of lights
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (index < (w * h)) {
+		Fragment fragment = depthBuffer[index];
+		depthBuffer[index].color = (glm::dot(glm::normalize(light1.position - fragment.position), fragment.normal) 
+			* fragment.color * light1.color) + (glm::dot(glm::normalize(light2.position - fragment.position), 
+			fragment.normal) * fragment.color * light2.color);
+	}
 }
 
 /**
  * Called once at the beginning of the program to allocate memory.
  */
-void rasterizeInit(int w, int h) {
+void rasterizeInit(int w, int h, Scene *s) {
     width = w;
     height = h;
+	scene = s;
+
+	cudaFree(dev_depth);
+	cudaMalloc(&dev_depth, width * height * sizeof(int));
+	cudaMemset(dev_depth, scene->farPlane * 10000, width * height * sizeof(int));
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
@@ -164,6 +210,7 @@ void rasterizeSetBuffers(
         int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
+	primitiveCount = vertCount / 3;
 
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
@@ -197,32 +244,33 @@ void rasterizeSetBuffers(
 void rasterize(uchar4 *pbo) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
-    dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
-                      (height - 1) / blockSize2d.y + 1);
-
+	dim3 blockCount2d((width + blockSize2d.x - 1) / blockSize2d.x,
+		(height + blockSize2d.y - 1) / blockSize2d.y);
+	int vertexBlockSize = VERTBLOCKSIZE, fragmentBlockSize = FRAGBLOCKSIZE;
+	int vertexGridSize = (width * height + VERTBLOCKSIZE - 1) / VERTBLOCKSIZE;
+	int fragmentGridSize = (width * height + FRAGBLOCKSIZE - 1) / FRAGBLOCKSIZE;
+	
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
-	
 
-	//so each stage of the pipeline is just anotehr kernel function?
-	// Or should they be combined somewhat into one or two kerns?
-
-	// first clear the depth buffer with some default value (0?)
-	// TODO: Block stuff wrong?
-	clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+	// Clear depth buffer
+	clearDepthBuffer();
 
 	// Vertex shading
-	// TODO: Block stuff wrong?
-	vertexShading<<<blockCount2d, blockSize2d>>>(width, height, dev_bufVertex, dev_bufVertexOut);
-
+	vertexShading<<<vertexGridSize, vertexBlockSize>>>(width, height, scene->nearPlane, scene->farPlane, vertCount, dev_bufVertex, dev_bufVertexOut, scene->modelView);
+	
 	// Primitive Assembly
-	// TODO: Block stuff wrong?
-	assemblePrimitives<<<blockCount2d, blockSize2d>>>(width, height, dev_bufVertexOut, dev_primitives);
+	assemblePrimitives<<<vertexGridSize, vertexBlockSize>>>(primitiveCount, dev_bufVertexOut, dev_primitives, dev_bufIdx);
 
 	// rasterization
+	raserization<<<blockCount2d, blockSize2d>>>(width, height, primitiveCount, dev_primitives, dev_depthbuffer, dev_depth);
+
+	// Fragment shading
+	fragmentShading<<<fragmentGridSize, fragmentBlockSize>>>(width, height, dev_depthbuffer, scene->light1, scene->light2);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
+
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
     checkCUDAError("rasterize");

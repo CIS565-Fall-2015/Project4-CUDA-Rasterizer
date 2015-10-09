@@ -3,10 +3,24 @@
 
 Scene::Scene() {
 	// Create with some default values
-	Scene(45.0f, 0.1f, 100.0f, glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	this->nearPlane = 0.1f;
+	this->farPlane = 100.0f;
+	camera.fieldOfView = 45.0f;
+	camera.position = glm::vec3(0.0f, 0.0f, 3.0f);
+	camera.lookAt = glm::vec3(0.0f);
+	camera.right = glm::vec3(1.0f, 0.0f, 0.0f);
+
+	light1.position = glm::vec3(1000.0f);
+	light1.color = glm::vec3(1.0f);
+	light2.position = glm::vec3(-1000.0f, 1000.0f, -1000.0f);
+	light2.color = glm::vec3(1.0f);
+
+	// Then have to calculate hte model view matrix
+	updateModelView();
 }
 
-Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, glm::vec3 cameraRight) {
+Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, 
+	glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, glm::vec3 light2Position, glm::vec3 light2Color) {
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
 	camera.fieldOfView = fieldOfView;
@@ -14,8 +28,17 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	camera.lookAt = cameraLookAt;
 	camera.right = cameraRight;
 
+	light1.position = light1Position;
+	light1.color = light1Color;
+	light2.position = light2Position;
+	light2.color = light2Color;
+
 	// Then have to calculate hte model view matrix
 	updateModelView();
+}
+
+Scene::~Scene() {
+
 }
 
 // Used for initial calculation and any updates we might want to make if we add mouse/keyboard control

@@ -24,6 +24,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
+#include "scene.hpp"
 
 using namespace std;
 
@@ -42,6 +43,8 @@ GLuint displayImage;
 uchar4 *dptr;
 
 GLFWwindow *window;
+
+Scene *scene;
 
 //-------------------------------
 //----------CUDA STUFF-----------

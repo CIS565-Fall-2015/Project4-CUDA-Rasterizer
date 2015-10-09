@@ -17,6 +17,33 @@ struct AABB {
     glm::vec3 max;
 };
 
+struct VertexIn {
+	glm::vec3 pos;
+	glm::vec3 nor;
+	glm::vec3 col;
+	// TODO (optional) add other vertex attributes (e.g. texture coordinates)
+};
+
+struct VertexOut {
+	// TODO: Mirrors VertexIn?
+	glm::vec3 pos;
+	glm::vec3 model_pos; // Believe I will need this if I want to do culling or geom shading?
+	glm::vec3 nor;
+	glm::vec3 col;
+};
+
+struct Triangle {
+	VertexOut v[3];
+	AABB boundingBox;
+};
+
+struct Fragment {
+	glm::vec3 position;
+	glm::vec3 normal;
+	glm::vec3 color;
+	// will probably need to add more here? Will require updating my clear method
+};
+
 /**
  * Multiplies a glm::mat4 matrix and a vec4.
  */
@@ -68,6 +95,7 @@ float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c,
 // CHECKITOUT
 /**
  * Calculate barycentric coordinates.
+ * TODO: Update to handle triangles coming in and not the array
  */
 __host__ __device__ static
 glm::vec3 calculateBarycentricCoordinate(const glm::vec3 tri[3], glm::vec2 point) {

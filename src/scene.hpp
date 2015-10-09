@@ -12,22 +12,32 @@ struct Camera {
 	glm::vec3 up;
 };
 
+struct Light {
+	glm::vec3 position;
+	glm::vec3 color;
+};
+
 class Scene {
 private:
 	Camera camera;
-
-	float nearPlane;
-	float farPlane;
-
+	
 	glm::mat4 view;
 	glm::mat4 projection;
 	const glm::mat4 model = glm::mat4(1.0f);
 
 public:
+	float nearPlane;
+	float farPlane;
 	glm::mat4 modelView;
 
+	//TODO: This should be an array of lights
+	Light light1;
+	Light light2;
+
 	Scene();
-	Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, glm::vec3 cameraRight);
+	Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, 
+		glm::vec3 cameraLookAt, glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, 
+		glm::vec3 light2Position, glm::vec3 light2Color);
 	~Scene();
 
 	void updateModelView();
