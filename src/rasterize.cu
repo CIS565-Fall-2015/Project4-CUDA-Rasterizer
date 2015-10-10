@@ -7,6 +7,7 @@
  */
 
 #include "rasterize.h"
+//<seqan / parallel.h>
 
 #include <cmath>
 #include <vector>
@@ -16,6 +17,7 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #define DEG2RAD  PI/180.f
 struct VertexIn {
 	glm::vec3 pos;
@@ -33,8 +35,13 @@ struct Triangle {
 	VertexOut v[3];
 };
 struct Fragment {
+	int dis;
 	glm::vec3 color;
+	glm::vec3 normal;
+	glm::vec3 pos;
 };
+int N = 0;
+int M = 0;
 int mat = 0;
 int dev = 0;
 static int width = 0;
@@ -70,7 +77,7 @@ __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
 		pbo[index].z = color.z;
 	}
 }
-__global__ void cleanDepth(Fragment* dev_depthbuffer, int w,int h)
+__global__ void cleanDepth(Fragment* dev_depthbuffer, int w, int h)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -87,9 +94,7 @@ __global__ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuff
 	int index = x + (y * w);
 
 	if (x < w && y < h) {
-		//*******************************//
-		//depthbuffer[index].color = glm::vec3(1, 0, 0);
-		//*********************************//
+
 		framebuffer[index] = depthbuffer[index].color;
 	}
 }
@@ -133,12 +138,19 @@ void rasterizeSetBuffers(
 
 
 	VertexIn *bufVertex = new VertexIn[_vertCount];
+	float maxv = -1.f;
+
 	for (int i = 0; i < vertCount; i++) {
 		int j = i * 3;
 		bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
 		bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
 		bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
+		//***********check here....*******//
+		float temp=std::max(bufVertex[i].pos.x, std::max(bufVertex[i].pos.y, bufVertex[i].pos.y));
+		if (temp>maxv){ maxv = temp; }
 	}
+	
+	N =(int)maxv+1;
 	cudaFree(dev_bufVertex);
 	cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
 	cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
@@ -153,6 +165,14 @@ void rasterizeSetBuffers(
 	checkCUDAError("rasterizeSetBuffers");
 }
 
+/*__global__ void maxObj(VertexIn *dev_bufVertex,int vertexCount,int N)
+{
+	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (id < vertexCount)
+	{
+		dev_bufVertex[id].pos=
+	}
+}*/
 __global__ void vertexShader(VertexIn *dev_bufVertex, VertexOut *dev_vsOutput, int vertexCount, glm::mat4 ViewProj){
 
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -162,11 +182,13 @@ __global__ void vertexShader(VertexIn *dev_bufVertex, VertexOut *dev_vsOutput, i
 		//simple orthordox projection 
 		//dev_vsOutput[id].pos = dev_bufVertex[id].pos;
 		//dev_vsOutput[id].nor = dev_bufVertex[id].nor;
-		glm::vec4 temp_p = glm::vec4(dev_bufVertex[id].pos, 1)*ViewProj;
-		glm::vec4 temp_n = glm::vec4(dev_bufVertex[id].nor, 1)*ViewProj;
-		dev_vsOutput[id].pos = glm::vec3(temp_p[0], temp_p[1], temp_p[2]);
-		dev_vsOutput[id].nor = glm::vec3(temp_n[0], temp_n[1], temp_n[2]);
+		
+		dev_vsOutput[id].pos = multiplyMV(ViewProj, glm::vec4(dev_bufVertex[id].pos, 1));
+		dev_vsOutput[id].nor = multiplyMV(ViewProj, glm::vec4(dev_bufVertex[id].nor, 0));
+		dev_vsOutput[id].nor = glm::normalize(dev_vsOutput[id].nor);
 		//dev_vsOutput[id].col = dev_bufVertex[id].col;
+		
+		
 	}
 
 }
@@ -180,14 +202,23 @@ __global__ void PrimitiveAssembly(VertexOut *dev_vsOutput, Triangle * dev_primit
 	}
 }
 
-
 __host__ __device__  bool fequal(float a, float b){
 	if (a > b - 0.000001&&a < b + 0.000001){ return true; }
 	else return false;
 }
 
-//scan_line??
-__global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, int vertexcount, int w, int h)
+__device__ int _atomicMin(int *addr, int val)
+{
+	int old = *addr, assumed;
+	if (old <= val) return old;
+	do{
+		assumed = old;
+		old = atomicCAS(addr, assumed, val);
+	} while (old != assumed);
+	return old;
+}
+
+__global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, int vertexcount, int w, int h,int N)
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -195,12 +226,16 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 	{
 		//potimized boundingbox;
 		glm::vec3 tri[3];
-		for (int i = 0; i < 3; i++){
+		for (int i = 0; i < 3; i++){//(-1,1)+1*w/2
+			                        //(-10,10)+10*w/20
 			tri[i] = dev_primitives[id].v[i].pos;
-			tri[i].x += 1;
-			tri[i].y += 1;
-			tri[i].x *= w / 2.f;
-			tri[i].y *= h / 2.f;
+			tri[i].x += N;
+			tri[i].y += N;
+			tri[i].z += N;
+			tri[i].x *= w / (float)(2.f*N);
+			tri[i].y *= h / (float)(2.f*N);
+			tri[i].z *= w / (float)(2.f*N);
+			//because the image is cube anyway...I think multiply should have better result than devide...
 		}
 		AABB aabb;
 		aabb = getAABBForTriangle(tri);
@@ -211,8 +246,17 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 				glm::vec2 point(i, j);
 				glm::vec3 baryc = calculateBarycentricCoordinate(tri, point);
 				if (isBarycentricCoordInBounds(baryc)){
-					dev_fmInput[i*w + j].color = dev_primitives[id].v[0].nor;
+					//these three normal should be the same since they are on the same face (checked)
+					int intdepth = getZAtCoordinate(baryc, tri);
+					_atomicMin(&dev_fmInput[i*w + j].dis, intdepth);
+					if (intdepth == dev_fmInput[i*w + j].dis){
+						dev_fmInput[i*w + j].color = dev_primitives[id].v[0].nor;
+						dev_fmInput[i*w + j].normal = dev_primitives[id].v[0].nor;
+						dev_fmInput[i*w + j].pos = (dev_primitives[id].v[0].pos + dev_primitives[id].v[1].pos + dev_primitives[id].v[2].pos)/3.f;
+					}
+
 				}
+
 			}
 		}
 	}
@@ -236,26 +280,55 @@ dev_fmInput[i*w + j].color = glm::vec3(1, 0, 0);
 }
 }*/
 
+glm::vec3 SetLight()
+{
+	glm::vec3 light_pos = glm::vec3(2, 1, 2);
 
-__global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, int totalpix)
+		return light_pos;
+}
+//blin phong
+__global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, int w,int h,glm::vec3 light_pos,glm::vec3 camera_pos)
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (id < totalpix){
-		dev_fmOutput[id].color = dev_fmInput[id].color;
+	if (id < w*h){
+
+			float specular_power = 10;
+			glm::vec3 specular_color = dev_fmInput[id].color;
+			glm::vec3 lightray = light_pos - dev_fmInput[id].pos;
+			glm::vec3 inray = camera_pos - dev_fmInput[id].pos;
+			glm::vec3 H = glm::normalize(inray) + glm::normalize(lightray);
+			H = glm::vec3(H.x / 2.0, H.y / 2.0, H.z / 2.0);
+			float hdot = glm::dot(H, dev_fmInput[id].normal);
+			float x = pow(hdot, specular_power);
+			if (x < 0)x = 0.f;
+			glm::vec3 spec =x*specular_color;
+
+			glm::vec3 Lambert = glm::vec3(1, 1, 1);
+			glm::vec3 Ambient = glm::vec3(1, 1, 1);
+			float diffuse = glm::clamp(glm::dot(dev_fmInput[id].normal, glm::normalize(lightray)), 0.0f, 1.0f);
+			Lambert *= diffuse;
+
+			glm::vec3 phong_color = 0.5f*spec + 0.4f*Lambert + 0.1f*Ambient;//where is ambient light?
+			phong_color = glm::clamp(phong_color, 0.f, 1.f);
+
+			dev_fmOutput[id].color = phong_color;
 	}
 }
 
 __global__ void SetDepth(Fragment*dev_fmOutput, Fragment * dev_depthbuffer, int totalpix)
 {
+	
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
+
 	if (id < totalpix){
+		int intdepth;
 		dev_depthbuffer[id].color = dev_fmOutput[id].color;
 	}
 }
 /*
  * Perform rasterization.
  */
-void RotateAboutRight(float deg,glm::vec3 &ref,const glm::vec3 right,const glm::vec3 eye)
+void RotateAboutRight(float deg, glm::vec3 &ref, const glm::vec3 right, const glm::vec3 eye)
 {
 	deg *= DEG2RAD;
 	glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), deg, right);
@@ -264,54 +337,60 @@ void RotateAboutRight(float deg,glm::vec3 &ref,const glm::vec3 right,const glm::
 	ref = ref + eye;
 
 }
-void TranslateAlongRight(float amt,glm::vec3 &ref,const glm::vec3 right,glm::vec3 &eye)
+void TranslateAlongRight(float amt, glm::vec3 &ref, const glm::vec3 right, glm::vec3 &eye)
 {
 	glm::vec3 translation = right * amt;
 	eye += translation;
 	ref += translation;
 }
-glm::mat4 camera(int all_mat,int all_dev)
+glm::mat4 camera(int all_mat, int all_dev,glm::vec3 &camerapos)
 {
-	glm::vec3 eye = glm::vec3(0, 0, 15);
+	glm::vec3 eye = glm::vec3(0, 0, 13);
 	glm::vec3 up = glm::vec3(0, 1, 0);
 	glm::vec3 ref = glm::vec3(0, 0, 0);
+	camerapos = eye;
+
 	float near_clip = 1.0f;
 	float far_clip = 1000.f;
-	float width = 800; 
+	float width = 800;
 	float height = 800;
 	float aspect = (float)width / (float)height;
-	float fovy = 45;
+	float fovy = 45.f;
 	glm::vec3 world_up = glm::vec3(0, 1, 0);
-
 	glm::vec3 look = glm::normalize(ref - eye);
 	glm::vec3 right = glm::normalize(glm::cross(look, world_up));
-	RotateAboutRight(all_dev, ref,right,eye);
+	RotateAboutRight(all_dev, ref, right, eye);
 	TranslateAlongRight(all_mat, ref, right, eye);
 	glm::mat4 viewMatrix = glm::lookAt(eye, ref, up);
 	glm::mat4 projectionMatrix = glm::perspective(fovy, aspect, near_clip, far_clip);//fovy,aspect, zNear, zFar;
+
 	glm::mat4 getViewProj = projectionMatrix*viewMatrix;
 	return getViewProj;
 }
 
-void rasterize(uchar4 *pbo,int all_mat,int all_dev) {
+void rasterize(uchar4 *pbo, int all_mat, int all_dev) {
 	int sideLength2d = 8;
 	dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockCount2d((width - 1) / blockSize2d.x + 1,
 		(height - 1) / blockSize2d.y + 1);
-	
-	std::cout << "ss " << all_mat << "and"<<all_dev<<std::endl;
-	std::cout << "dd" << mat << "and" << dev << std::endl;
-	// TODO: Execute your rasterization pipeline here
-	// (See README for rasterization pipeline outline.)
+	//key_test:
+	//std::cout << "ss " << all_mat << "and"<<all_dev<<std::endl;
+	//std::cout << "dd" << mat << "and" << dev << std::endl;
+
 	//step1.vertex shading
 	int blockSize1d = 256;
 	int blockCount1d = (vertCount + blockSize1d - 1) / blockSize1d;
 
 	//clean depth buffer
-	cleanDepth << <blockCount2d, blockSize2d >> >(dev_depthbuffer, width,height);
+	cleanDepth << <blockCount2d, blockSize2d >> >(dev_depthbuffer, width, height);
 
+	int image_blockSize1d = 256;
+	int image_blockCount1d = (width*height + blockSize1d - 1) / image_blockSize1d;
+	glm::vec3 camera_pos=glm::vec3(0);
+	glm::vec3 light_pos = SetLight();
+	glm::mat4 getViewProj = camera(all_mat, all_dev,camera_pos);
+	getViewProj = glm::mat4(1);
 
-	glm::mat4 getViewProj= camera(all_mat, all_dev);
 	vertexShader << <blockCount1d, blockSize1d >> >(dev_bufVertex, dev_vsOutput, vertCount, getViewProj);
 	checkCUDAError("vertexShader");
 	//step2.primitive assembly
@@ -319,12 +398,12 @@ void rasterize(uchar4 *pbo,int all_mat,int all_dev) {
 	PrimitiveAssembly << < blockCount1d_tri, blockSize1d >> >(dev_vsOutput, dev_primitives, vertCount);
 	checkCUDAError("PrimitiveAssembly");
 	//step3.rasterization
-	rasterization << < blockCount1d_tri, blockSize1d >> >(dev_primitives, dev_depthbuffer, vertCount, width, height);
+	rasterization << < blockCount1d_tri, blockSize1d >> >(dev_primitives, dev_fmInput, vertCount, width, height, N);
 	checkCUDAError("rasterization");
 	//step4.fragment shading
-	//fragmentShading << <blockCount1d, blockSize1d >> >(dev_fmInput, dev_fmOutput, width*height);
+	fragmentShading << <image_blockCount1d, image_blockSize1d >> >(dev_fmInput, dev_depthbuffer, width, height, light_pos, camera_pos);
 	//step5.fragment to depth buffer
-	//SetDepth << <blockCount1d, blockSize1d >> >(dev_fmOutput, dev_depthbuffer, width*height);
+	//SetDepth << <image_blockCount1d, image_blockSize1d >> >(dev_fmInput, dev_depthbuffer, width*height);
 	checkCUDAError("setDepth");
 	//step6.a depth buffer for storing and depth testing fragment
 
