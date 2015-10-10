@@ -104,19 +104,15 @@ void vertexShading(int w, int h, int nearPlane, int farPlane, int vertexCount, c
  */
 __global__
 void assemblePrimitives(int primitiveCount, const VertexOut *vertexBufferOut, Triangle *primitives, const int *bufIdx) {
-	// Currently only supports triangles
-	// TODO: How will I differentiate between points and lines?
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < primitiveCount) {
-		Triangle primitive;
 		for (int i = 0; i < 3; i++) {
-			primitive.v[i] = vertexBufferOut[bufIdx[3 * index + i]];
+			primitives[index].v[i] = vertexBufferOut[bufIdx[3 * index + i]];
 		}
 
-		primitive.boundingBox = getAABBForTriangle(primitive);
-		primitive.visible = true;
-		primitives[index] = primitive;
+		primitives[index].boundingBox = getAABBForTriangle(primitives[index]);
+		primitives[index].visible = true;
 	}
 }
 
