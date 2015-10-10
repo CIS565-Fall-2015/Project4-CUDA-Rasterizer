@@ -52,6 +52,19 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 
 /**
+ * Kernel that writes a background color into dev_fragsOut.
+ */
+__global__ void clearFragsOut(glm::vec3 bgColor, int w, int h, FragmentOut *dev_fragsOut) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	if (x < w && y < h) {
+		dev_fragsOut[x + (y * w)].color = bgColor;
+		//glm::vec3 peek = dev_fragsOut[x + (y * w)].color;
+		//bgColor = bgColor;
+	}
+}
+
+/**
  * Kernel that writes the image to the OpenGL PBO directly.
  */
 __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
@@ -79,7 +92,7 @@ __global__ void render(int w, int h, FragmentOut *frags, glm::vec3 *framebuffer)
     int index = x + (y * w);
 	// frameBuffer code assumes (0,0) is at the bottom left in pix coords,
 	// but this code assumes it's at the top right.
-	int frameBufferIndex = (w - x) + (h - y) * w;
+	int frameBufferIndex = (w - 1 - x) + (h - 1 - y) * w;
     if (x < w && y < h) {
 		framebuffer[index] = frags[frameBufferIndex].color;
     }
@@ -96,8 +109,8 @@ void rasterizeInit(int w, int h) {
     cudaMemset(dev_fragsIn, 0, width * height * sizeof(FragmentIn));
 
     cudaFree(dev_fragsOut);
-	cudaMalloc(&dev_fragsOut, width * height * sizeof(FragmentIn));
-    cudaMemset(dev_fragsOut, 0, width * height * sizeof(FragmentIn));
+	cudaMalloc(&dev_fragsOut, width * height * sizeof(FragmentOut));
+    cudaMemset(dev_fragsOut, 0, width * height * sizeof(FragmentOut));
        
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
@@ -144,18 +157,19 @@ void rasterizeSetBuffers(
 }
 
 // minimal vertex shader
-__global__
-void minVertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_verticesIn, VertexOut *dev_verticesOut) {
+__global__ void minVertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_verticesIn, VertexOut *dev_verticesOut) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < vertCount) {
 		dev_verticesOut[i].pos = tfPoint(tf, dev_verticesIn[i].pos);
-		dev_verticesOut[i].nor = tfDir(tf, dev_verticesIn[i].nor);
+		dev_verticesOut[i].nor = dev_verticesIn[i].nor;
+		glm::vec3 pos = dev_verticesOut[i].pos;
+		glm::vec3 untf = dev_verticesIn[i].pos;
 		dev_verticesOut[i].col = dev_verticesIn[i].col;
 	}
 }
 
 // primitive assembly. 1D linear blocks expected
-__global__ void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev_primitives) {
+__global__ void minPrimitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev_primitives) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		dev_primitives[i].v[0] = dev_vertices[i * 3];
@@ -165,7 +179,7 @@ __global__ void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Tr
 }
 
 // scanline rasterization. 1D linear blocks expected
-__global__ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, FragmentIn *dev_frags) {
+__global__ void minScanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, FragmentIn *dev_frags) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
@@ -175,20 +189,21 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives, Triangle 
 		v[2] = dev_primitives[i].v[2].pos;
 
 		AABB triangleBB = getAABBForTriangle(v);
+
 		// triangle should have been "smooshed" to screen coordinates already.
 		// walk and fill frags.
-		float pixWidth = 1.0f / (float) w;
-		float pixHeight = 1.0f / (float) h;
+		float pixWidth = 2.0f / (float) w; // NDC goes from -1 to 1 in x and y
+		float pixHeight = 2.0f / (float) h;
 
-		//int BBYmin = triangleBB.min.y * h + h / 2;
-		//int BBYmax = triangleBB.max.y * h + h / 2;
-		//
-		//int BBXmin = triangleBB.min.x * w + w / 2;
-		//int BBXmax = triangleBB.max.x * w + w / 2;
+		int BBYmin = triangleBB.min.y * (h / 2);
+		int BBYmax = triangleBB.max.y * (h / 2);
+		
+		int BBXmin = triangleBB.min.x * (w / 2);
+		int BBXmax = triangleBB.max.x * (w / 2);
 
 		// scan over the AABB
-		for (int y = triangleBB.min.y * h; y < triangleBB.max.y * h; y++) {
-			for (int x = triangleBB.min.x * w; x < triangleBB.max.x * w; x++) {
+		for (int y = BBYmin; y < BBYmax; y++) {
+			for (int x = BBXmin; x < BBXmax; x++) {
 				// compute x y coordinates of the center of "this fragment"
 				//printf("%i %i\n", x, y);
 				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
@@ -225,15 +240,68 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives, Triangle 
 	}
 }
 
-__global__ void primitiveFragmentShading(int numFrags, FragmentIn *dev_fragsIn, FragmentOut *dev_fragsOut) {
+__global__ void minFragmentShading(int numFrags, FragmentIn *dev_fragsIn, FragmentOut *dev_fragsOut) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
 		//dev_fragsOut[i].color = dev_fragsIn[i].color * abs(dev_fragsIn[i].depth);
+		glm::vec3 norm = dev_fragsIn[i].normal;
 		dev_fragsOut[i].color[0] = abs(dev_fragsIn[i].normal[0]);
 		dev_fragsOut[i].color[1] = abs(dev_fragsIn[i].normal[1]);
-		dev_fragsOut[i].color[2] = abs(dev_fragsIn[i].normal[2]);		
+		dev_fragsOut[i].color[2] = abs(dev_fragsIn[i].normal[2]);
 	}
 
+}
+
+/**
+ * Perform rasterization.
+ */
+void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
+    int sideLength2d = 8;
+    dim3 blockSize2d(sideLength2d, sideLength2d);
+	dim3 blockSize1d(sideLength2d * sideLength2d);
+
+    dim3 blockCount2d_display((width  - 1) / blockSize2d.x + 1,
+                      (height - 1) / blockSize2d.y + 1);
+
+    // TODO: Execute your rasterization pipeline here
+    // (See README for rasterization pipeline outline.)
+
+	// 1) clear fragment buffer with some default value.
+	clearFragsOut << <blockCount2d_display, blockSize2d >> >(glm::vec3(0.5f, 0.5f, 0.5f), width, height, dev_fragsOut);
+
+	// 2) vertex shade
+	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
+	dim3 blockCount1d_vertices((vertCount - 1) / blockSize1d.x + 1);
+
+	minVertexShader << <blockCount1d_vertices, blockSize1d >> >(vertCount, tf, dev_bufVertex, dev_shadedVertices);
+	checkCUDAError("debug: vertex shading");
+
+	// 3) primitive assembly
+	int numPrimitives = bufIdxSize / 3;
+	dim3 blockCount1d_primitives((numPrimitives - 1) / blockSize1d.x + 1);
+	minPrimitiveAssembly<<<blockCount1d_primitives, blockSize1d>>>(numPrimitives, dev_shadedVertices, dev_primitives);
+	checkCUDAError("debug: primitive assembly");
+
+	// 4) rasterization
+	minScanlineRasterization<<<blockCount1d_primitives, blockSize1d>>>(width, height, numPrimitives,
+		dev_primitives, dev_fragsIn);
+	checkCUDAError("debug: scanline rasterization");
+
+	// 5) fragment shading
+	dim3 blockCount1d_fragments(width * height);
+	minFragmentShading<<<blockCount1d_fragments, blockSize1d>>>(width * height, dev_fragsIn, dev_fragsOut);
+	checkCUDAError("debug: primitive fragment shading");
+
+	// 6) fragments to depth buffer
+
+	// 7) depth buffer for storing depth testing fragments
+
+	// 8) frag to frame buffer
+    // Copy depthbuffer colors into framebuffer
+	render << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut, dev_framebuffer);
+    // Copy framebuffer into OpenGL buffer for OpenGL previewing
+	sendImageToPBO << <blockCount2d_display, blockSize2d >> >(pbo, width, height, dev_framebuffer);
+    checkCUDAError("rasterize");
 }
 
 void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
@@ -253,58 +321,6 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 	// 6) depth buffer and test
 	// 7) fragment to frame buffer write
 
-}
-
-/**
- * Perform rasterization.
- */
-void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
-    int sideLength2d = 8;
-    dim3 blockSize2d(sideLength2d, sideLength2d);
-	dim3 blockSize1d(sideLength2d * sideLength2d);
-
-    dim3 blockCount2d_display((width  - 1) / blockSize2d.x + 1,
-                      (height - 1) / blockSize2d.y + 1);
-
-    // TODO: Execute your rasterization pipeline here
-    // (See README for rasterization pipeline outline.)
-
-	// 1) clear fragment buffer with some default value. black seems reasonable.
-	cudaMemset(dev_fragsOut, 0, width * height * sizeof(FragmentIn));
-
-	// 2) vertex shade
-	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
-	dim3 blockCount1d_vertices((vertCount - 1) / blockSize1d.x + 1);
-
-	minVertexShader << <blockCount1d_vertices, blockSize1d >> >(vertCount, tf, dev_bufVertex, dev_shadedVertices);
-	checkCUDAError("debug: vertex shading");
-
-	// 3) primitive assembly
-	int numPrimitives = bufIdxSize / 3;
-	dim3 blockCount1d_primitives((numPrimitives - 1) / blockSize1d.x + 1);
-	primitiveAssembly<<<blockCount1d_primitives, blockSize1d>>>(numPrimitives, dev_shadedVertices, dev_primitives);
-	checkCUDAError("debug: primitive assembly");
-
-	// 4) rasterization
-	scanlineRasterization<<<blockCount1d_primitives, blockSize1d>>>(width, height, numPrimitives,
-		dev_primitives, dev_fragsIn);
-	checkCUDAError("debug: scanline rasterization");
-
-	// 5) fragment shading
-	dim3 blockCount1d_fragments(width * height);
-	primitiveFragmentShading<<<blockCount1d_fragments, blockSize1d>>>(width * height, dev_fragsIn, dev_fragsOut);
-	checkCUDAError("debug: primitive fragment shading");
-
-	// 6) fragments to depth buffer
-
-	// 7) depth buffer for storing depth testing fragments
-
-	// 8) frag to frame buffer
-    // Copy depthbuffer colors into framebuffer
-	render << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut, dev_framebuffer);
-    // Copy framebuffer into OpenGL buffer for OpenGL previewing
-	sendImageToPBO << <blockCount2d_display, blockSize2d >> >(pbo, width, height, dev_framebuffer);
-    checkCUDAError("rasterize");
 }
 
 /**

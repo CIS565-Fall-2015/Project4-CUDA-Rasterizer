@@ -84,13 +84,15 @@ void runCuda() {
 	glm::mat4 projection = glm::perspective(45.0f, (float) width / (float) height, 0.1f, 100.0f);
 	// Camera matrix
 	glm::mat4 view = glm::lookAt(
-		glm::vec3(4, -3, 3), // Camera position in World Space
+		glm::vec3(100, 100, 100), // Camera position in World Space
 		glm::vec3(0, 0, 0), // camera lookAt
 		glm::vec3(0, 1, 0)  // Head is up
 		);
 	// Our ModelViewProjection : multiplication of our 3 matrices
-	glm::mat4 cam = projection * view; // Remember, matrix multiplication is the other way around
-    firstTryRasterize(dptr, ID, cam);
+	glm::mat4 cam = projection * view;
+	glm::mat4 tf;
+	tf = glm::translate(tf, glm::vec3(1.0f, 0.0f, 0.0f));
+	firstTryRasterize(dptr, tf, ID);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
