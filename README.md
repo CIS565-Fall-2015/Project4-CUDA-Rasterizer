@@ -23,6 +23,7 @@ An interactive GPU accelerated rasterizer (Add here)
 * 
 
 ### Scissor Test (Optional)
+![](renders/dragon_scissor.png "Scissor Test Enabled on Stanford Dragon")
 
 * **Overview**: The scissor test is another relatively simple stage added as an option to the pipeline. In the scene in the program, a rectangular portion of the screen can be defined as the bounds of this scissor clipping. Anything outside the bounds will be clipped from the scene.
 * **Perfromance Impact**:
