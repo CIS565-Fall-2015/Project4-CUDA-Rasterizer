@@ -227,7 +227,7 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 		glm::vec2 point;
 		glm::vec3 points;
 
-		// TODO: Snap i,j to nearest fragment coordinate
+		// Snap i,j to nearest fragment coordinate
 		float dx = 2.0f / (float)cam.width;
 		float dy = 2.0f / (float)cam.height;
 
@@ -243,12 +243,14 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 		int fixed_depth;
 		int ind;
 
+		// Iterate through pixel coordinates
 		for (int j = minj; j < maxj; j++){
 			for (int i = mini; i < maxi; i++){
 
 				ind = i + j * cam.width;
 				
-				x = dx*i - dx*cam.width/2.0f-0.001;
+				// Get the NDC coordinate
+				x = dx*i - dx*cam.width/2.0f;
 				y = dy*j - dy*cam.height/2.0f;
 
 				point[0] = x;
@@ -258,18 +260,18 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 
 				if (isBarycentricCoordInBounds(bary)){
 					depth = getZAtCoordinate(bary, prim.ndc_pos);
-					if (depth > -1.0 && depth < 1.0){
-						fixed_depth = (int)(depth * INT_MAX);
+					fixed_depth = (int)(depth * INT_MAX);
 
-						int old = atomicMin(&fs_input[ind].fixed_depth, fixed_depth);
+					int old = atomicMin(&fs_input[ind].fixed_depth, fixed_depth);
 
-						if (fs_input[ind].fixed_depth == fixed_depth){
-							fs_input[ind].depth = depth;
-							fs_input[ind].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
-							fs_input[ind].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
-							fs_input[ind].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
-							//fs_input[ind].color = fs_input[ind].norm;
-						}
+					if (fs_input[ind].fixed_depth == fixed_depth){
+						fs_input[ind].depth = depth;
+						fs_input[ind].color = bary.x * prim.v[0].col + bary.y * prim.v[1].col + bary.z * prim.v[2].col; //glm::vec3(1.0, 0.0, 0.0);// prim.v[0].col;
+						fs_input[ind].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
+						fs_input[ind].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
+						fs_input[ind].ndc_pos = bary.x * prim.v[0].ndc_pos + bary.y * prim.v[1].ndc_pos + bary.z * prim.v[2].ndc_pos;
+						fs_input[ind].prim_ind = index;
+						//fs_input[ind].color = fs_input[ind].norm;
 					}
 				}
 				
@@ -338,11 +340,6 @@ void rasterize(uchar4 *pbo, Cam cam) {
 
 	kernShadeGeometries<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut2, dev_bufIdx2, dev_bufVertexOut);
 	checkCUDAError("shadeGeometries");
-
-	int* hst_idx = (int*)malloc(vertCount*3*sizeof(int));
-	VertexOut* hst_bufVertexOut2 = (VertexOut*)malloc(vertCount*3*sizeof(VertexOut));
-	VertexOut* hst_bufVertexOut = (VertexOut*)malloc(vertCount * sizeof(VertexOut));
-
 	int numPrimBlocks3 = (primCount*3 - 1) / MAX_THREADS + 1;
 
 	// Primitive Assembly

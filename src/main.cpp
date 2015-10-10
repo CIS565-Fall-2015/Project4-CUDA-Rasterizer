@@ -9,6 +9,7 @@
 #include "main.hpp"
 #include <cuda.h>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 
 static Cam cam;
 static bool camIsMobile;
@@ -290,24 +291,29 @@ void errorCallback(int error, const char *description) {
 }
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+
+	glm::vec3 camView = glm::normalize(cam.focus - cam.pos);
+	glm::vec3 camUp = cam.up;
+	glm::vec3 camRight = glm::cross(camView, camUp);
+
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
 	}
 	else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
-		cam.pos += glm::vec3(0.0,-0.1,0.0);
-		cam.focus += glm::vec3(0.0, -0.1, 0.0);
+		cam.pos += camUp * 0.1f;
+		cam.focus += camUp * 0.1f;
 	}
 	else if (key == GLFW_KEY_UP && action == GLFW_PRESS){
-		cam.pos += glm::vec3(0.0, 0.1, 0.0);
-		cam.focus += glm::vec3(0.0, 0.1, 0.0);
+		cam.pos += camUp * -0.1f;
+		cam.focus += camUp * -0.1f;
 	}
 	else if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS){
-		cam.pos += glm::vec3(0.1, 0.0, 0.0);
-		cam.focus += glm::vec3(0.1, 0.0, 0.0);
+		cam.pos += camRight * -0.1f;
+		cam.focus += camRight * -0.1f;
 	}
 	else if (key == GLFW_KEY_LEFT && action == GLFW_PRESS){
-		cam.pos += glm::vec3(-0.1, 0.0, 0.0);
-		cam.focus += glm::vec3(-0.1, 0.0, 0.0);
+		cam.pos += camRight * 0.1f;
+		cam.focus += camRight * 0.1f;
 	}
 	// Reset
 	else if (key == GLFW_KEY_R && action == GLFW_PRESS){
@@ -317,8 +323,9 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 }
 
 void scrollCallback(GLFWwindow *window, double x_offset, double y_offset){
-	cam.pos += glm::vec3(0.0, 0.0, -y_offset);
-	cam.focus += glm::vec3(0.0, 0.0, -y_offset);
+	glm::vec3 camView = glm::normalize(cam.focus - cam.pos);
+	cam.pos += camView * (float)y_offset;
+	cam.focus += camView * (float)y_offset;
 }
 
 void mouseCallback(GLFWwindow *window, int button, int action, int mods){
@@ -331,14 +338,20 @@ void mouseCallback(GLFWwindow *window, int button, int action, int mods){
 }
 
 void cursorCallback(GLFWwindow *window, double x_pos, double y_pos){
+	glm::vec3 camView = glm::normalize(cam.focus - cam.pos);
+	glm::vec3 camUp = cam.up;
+	glm::vec3 camRight = glm::cross(camView, camUp);
+
+	glm::vec3 rotatedView;
+
 	if (camIsMobile){
 		float x_diff = x_pos - oldCursorPos[0];
 		float y_diff = y_pos - oldCursorPos[1];
 
-		printf("pos: %f %f\n", cam.focus.x, cam.focus.y);
-		//printf("diff: %f %f\n", x_diff, y_diff);
-
-		cam.focus += glm::vec3(x_diff/100.0f,-y_diff/100.0f,0.0);
+		rotatedView = glm::rotate(camView, y_diff/100.0f, camRight);
+		rotatedView = glm::rotate(rotatedView, x_diff/100.0f, camUp);
+		cam.up = camUp;
+		cam.focus = cam.pos + glm::normalize(rotatedView);
 	}
 	oldCursorPos[0] = x_pos;
 	oldCursorPos[1] = y_pos;
