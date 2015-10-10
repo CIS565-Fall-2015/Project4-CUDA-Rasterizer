@@ -49,4 +49,6 @@ Fragment to framebuffer?
 
 ## Additional Features
 
+### Mouse Controls
+
 ## Performance Analysis
