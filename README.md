@@ -42,6 +42,7 @@ While this project supports the rendering of different primitive types (triangle
 To render the basic rasterization primitive, the triangle, each GPU thread is responsible for one triangle. The bounding box for that triangle is retreived, and, through the scanline implementation, the thread loops over each pixel in the bounding box.
 
 #### Normal and Color Interpolation
+![](renders/dragon_interp_comp.png "Stanford Dragon With and Without Normal Interpolation")
 
 * **Overview**:
 * **Perfromance Impact**:
