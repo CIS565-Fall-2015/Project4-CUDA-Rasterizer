@@ -18,7 +18,15 @@ An interactive GPU accelerated rasterizer (Add here)
 
 ### Backface Culling (Optional)
 
+* **Overview**: Backface culling is a relatively simple procedure added to the pipeline as an option after the primitive assembly step. The step determines which primitives are facing the camera, and marks those that are not as not visible. After this has been done for all primitives, stream compaction is run on the resulting array of primitives and those that are not visible are removed from the pipeline. To determine if a primitive is facing the camera, we use the dot product between the vector from the camera to the model's position and the normal of the primitive.
+* **Perfromance Impact**:
+* 
+
 ### Scissor Test (Optional)
+
+* **Overview**:
+* **Perfromance Impact**:
+* 
 
 ### Rasterization
 
