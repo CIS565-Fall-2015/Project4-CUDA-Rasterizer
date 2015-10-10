@@ -214,13 +214,12 @@ __global__ void kernAssemblePrimitives(int n, Triangle* primitives, VertexOut* v
 }
 
 // Each thread is responsible for rasterizing a single triangle
-__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives, glm::mat4 Mvm, glm::mat4 Mp){
+__global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* primitives){
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
 		
 		Triangle prim = primitives[index];
-		glm::vec4 viewport(0,0,cam.width,cam.height);
 
 		AABB aabb = getAABBForTriangle(primitives[index].ndc_pos);
 		glm::vec3 bary;
@@ -259,7 +258,7 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 				bary = calculateBarycentricCoordinate(primitives[index].ndc_pos, point);
 
 				if (isBarycentricCoordInBounds(bary)){
-					depth = getZAtCoordinate(bary, prim.ndc_pos);
+					depth = -getZAtCoordinate(bary, prim.ndc_pos);
 					fixed_depth = (int)(depth * INT_MAX);
 
 					int old = atomicMin(&fs_input[ind].fixed_depth, fixed_depth);
@@ -321,13 +320,15 @@ void rasterize(uchar4 *pbo, Cam cam) {
 
 	resetRasterize();
 
-	Mmod = glm::mat4(3.0f)*1.0f;
+	Mmod = glm::mat4(1.0f)*1.0f;
 	Mmod[3][3] = 1.0f;
+
 	Mview = glm::lookAt(cam.pos, cam.focus, cam.up);
 	Mproj = glm::perspective(cam.fovy, cam.aspect, cam.zNear, cam.zFar);
 
 	glm::mat4 Mvm = Mview * Mmod;
-	glm::mat4 Mpvm = Mproj * Mvm;
+	//glm::mat4 Mpvm = Mproj * Mvm;
+	glm::mat4 Mpvm = Mproj * Mview * Mmod;
 
 	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);
 	checkCUDAError("shadeVertices");
@@ -337,7 +338,7 @@ void rasterize(uchar4 *pbo, Cam cam) {
 	checkCUDAError("assemblePrimitives");
 
 	// Rasterization
-	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mvm, Mproj);
+	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives);
 	checkCUDAError("rasterizePrimitives");
 
 	// Fragment shading

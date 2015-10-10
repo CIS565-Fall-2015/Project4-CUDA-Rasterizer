@@ -112,7 +112,7 @@ bool init(obj *mesh) {
 	cam.pos = glm::vec3(-4.0f, 0.0f, 0.0f);
 	cam.focus = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.up = glm::vec3(0.0f, -1.0f, 0.0f);
-	cam.fovy = 30.0f * glm::pi<float>() / 180.0f;
+	cam.fovy = 45.0f * glm::pi<float>() / 180.0f;
 	cam.zNear = 0.1f;
 	cam.zFar = 100.0f;
 	cam.aspect = 1.0f;
