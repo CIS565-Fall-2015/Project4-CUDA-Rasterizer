@@ -60,6 +60,7 @@ static int vertCount = 0;
 static int bufTexSize = 0;
 static 	int tessIncre = 1;
 static int tessLevel = 0;
+static int lastLevel = 0;
 glm::mat4 M_win;
 glm::mat4 M_view;
 
@@ -495,6 +496,7 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 	int priCount = vertCount / 3;
 
 	tessLevel = TessLevel;
+	lastLevel = tessLevel;
 	tessIncre = pow(4, tessLevel);
 	cudaMalloc(&dev_bufVtxOut, vertCount * tessIncre* sizeof(VertexOut));
 	priCount *= tessIncre;
@@ -509,8 +511,11 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
+
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel) {
     int sideLength2d = 8;
+
+
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
@@ -523,7 +528,13 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 	int bSize_pri = 128;
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
 	int priSize = bufIdxSize / 3;
-	dim3 gSize_pri((priSize*tessIncre + bSize_pri - 1) / bSize_pri);
+	dim3 gSize_pri((priSize + bSize_pri - 1) / bSize_pri);
+
+	tessLevel = TessLevel;
+	tessIncre = pow(4, tessLevel);
+	if (TessLevel > lastLevel)
+		cudaMalloc(&dev_primitives, priSize * tessIncre * sizeof(Triangle));
+	lastLevel = tessLevel;
 
 	glm::vec3 light(0.3, 0.4, 0.5);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
@@ -551,6 +562,8 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 		kernTessellation << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
 		tempSize *= 4;
 		tempIncre /= 4;
+		int priSize = tempSize;
+		gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
 	}
 
 

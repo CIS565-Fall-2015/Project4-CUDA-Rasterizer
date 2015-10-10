@@ -13,7 +13,7 @@
 //-------------------------------
 
 glm::vec3 eye(0, 0, 0);
-int tessLevel = 3;
+int tessLevel = 0;
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
@@ -82,7 +82,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr, ViewMatrix, ProjectionMatrix,eye);
+	rasterize(dptr, ViewMatrix, ProjectionMatrix,eye,tessLevel);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -283,13 +283,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
 	if (key == GLFW_KEY_UP && action == GLFW_PRESS){
-		//tessLevel++;
-		tessLevel = 1;
+		tessLevel++;	
 		printf("tessellation level: %d\n",tessLevel);
 	}
 	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
-		tessLevel = 1;
-		//tessLevel--;
+		tessLevel--;
 		if (tessLevel < 0)
 			tessLevel = 0;
 		printf("tessellation level: %d\n", tessLevel);
