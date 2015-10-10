@@ -80,6 +80,8 @@ These fragments are finally output to the framebuffer, and from there displayed 
 
 ## Performance Analysis
 
+### Rasterization Pipeline Stage Durations for Select Models
+
 ![](data_images/Cow Pie Chart.png "Cow Rasterization Pipeline Breakdown")
 
 ![](data_images/Dragon Pie Chart.png "Dragon Rasterization Pipeline Breakdown")
