@@ -23,10 +23,25 @@ An interactive GPU accelerated rasterizer (Add here)
 ### Rasterization
 
 #### Triangles
+
 #### Points
+
+* **Overview**:
+* **Perfromance Impact**:
+* 
+
 #### Lines
+* **Overview**:
+* **Perfromance Impact**:
+* 
 
 ### Fragment Shading
+
+#### Normal and Color Interpolation
+
+* **Overview**:
+* **Perfromance Impact**:
+* 
 
 ### Fragments to Depth Buffer?
 
