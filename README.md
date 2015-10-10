@@ -73,6 +73,9 @@ These fragments are finally output to the framebuffer, and from there displayed 
 
 ### Mouse Controls
 
-* **Overview**: 
+* **Overview**: The rasterizer renders in real time and can be interacted with by the user using mouse controls.
+* Rotation: Holding the left mouse button and moving the cursor rotates the camera around the object.
+* Paning: Holding the middle mouse button and moving the cursor pans the camera along the x and y directions.
+* Zooming: Moving the scroll wheel in and out moves the camera along the z axis.
 
 ## Performance Analysis
