@@ -276,6 +276,7 @@ void backFaceCulling(int w, int primitiveCount, Triangle *primitives, glm::vec3 
 	if (index < primitiveCount) {
 		Triangle primitive = primitives[index];
 		if (glm::dot(primitive.v[0].model_pos - cameraPosition, primitive.v[0].nor) >= 0.0f) {
+			//TODO: ^^ Actually shouldn't I interpolate between the three vertices here?
 			primitives[index].visible = false;
 		}
 	}
