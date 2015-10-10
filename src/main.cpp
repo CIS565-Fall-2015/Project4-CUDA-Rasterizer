@@ -89,6 +89,7 @@ void mainLoop() {
 
 //translate x,y, angle, scale for keyboard operations
 float scale = 0.15f;
+//float scale = 0.05f;
 float x_trans = 0.0f, y_trans = 0.0f, z_trans = -10.0f;
 float x_angle = 0.0f, y_angle = 0.0f;
 
@@ -200,9 +201,10 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
-
+	
     rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
             mesh->getBufPossize() / 3,
+			mesh->getFaces()->size(),
             mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol()
 			, (mesh->getTextureCoords())->size() > 0, mesh->getBufTex());
 
@@ -359,20 +361,16 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
-	else if (key == GLFW_KEY_N && action == GLFW_PRESS)
+	else if (key == GLFW_KEY_W && action == GLFW_PRESS)
 	{
-		//printf("normal\n");
-		//changeShaderMode(  );
+		changeGeomMode();
 	}
 	else if (key == GLFW_KEY_S && action == GLFW_PRESS)
 	{
 		
 		changeShaderMode( ) ;
 	}
-	else if (key == GLFW_KEY_T && action == GLFW_PRESS)
-	{
-		//changeShaderMode( );
-	}
+	
 	
 }
 

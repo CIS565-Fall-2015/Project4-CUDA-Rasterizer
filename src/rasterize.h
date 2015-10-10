@@ -19,7 +19,12 @@ enum ShaderMode
 	SHADER_TEXTURE
 };
 
-
+enum GeomMode
+{
+	GEOM_COMPLETE = 0,
+	GEOM_WIREFRAME,
+	GEOM_VERTEX
+};
 
 
 
@@ -52,7 +57,7 @@ struct Light
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
-		int vertCount, float *bufPos, float *bufNor, float *bufCol, bool useTexture, float *bufUV);
+		int vertCount, int _faceCount, float *bufPos, float *bufNor, float *bufCol, bool useTexture, float *bufUV);
 
 //texture init
 void initTextureData(bool has_diffuse_tex, int d_w, int d_h, glm::vec3 * diffuse_tex,
@@ -66,3 +71,4 @@ void rasterizeFree();
 
 
 void changeShaderMode();
+void changeGeomMode();

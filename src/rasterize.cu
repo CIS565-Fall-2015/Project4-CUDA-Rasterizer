@@ -16,7 +16,12 @@
 #include <cuda_runtime.h>
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
+#include <thrust/remove.h>
+#include <thrust/execution_policy.h>
+#include <thrust/random.h>
+#include <thrust/remove.h>
 
+#include <thrust/device_vector.h>
 
 #include "rasterizeTools.h"
 
@@ -26,6 +31,10 @@
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
 #define BILINEAR_FILTERING
+
+//#define ANTIALIASING
+
+//#define SCISSOR_TEST
 
 
 struct VertexIn {
@@ -87,6 +96,11 @@ struct Fragment {
 	//float depth;
 
     //glm::vec3 color;
+
+#ifdef ANTIALIASING
+	float ratio;
+#endif
+
 };
 
 static int width = 0;
@@ -118,6 +132,7 @@ static glm::vec3 materialAmbient;
 
 
 static ShaderMode shaderMode = SHADER_NORMAL;
+static GeomMode geomMode = GEOM_COMPLETE;
 
 static Light hst_lights[NUM_LIGHTS] = {
 	Light{ DIRECTION_LIGHT
@@ -142,6 +157,14 @@ void changeShaderMode()
 	}
 
 	printf("change shading mode %d\n",(int)shaderMode);
+}
+
+void changeGeomMode()
+{
+	geomMode = (GeomMode)((geomMode + 1) % 3);
+
+
+	printf("change geometry shading mode %d\n", (int)geomMode);
 }
 
 
@@ -203,7 +226,7 @@ void rasterizeInit(int w, int h) {
  */
 void rasterizeSetBuffers(
         int _bufIdxSize, int *bufIdx,
-        int _vertCount, float *bufPos, float *bufNor, float *bufCol
+        int _vertCount, int _faceCount, float *bufPos, float *bufNor, float *bufCol
 		, bool useTexture,float *bufUV) {
     bufIdxSize = _bufIdxSize;
     vertCount = _vertCount;
@@ -212,7 +235,8 @@ void rasterizeSetBuffers(
 
 	//MY
 	hasTexture = useTexture;
-	triCount = vertCount / 3;		//? can have vert not in use
+	//triCount = vertCount / 3;		//? can have vert not in use
+	triCount = _faceCount;
 	/////////
 
     cudaFree(dev_bufIdx);
@@ -445,12 +469,31 @@ void updateEdge(Edge & e)
 
 
 __device__
-void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1,float u2, Fragment * fragments, int * depth  , const Triangle & tri)
+void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, float u1, float u2, Fragment * fragments, int * depth, const Triangle & tri, GeomMode gm)
 {
+#ifdef ANTIALIASING
+	glm::vec2 aa_offset[9] = {glm::vec2(-0.5f,-0.5f)
+									, glm::vec2(-0.5f, 0.0f)
+									, glm::vec2(-0.5f, 0.5f)
+									, glm::vec2(0.0f, -0.5f)
+									, glm::vec2(0.0f, 0.0f)
+									, glm::vec2(0.0f, 0.5f)
+									, glm::vec2(0.5f, -0.5f)
+									, glm::vec2(0.5f, 0.0f)
+									, glm::vec2(0.5f, 0.5f)
+	};
+#endif
+
+
 	// Find the starting and ending x coordinates and
 	// clamp them to be within the visible region
 	int x_left = (int)(ceilf(e1.x) + EPSILON);
 	int x_right = (int)(ceilf(e2.x) + EPSILON);
+
+#ifdef ANTIALIASING
+	//x_left -= 1;
+	//x_right += 1;
+#endif
 
 	float x_left_origin = e1.x;
 	float x_right_origin = e2.x;
@@ -470,6 +513,13 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 	if (x_left >= x_right) { return; }
 
 
+
+	
+
+
+
+
+
 	//TODO: get two interpolated segment end points
 	VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], u1);
 	VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], u2);
@@ -480,15 +530,35 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 	float z = e1.z + (x_left_origin - e1.x) * dz;
 
 
+
+
+
 	//Interpolate
 	//printf("%d,%d\n", x_left, x_right);
 	float gap_x = x_right_origin - x_left_origin;
 	for (int x = x_left; x < x_right; ++x)
 	{
+#ifdef ANTIALIASING
+		if (x < 0 || x >= width)
+		{
+			continue;
+		}
+#endif
+
+
+
 		int idx = x + y * width;
 
+		if (gm == GEOM_WIREFRAME)
+		{
+			if (x != x_left && x != x_right)
+			{
+				x = x_right;
+				continue;
+			}
 
 
+		}
 		
 		//VertexOut p = interpolateVertexOut(cur_v_e1, cur_v_e2, ((float)x-x_left_origin) / gap_x);
 		
@@ -497,6 +567,26 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 		glm::vec3 t[3] = { glm::vec3(tri.v[0].pos), glm::vec3(tri.v[1].pos), glm::vec3(tri.v[2].pos) };
 		glm::vec3 u = calculateBarycentricCoordinate(t, glm::vec2(x,y));
 		
+
+#ifdef ANTIALIASING
+		float r = 1.0;
+		if (x <= x_left+3 || x >= x_right-3)
+		{
+			int count = 0;
+			glm::vec2 tmp((float)x, (float)y);
+			for (int i = 0; i < 9; i++)
+			{
+				if (isBarycentricCoordInBounds(calculateBarycentricCoordinate(t, tmp + aa_offset[i])))
+				{
+					count++;
+				}
+				
+			}
+			r = (float)count / 9.0f;
+		}
+#endif
+
+
 		VertexOut p;
 		p.divide_w_clip = u.x * tri.v[0].divide_w_clip + u.y * tri.v[1].divide_w_clip + u.z * tri.v[2].divide_w_clip;
 
@@ -508,6 +598,8 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 		p.noraml_eye_space = u.x * tri.v[0].noraml_eye_space + u.y * tri.v[1].noraml_eye_space + u.z * tri.v[2].noraml_eye_space;
 
 
+
+		//z = 1/p.divide_w_clip;
 		////atomic 
 		//int assumed;
 		//int* address = &depth[idx];
@@ -521,8 +613,11 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 		//{
 		//	printf(" -%d- ", *address);
 		//}
-		
+//#ifdef ANTIALIASING
+//		int z_int = (int)((z -1.0f + 0.00001f*r) * INT_MAX);
+//#else
 		int z_int = (int)(z * INT_MAX);
+//#endif
 		int* address = &depth[idx];
 
 		atomicMin(address, z_int);
@@ -544,6 +639,11 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 			fragments[idx].uv = p.uv / p.divide_w_clip;
 
 			fragments[idx].has_fragment = true;
+
+#ifdef ANTIALIASING
+			fragments[idx].ratio = r;
+			
+#endif
 		}
 		
 
@@ -575,7 +675,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y,float u1
 * e1 - longest y span
 */
 __device__
-void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * fragments, int * depth, const Triangle &  tri)
+void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * fragments, int * depth, const Triangle &  tri, GeomMode gm)
 {
 	// Discard horizontal edge as there is nothing to rasterize
 	if (e2.v[1].pos.y - e2.v[0].pos.y == 0.0f) { return; }
@@ -584,6 +684,8 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 	// clamp them to be within the visible region
 	int y_bot = (int)(ceilf(e2.v[0].pos.y) + EPSILON);
 	int y_top = (int)(ceilf(e2.v[1].pos.y) + EPSILON);
+
+
 
 	float y_bot_origin = ceilf( e2.v[0].pos.y );
 	float y_top_origin = floorf(e2.v[1].pos.y);
@@ -609,15 +711,22 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 
 	for (int y = y_bot; y < y_top; ++y)
 	{
+#ifdef ANTIALIASING
+		if (y < 0 || y >= height)
+		{
+			continue;
+		}
+#endif
+
 		float u2 = ((float)y - y_bot_origin) / e2.gap_y;
 		float u1 = u1_base + ((float)y - y_bot_origin) / e1.gap_y;
 		if (e1.x <= e2.x)
 		{
-			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth, tri);
+			drawOneScanLine(width, e1, e2, y ,u1,u2, fragments, depth, tri,gm);
 		}
 		else
 		{
-			drawOneScanLine(width, e2, e1, y, u2,u1, fragments, depth , tri);
+			drawOneScanLine(width, e2, e1, y, u2,u1, fragments, depth , tri,gm);
 		}
 
 		//update edge
@@ -636,7 +745,8 @@ void drawAllScanLines(int width, int height, Edge  e1, Edge  e2, Fragment * frag
 */
 __global__
 void kernScanLineForOneTriangle(int num_tri, int width,int height
-, Triangle * triangles, Fragment * depth_fragment, int * depth)
+, Triangle * triangles, Fragment * depth_fragment, int * depth
+, GeomMode gm)
 {
 	int triangleId = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -650,6 +760,7 @@ void kernScanLineForOneTriangle(int num_tri, int width,int height
 
 
 
+	bool outside = true;
 
 	//currently tri.v are in clipped coordinates
 	//need to transform to viewport coordinate
@@ -689,8 +800,21 @@ void kernScanLineForOneTriangle(int num_tri, int width,int height
 
 
 		////////
-
+		if (tri.v[i].pos.x < (float)width && tri.v[i].pos.x >= 0
+			&& tri.v[i].pos.y < (float)height && tri.v[i].pos.y >= 0)
+		{
+			outside = false;
+		}
 	}
+
+
+	//discard triangles that are totally out of the viewport
+	if (outside)
+	{
+		return;
+	}
+	/////
+
 
 
 	//build edge
@@ -734,14 +858,92 @@ void kernScanLineForOneTriangle(int num_tri, int width,int height
 	int shortEdge1 = (longEdge + 2) % 3;
 
 	// Rasterize two parts separately
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, depth  , tri);
-	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, depth , tri);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge0], depth_fragment, depth  , tri,gm);
+	drawAllScanLines(width, height, edges[longEdge], edges[shortEdge1], depth_fragment, depth , tri,gm);
 
 	
 
 }
 
 //---------------------------------------------------------------------------
+
+
+__global__
+void kernVertexRasterize(int num_tri, int width, int height, Triangle* triangles
+,Fragment * depth_fragment, int * depth)
+{
+	int triId = blockDim.x * blockIdx.x + threadIdx.x;
+
+	if (triId >= num_tri)
+	{
+		return;
+	}
+
+
+	for (int i = 0; i < 2; i++)
+	{
+		VertexOut p = triangles[triId].v[i];
+
+
+		p.divide_w_clip = 1.0f / p.pos.w;
+		//view port
+		p.pos.x = 0.5f * (float)width * (p.pos.x * p.divide_w_clip + 1.0f);
+		p.pos.y = 0.5f * (float)height * (p.pos.y * p.divide_w_clip + 1.0f);
+		p.pos.z = 0.5f * (p.pos.z * p.divide_w_clip + 1.0f);
+		p.pos.w = 1.0f;
+
+		int x = (int)p.pos.x;
+		int y = (int)p.pos.y;
+		if (x < 0 || x >= width || y < 0 || y >= height)
+		{
+			return;
+		}
+
+
+		int idx = x + y * width;
+
+		int z_int = (int)(p.pos.z * INT_MAX);
+		int* address = &depth[idx];
+
+		atomicMin(address, z_int);
+
+		//if (fragments[idx].shade == false)
+		//{
+		//	fragments[idx].shade = true;
+		//	fragments[idx].depth = FLT_MAX;
+		//}
+
+
+		//if (z < fragments[idx].depth)
+		if (*address == z_int)
+		{
+			//fragments[idx].depth = z;
+			depth_fragment[idx].color = p.color;
+			depth_fragment[idx].normal_eye_space = p.noraml_eye_space;
+			depth_fragment[idx].pos_eye_space = p.noraml_eye_space;
+			depth_fragment[idx].uv = p.uv;
+
+			depth_fragment[idx].has_fragment = true;
+
+		}
+
+	}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -889,11 +1091,11 @@ glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
 	int ui = floorf(u);
 	int vi = floorf(v);
 
-	//edge case: treat as tile, loop
+	//edge case
 	int ui1 = ui + 1;
-	ui1 = (ui1 >= w) ? 0 : ui1;
+	ui1 = (ui1 >= w) ? w-1 : ui1;
 	int vi1 = vi + 1;
-	vi1 = (vi1 >= h) ? 0 : vi1;
+	vi1 = (vi1 >= h) ? h-1 : vi1;
 
 	float uf = u - ui;
 	float vf = v - vi;
@@ -920,6 +1122,8 @@ glm::vec3 getTextureValue_Bilinear(int w,int h, glm::vec3 * data, glm::vec2 uv)
 
 
 
+
+
 __global__
 void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* lights,int num_lights, ShaderMode s
 			,bool useTexture, bool useDiffuseTex, bool useSpecularTex
@@ -928,6 +1132,16 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 			,glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, float Ns) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+
+#ifdef SCISSOR_TEST
+	if (x < w / 2)
+	{
+		return;
+	}
+#endif
+
+
 
 	//flip
 	int index_framebuffer = (w - 1 - x) + w * (h - 1 - y);
@@ -1004,6 +1218,20 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer,Light* l
 		}
 		
 		
+
+
+
+#ifdef ANTIALIASING
+		//fb *= db.ratio;
+		if (depthbuffer[index - 1].has_fragment == false || depthbuffer[index + 1].has_fragment == false
+			|| depthbuffer[index - w].has_fragment == false || depthbuffer[index + w].has_fragment == false)
+		{
+			fb *= db.ratio;
+		}
+		
+#endif
+
+
 	}
 }
 
@@ -1021,12 +1249,24 @@ void initDepth(int w,int h,int * depth)
 		int index = x + (y * w);
 
 		depth[index] = INT_MAX;
+
 	}
 
 	
 }
 
+struct is_backface
+{
+	__host__ __device__
+		bool operator()(const Triangle tri)
+	{
+		//bool isback = true;
 
+		glm::vec3 n = 0.33333f * tri.v[0].noraml_eye_space + 0.33333f * tri.v[1].noraml_eye_space + 0.33333f * tri.v[2].noraml_eye_space;
+
+		return glm::dot(n, glm::vec3(0, 0, 1.0f)) < 0;
+	}
+};
 /**
  * Perform rasterization.
  */
@@ -1048,12 +1288,36 @@ void rasterize(uchar4 *pbo) {
 	initDepth << <blockCount2d, blockSize2d >> >(width,height,dev_depth);
 
 
+	//TODO: back surface sculling
+	Triangle * primitives_end = dev_primitives + (triCount);
+	primitives_end = thrust::remove_if(thrust::device, dev_primitives, primitives_end, is_backface());
+	int cur_triCount = primitives_end - dev_primitives;
+
+
+
+
+
+
+
+
 	//rasterization
 	dim3 blockSize_Rasterize(64);
 	dim3 blockCount_tri((triCount + blockSize_Rasterize.x - 1) / blockSize_Rasterize.x);
 
 	cudaDeviceSynchronize();
-	kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(triCount,  width, height, dev_primitives, dev_depthbuffer, dev_depth);
+
+	if (geomMode == GEOM_VERTEX)
+	{
+		//dim3 bs(128);
+		//dim3 bn((vertCount + bs.x - 1) / bs.x);
+		kernVertexRasterize << <blockCount_tri, blockSize_Rasterize >> >(cur_triCount, width, height, dev_primitives, dev_depthbuffer, dev_depth);
+	}
+	else
+	{
+		kernScanLineForOneTriangle << <blockCount_tri, blockSize_Rasterize >> >(cur_triCount, width, height, dev_primitives, dev_depthbuffer, dev_depth, geomMode);
+	}
+
+	
 
 
 	//fragment shader
