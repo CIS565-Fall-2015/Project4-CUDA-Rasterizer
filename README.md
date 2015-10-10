@@ -31,7 +31,7 @@ While this project supports the rendering of different primitive types (triangle
 ![](renders/dragon_scissor.png "Scissor Test Enabled on Stanford Dragon")
 
 * **Overview**: The scissor test is another relatively simple stage added as an option to the pipeline. In the scene in the program, a rectangular portion of the screen can be defined as the bounds of this scissor clipping. Anything outside the bounds will be clipped from the scene. Whether a primitive is to be displayed is determined by checking the maximum and minimum points on the primitive's bounding box and comparing those positions to the dimensions of the rectangle defining our culling area. If the max or min of the bounding box lays outside this area, the primitive is marked as not visible. Once we've run the test on all the primitives in the scene, stream compaction is used to remove the invalid primitives from the array.
-* **Perfromance Impact**:
+* **Perfromance Impact**:![](data_images/Scissor FPS.png "Scissor Test Performance - FPS") ![](data_images/Scissor Execute.png "Scissor Test Performance - Execution Time") \n test
 * 
 
 ### Rasterization
@@ -79,3 +79,4 @@ These fragments are finally output to the framebuffer, and from there displayed 
 * **Zooming**: Moving the scroll wheel in and out moves the camera along the z axis.
 
 ## Performance Analysis
+
