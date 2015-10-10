@@ -33,6 +33,8 @@ struct Triangle {
 };
 struct Fragment {
     glm::vec3 color;
+	glm::vec3 nor;
+	float z;	
 };
 
 static int width = 0;
@@ -82,7 +84,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 
 //vertex shader function
 __global__
-	void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out, int VertexIn,glm::mat4 trans,glm::mat4 trans_inv_T) //trans = proj*view*model
+void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out, int vertCount,glm::mat4 trans,glm::mat4 trans_inv_T) //trans = proj*view*model
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//simple version for doing nothing
@@ -104,7 +106,7 @@ __global__
 
 //primitives assembly
 __global__ 
-	void kern_premitive_assemble(VertexOut* dev_bufVertex_out,int* dev_bufIdx,Triangle* dev_primitives,int num_of_primitives)
+void kern_premitive_assemble(VertexOut* dev_bufVertex_out,int* dev_bufIdx,Triangle* dev_primitives,int num_of_primitives)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -122,7 +124,81 @@ __global__
 	}
 }
 
+//Rasterization
+__global__ 
+void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int num_of_primitives, int width, int height)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
+	if( index < num_of_primitives)
+	{
+		Triangle cur_triangle = dev_primitives[index];
+		glm::vec3 m_tri[3] = {cur_triangle.v[0].pos,cur_triangle.v[1].pos,cur_triangle.v[2].pos};
+		glm::vec3 m_normals[3] = {cur_triangle.v[0].nor,cur_triangle.v[1].nor,cur_triangle.v[2].nor};
+		glm::vec3 m_colors[3] = {cur_triangle.v[0].col,cur_triangle.v[1].col,cur_triangle.v[2].col};
+		AABB cur_AABB = getAABBForTriangle(m_tri);
+
+		float min_x = max(cur_AABB.min.x,-1) ;
+		float min_y = max(cur_AABB.min.y,-1);
+		float max_x = min(cur_AABB.max.x,1);
+		float max_y = min(cur_AABB.max.y,1);
+
+		float dx = 2.f/width;
+		float dy = 2.f/height;
+
+		int min_x_idx = max((min_x+1)/dx,0);
+		int min_y_idx = max((min_y+1)/dy,0);
+		int max_x_idx = min((max_x+1)/dx,width-1);
+		int max_y_idx = min((max_y+1)/dy,height-1);
+
+
+		
+		//first try the center sampling method
+		
+		for(int i = min_y_idx;i<=max_y_idx;i++)
+		{
+			for(int j = min_x_idx ; j<=max_y_idx ;j++)
+			{
+				int buffer_index = i*width + j;
+
+				float cur_y = ((float)i*2+1.f)/(float)height;
+				float cur_x = ((float)j*2+1.f)/(float)width;
+
+				glm::vec2 cur_vec2 (cur_x,cur_y);
+
+				glm::vec3 b_c = calculateBarycentricCoordinate(m_tri,cur_vec2);
+				bool is_inside = isBarycentricCoordInBounds(b_c);
+
+				if(is_inside)
+				{
+					float cur_z = getZAtCoordinate(b_c,m_tri);
+					if(cur_z <= 1 && cur_z >= -1) //within the range
+					{
+						if(dev_depthbuffer[buffer_index].z<cur_z)
+						{
+							dev_depthbuffer[buffer_index].z = cur_z;
+							
+							//interpolate the color
+							
+							dev_depthbuffer[buffer_index].col =m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z;
+							
+							//interpolate the normal
+							dev_depthbuffer[buffer_index].nor = m_normals[0]*b_c.x +m_normals[1]*b_c.y+m_normals[2]*b_c.z;
+						}
+					}
+				}
+
+			}
+		}
+
+
+
+
+
+
+	}
+	
+}
 
 /**
  * Called once at the beginning of the program to allocate memory.
@@ -168,7 +244,7 @@ void rasterizeSetBuffers(
 
     cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, bufIdxSize / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, bufIdxSize / 3 * sizeof(Triangle));
+    //cudaMemset(dev_primitives, 0, bufIdxSize / 3 * sizeof(Triangle));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -186,10 +262,19 @@ void rasterize(uchar4 *pbo) {
     // (See README for rasterization pipeline outline.)
 
 	//vertex shader 
-	dim3 blockSize1d ();
-	dim3 blockCount1d ();
+	dim3 blockSize1d (THREADS_PER_BLOCK);
+	dim3 blockCount1d (vertCount/THREADS_PER_BLOCK+1);
 
+	kern_vertex_shader<<<blockCount1d,blockSize1d>>>(dev_bufVertex, dev_bufVertex_out, vertCount, glm::mat4(1.f), glm::mat4(1.f));
 
+	//primitive assembler
+	int num_of_primitives = bufIdxSize/3;
+	blockCount1d.x = num_of_primitives/THREADS_PER_BLOCK+1;
+
+	
+	kern_premitive_assemble(dev_bufVertex_out,dev_bufIdx,dev_primitives, num_of_primitives);
+
+	//rasterization
 
 
     // Copy depthbuffer colors into framebuffer
@@ -208,6 +293,9 @@ void rasterizeFree() {
 
     cudaFree(dev_bufVertex);
     dev_bufVertex = NULL;
+
+	cudaFree(dev_bufVertex_out);
+    dev_bufVertex_out = NULL;
 
     cudaFree(dev_primitives);
     dev_primitives = NULL;
