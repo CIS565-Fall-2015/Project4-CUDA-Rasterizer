@@ -310,12 +310,12 @@ void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos) {
 		
 		angleX += (xpos - xStartpos) / 4.0;
 		angleY += (ypos - yStartpos) / 4.0;
-		camCoords.x = angleX * (3.14 / 180.0); //sin(angleX * (3.14 / 180.0)) * -3.0;
+		camCoords.x = -angleX * (3.14 / 180.0); //sin(angleX * (3.14 / 180.0)) * -3.0;
 		//camCoords.z = //cos((angleX + angleY) * (3.14 / 180.0)) * 3.0;
 
 		//printf("end: (%f, %f) \n", angleX, angleY);
 		//camCoords.z += cos(angleY * (3.14 / 180.0)) * 3.0;
-		camCoords.y = angleY * (3.14 / 180.0); //sin(angleY * (3.14 / 180.0)) * 3.0;
+		camCoords.y = -angleY * (3.14 / 180.0); //sin(angleY * (3.14 / 180.0)) * 3.0;
 		//printf("coords: (%f, %f, %f)", camCoords.x, camCoords.y, camCoords.z);
 		//printf("inhereeee");
 
