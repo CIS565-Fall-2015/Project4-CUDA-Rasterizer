@@ -123,29 +123,25 @@ void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragm
 	if (index < primitiveCount) {
 		// Only doing scanline triangle atm
 		int minX = fmaxf(round(primitives[index].boundingBox.min.x), 0.0f), minY = fmaxf(round(primitives[index].boundingBox.min.y), 0.0f);
-		int maxX = fminf(round(primitives[index].boundingBox.max.x), (float)w), maxY = fminf(round(primitives[index].boundingBox.max.y), (float)h);
-		glm::vec3 baryCentricCoordiante;
-		// Temp until barycentric coord calc handles triangles
+		int maxX = fminf(round(primitives[index].boundingBox.max.x), (float)w);
 
 		// Loop through each scanline, then each pixel on the line
-		for (int y = maxY; y >= minY; y--) {
+		for (int y = fminf(round(primitives[index].boundingBox.max.y), (float)h); y >= minY; y--) {
 			for (int x = minX; x <= maxX; x++) {
-				// TODO: Update to handle triangles coming in, not an array
-				baryCentricCoordiante = calculateBarycentricCoordinate(primitives[index], glm::vec2(x, y));
-				if (isBarycentricCoordInBounds(baryCentricCoordiante)) {
-					// TODO: Update to handle triangle
-					int z = getZAtCoordinate(baryCentricCoordiante, primitives[index]) * 10000.0f;
+				glm::vec3 baryCentricCoordinate = calculateBarycentricCoordinate(primitives[index], glm::vec2(x, y));
+				if (isBarycentricCoordInBounds(baryCentricCoordinate)) {
+					int z = getZAtCoordinate(baryCentricCoordinate, primitives[index]) * 10000.0f;
 					int depthIndex = w - x + (h - y) * w;
 
 					atomicMin(&depth[depthIndex], z);
 
 					if (depth[depthIndex] == z) {
-						depthbuffer[depthIndex].color = baryCentricCoordiante.x * primitives[index].v[0].col + baryCentricCoordiante.y
-							* primitives[index].v[1].col + baryCentricCoordiante.z * primitives[index].v[2].col;
-						depthbuffer[depthIndex].position = baryCentricCoordiante.x * primitives[index].v[0].pos + baryCentricCoordiante.y
-							* primitives[index].v[1].pos + baryCentricCoordiante.z * primitives[index].v[2].pos;
-						depthbuffer[depthIndex].normal = baryCentricCoordiante.x * primitives[index].v[0].nor + baryCentricCoordiante.y
-							* primitives[index].v[1].nor + baryCentricCoordiante.z * primitives[index].v[2].nor;
+						depthbuffer[depthIndex].color = baryCentricCoordinate.x * primitives[index].v[0].col + baryCentricCoordinate.y
+							* primitives[index].v[1].col + baryCentricCoordinate.z * primitives[index].v[2].col;
+						depthbuffer[depthIndex].position = baryCentricCoordinate.x * primitives[index].v[0].pos + baryCentricCoordinate.y
+							* primitives[index].v[1].pos + baryCentricCoordinate.z * primitives[index].v[2].pos;
+						depthbuffer[depthIndex].normal = baryCentricCoordinate.x * primitives[index].v[0].nor + baryCentricCoordinate.y
+							* primitives[index].v[1].nor + baryCentricCoordinate.z * primitives[index].v[2].nor;
 					}
 				}
 			}
