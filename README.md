@@ -17,6 +17,7 @@ CUDA Rasterizer
 
 #### earth ( bilinear texture filtering; diffuse, specular map)
 ![earth](img/earth.png)
+
 |nearest neighbor filtering | bilinear filtering |
 |--------------------------| --------------------|
 |![nn](img/tex_nearest_neighbor.png) |![bilinear](img/tex_bilinear_filter.png) |
@@ -100,7 +101,7 @@ Each thread handle one fragment. color by normal, phong shading, or phong with t
 
 ## Performance Analysis
 
-![s](img/chart)
+![s](img/chart.png)
 
 Vertex shader greatly depends on the number of vertex, while rasterization is related to how big the surfaces to scan are.
 
