@@ -48,6 +48,7 @@ static int width = 0;
 static int height = 0;
 static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL;
+VertexOut *dev_bufVtxOut_tess = NULL;
 VertexOut *dev_bufVtxOut = NULL;
 static Triangle *dev_primitives = NULL;
 static Fragment *dev_depthbuffer = NULL;
@@ -57,6 +58,8 @@ glm::vec2 * dev_texInfo = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 static int bufTexSize = 0;
+static 	int tessIncre = 1;
+static int tessLevel = 0;
 glm::mat4 M_win;
 glm::mat4 M_view;
 
@@ -85,6 +88,7 @@ void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat
 		glm::vec4 P_NDC = P_clip*(1 / P_clip.w);//!!!w-divide for NDC	: P_clip/w
 		//!!!window coords		: M_win*P_NDC
 		
+		vtxO[index].pos = vtxI[index].pos;
 		vtxO[index].ndc = glm::vec3(P_NDC);
 		//vtxO[index].ndc = vtxI[index].pos;
 		vtxO[index].nor = vtxI[index].nor;
@@ -95,16 +99,66 @@ void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat
 	}
 }
 
+
+
+__device__ VertexOut EdgeTessellator(VertexOut vtxA, VertexOut vtxB, glm::mat4 Mats, glm::mat4 M_win)
+{
+	//now, all linear. (mid point)
+	//!!!later..catmull??
+	VertexOut vtxC;
+	vtxC.pos = (vtxA.pos + vtxB.pos)*0.5f;
+	vtxC.nor = glm::normalize(vtxA.nor + vtxB.nor);
+	glm::vec4 clip = Mats*glm::vec4(vtxC.pos,1);
+	vtxC.ndc = glm::vec3(clip*(1 / clip.w));
+	vtxC.winPos = glm::vec3(M_win*glm::vec4(vtxC.ndc,1));// (vtxA.winPos + vtxB.winPos)*0.5f;
+	vtxC.tex = (vtxA.tex + vtxB.tex)*0.5f;
+	vtxC.col = (vtxA.col + vtxB.col)*0.5f;
+	return vtxC;
+}
+
 __global__
-void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut)
+void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut,int tessLevel,int tessIncre,glm::mat4 Mats,glm::mat4 M_win)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	bufIdxSize *= tessIncre;
 	if (index<bufIdxSize/3)
 	{
 		int i = 3 * index;
-		primitives[index].v[0] = bufVtxOut[bufIdx[i]];
-		primitives[index].v[1] = bufVtxOut[bufIdx[i+1]];
-		primitives[index].v[2] = bufVtxOut[bufIdx[i+2]];
+		//index*tessIncre~index*tessIncre+3
+		index *= tessIncre;
+		if (tessLevel>0)
+		{
+			VertexOut v0 = bufVtxOut[bufIdx[i + 0]];
+			VertexOut v1 = bufVtxOut[bufIdx[i + 1]];
+			VertexOut v2 = bufVtxOut[bufIdx[i + 2]];
+
+			VertexOut m0 = EdgeTessellator(v0, v1, Mats, M_win);
+			VertexOut m1 = EdgeTessellator(v0, v2, Mats, M_win);
+			VertexOut m2 = EdgeTessellator(v1, v2, Mats, M_win);
+
+			primitives[index + 0].v[0] = v0;
+			primitives[index + 0].v[1] = m0;
+			primitives[index + 0].v[2] = m1;
+
+			primitives[index + 1].v[0] = m0;
+			primitives[index + 1].v[1] = m2;
+			primitives[index + 1].v[2] = m1;
+
+			primitives[index + 2].v[0] = v1;
+			primitives[index + 2].v[1] = m0;
+			primitives[index + 2].v[2] = m2;
+
+			primitives[index + 3].v[0] = m1;
+			primitives[index + 3].v[1] = m2;
+			primitives[index + 3].v[2] = v2;
+		}
+		else
+		{
+			primitives[index].v[0] = bufVtxOut[bufIdx[i + 0]];		//p0
+			primitives[index].v[1] = bufVtxOut[bufIdx[i + 1]];	//p1
+			primitives[index].v[2] = bufVtxOut[bufIdx[i + 2]];	//p2
+		}
+
 	}
 }
 
@@ -251,19 +305,8 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
 				
-				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges
-				/*{
-					if (x<0 || x>w || y<0 || y>h)
-						continue;
-					float crntDepth = getZAtCoordinate(bPoint, tri);
-					crntDepth *= MAX_DEPTH;
-					int orig = atomicMin(&(depthbuffer[x + y*w].depth), (int)crntDepth);
-					if (orig >= crntDepth)
-					{
-						depthbuffer[x + y*w].color = glm::vec3(0, 0, 0);
-					}
-				}*/
-				//else if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
+				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
+				//if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
 				{
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
@@ -356,8 +399,7 @@ void rasterizeInit(int w, int h) {
 /**
  * Set all of the buffers necessary for rasterization.
  */
-void rasterizeSetBuffers( obj * mesh ) {
-  
+void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 	bufIdxSize = mesh->getBufIdxsize();
 	int *bufIdx = mesh->getBufIdx();
 	bufTexSize = mesh->getBufTexsize() / 3;
@@ -368,7 +410,7 @@ void rasterizeSetBuffers( obj * mesh ) {
 	float *bufCol = mesh->getBufCol();
 
 	//Copy materials to dev_textures
-	
+
 	int texSize = mesh->textureImages.size()*sizeof(glm::vec3 *);
 	int texInfoSize = mesh->textureImages.size()*sizeof(glm::vec2);
 	if (texSize > 0 && texInfoSize > 0)
@@ -390,33 +432,41 @@ void rasterizeSetBuffers( obj * mesh ) {
 		cudaMemcpy(dev_texInfo, tempInfo.data(), texInfoSize, cudaMemcpyHostToDevice);
 	}
 
-	
+
 	//
-    cudaFree(dev_bufIdx);
-    cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
-    cudaMemcpy(dev_bufIdx, bufIdx, bufIdxSize * sizeof(int), cudaMemcpyHostToDevice);
+	cudaFree(dev_bufIdx);
+	cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
+	cudaMemcpy(dev_bufIdx, bufIdx, bufIdxSize * sizeof(int), cudaMemcpyHostToDevice);
 
 	VertexIn *bufVertex = new VertexIn[vertCount];
-    for (int i = 0; i < vertCount; i++) {
-        int j = i * 3;
-        bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
-        bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
-        bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
+	for (int i = 0; i < vertCount; i++) {
+		int j = i * 3;
+		bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
+		bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
+		bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
 		bufVertex[i].tex = glm::vec3(bufTex[j + 0], bufTex[j + 1], bufTex[j + 2]);
-    }
-    cudaFree(dev_bufVertex);
-    cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
-    cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
+	}
+	cudaFree(dev_bufVertex);
+	cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
+	cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
 
 	//!!!
 	cudaFree(dev_bufVtxOut);
 	cudaMalloc(&dev_bufVtxOut, vertCount * sizeof(VertexOut));
 
-    cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+	cudaFree(dev_bufVtxOut_tess);
+	int priCount = vertCount / 3;
 
-    checkCUDAError("rasterizeSetBuffers");
+	tessLevel = TessLevel;
+	tessIncre = pow(4, tessLevel);
+	cudaMalloc(&dev_bufVtxOut, vertCount * tessIncre* sizeof(VertexOut));
+	priCount *= tessIncre;
+
+	cudaFree(dev_primitives);
+	cudaMalloc(&dev_primitives, priCount * sizeof(Triangle));
+	cudaMemset(dev_primitives, 0, priCount * sizeof(Triangle));
+
+	checkCUDAError("rasterizeSetBuffers");
 }
 
 /**
@@ -435,7 +485,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 	int bSize_vtx = 128;
 	int bSize_pri = 128;
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
-	dim3 gSize_pri((bufIdxSize/3 + bSize_pri - 1) / bSize_pri);
+	dim3 gSize_pri((bufIdxSize*tessIncre/3 + bSize_pri - 1) / bSize_pri);
 
 	glm::vec3 light(0.3, 0.4, 0.5);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
@@ -448,21 +498,14 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 
 	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
 
-	VertexOut * textVtxOut = new VertexOut[vertCount];
-	cudaMemcpy(textVtxOut, dev_bufVtxOut, vertCount*sizeof(VertexOut), cudaMemcpyDeviceToHost);
-	/*for (int i = 0; i < vertCount; i++)
-	{
-		glm::vec3 temp = textVtxOut[i].ndc;
-		printf("tri[%d] after VtxShader:%2f,%2f,%2f\n",i,temp.x,temp.y,temp.z);
-	}*/
 
 	//****** 3. Primitive Assembly
 	//  VertexOut[n] vs_output -> Triangle[n/3] primitives
-	kernPrimitiveAssembly<<<gSize_pri, bSize_pri >>>(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut);
+	kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre, projMat * M_view * glm::mat4(), M_win);
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
-	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, light, eye, M_all, dev_textures, dev_texInfo);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
 	//****** 5. Fragment shading
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments
@@ -498,8 +541,17 @@ void rasterizeFree() {
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
 
+	cudaFree(dev_bufVtxOut_tess);
+	dev_bufVtxOut_tess = NULL;
+
 	cudaFree(dev_textures);
+	//dev_textures = NULL;
+
 	cudaFree(dev_texInfo);
+	//dev_texInfo = NULL;
 
     checkCUDAError("rasterizeFree");
 }
+
+//tessellation & geometry
+//http://prideout.net/blog/?p=48

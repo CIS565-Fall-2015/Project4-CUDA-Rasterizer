@@ -13,7 +13,7 @@
 //-------------------------------
 
 glm::vec3 eye(0, 0, 0);
-
+int tessLevel = 1;
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
@@ -135,7 +135,7 @@ bool init(obj *mesh) {
 
 	//vector<glm::vec4>* texts = mesh->getTextureCoords();
 	
-    rasterizeSetBuffers(mesh);
+    rasterizeSetBuffers(mesh,tessLevel);
 
     GLuint passthroughProgram;
     passthroughProgram = initShader();
@@ -282,6 +282,18 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+	if (key == GLFW_KEY_UP && action == GLFW_PRESS){
+		//tessLevel++;
+		tessLevel = 1;
+		printf("tessellation level: %d\n",tessLevel);
+	}
+	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
+		tessLevel = 1;
+		//tessLevel--;
+		if (tessLevel < 0)
+			tessLevel = 0;
+		printf("tessellation level: %d\n", tessLevel);
+	}
 
 }
 

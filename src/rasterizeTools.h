@@ -113,7 +113,7 @@ bool isBarycentricCoordOnBounds(const glm::vec3 barycentricCoord) {
 		barycentricCoord.x >= 0.0 && barycentricCoord.x <= 1.0 &&
 		barycentricCoord.y >= 0.0 && barycentricCoord.y <= 1.0 &&
 		barycentricCoord.z >= 0.0 && barycentricCoord.z <= 1.0 &&
-		(abs(barycentricCoord.x + barycentricCoord.y - 1.0) < 0.015 ||
-		abs(barycentricCoord.y + barycentricCoord.z - 1.0) < 0.015 ||
-		abs(barycentricCoord.x + barycentricCoord.z - 1.0) < 0.015);
+		(abs(barycentricCoord.x + barycentricCoord.y - 1.0) < 0.02 ||
+		abs(barycentricCoord.y + barycentricCoord.z - 1.0) < 0.02 ||
+		abs(barycentricCoord.x + barycentricCoord.z - 1.0) < 0.02);
 }
