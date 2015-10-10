@@ -11,7 +11,7 @@
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
-glm::vec3 camCoords(0.0, 0.0,  0.0);
+glm::vec3 camCoords(0.0, 0.0,  1.0);
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -109,6 +109,7 @@ bool init(obj *mesh) {
     glfwSetKeyCallback(window, keyCallback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetCursorPosCallback(window, cursor_pos_callback);
+	glfwSetScrollCallback(window, scroll_callback);
     // Set up GL context
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -320,5 +321,10 @@ void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos) {
 		//printf("inhereeee");
 
 	}
+
+}
+
+void scroll_callback(GLFWwindow *window, double x, double y) {
+	camCoords.z += y/10.0f;
 
 }

@@ -14,7 +14,9 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <thrust/remove.h>
+#include <thrust/random.h>
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include "rasterizeTools.h"
@@ -107,8 +109,8 @@ void rasterizeInit(int w, int h) {
     height = h;
 	//printf("Width: %i, Height: %i", width, height);
     cudaFree(dev_depthbuffer);
-    cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
-    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+    cudaMalloc(&dev_depthbuffer,   4 * width * height * sizeof(Fragment));
+    cudaMemset(dev_depthbuffer, 0, 4 * width * height * sizeof(Fragment));
 	cudaFree(dev_fragbuffer);
 	cudaMalloc(&dev_fragbuffer, width * height * sizeof(Fragment));
 	cudaMemset(dev_fragbuffer, 0, width * height * sizeof(Fragment));
@@ -157,7 +159,7 @@ __global__ void setDepth(Fragment* depth, int width) {
 	depth[index].idepth = MAX_DEPTH;
 	depth[index].color = glm::vec3(0.0f, 0.0f, 0.0f);
 }
- 
+
  __device__ __host__ glm::vec4 mul(glm::mat4 m, glm::vec4 v) {
     return glm::vec4(m[0].x*v.x + m[1].x*v.y + m[2].x*v.z + m[3].x*v.w,
                  m[0].y*v.x + m[1].y*v.y + m[2].y*v.z + m[3].y*v.w,
@@ -165,7 +167,7 @@ __global__ void setDepth(Fragment* depth, int width) {
                  m[0].w*v.x + m[1].w*v.y + m[2].w*v.z + m[3].w*v.w);
  }
 
-__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 matrix) {
+__global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCount, glm::mat4 matrix, glm::mat4 model) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < vertCount) {
 		//printf("%i oldVert: (%f, %f, %f) \n", thrId, inVerts[thrId].pos[0], inVerts[thrId].pos[1], inVerts[thrId].pos[2]);
@@ -177,11 +179,12 @@ __global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCou
 		//newVert[3] = (matrix[3][2] * inVerts[thrId].pos[2]) + matrix[3][3];
 		glm::vec4 oldVert(inVerts[thrId].pos, 1.0f);
 		glm::vec4 newVert = mul(matrix, oldVert);
-		glm::vec4 newNorm = mul(matrix, glm::vec4(inVerts[thrId].nor, 0.0f));
+
+		glm::vec4 newNorm = mul(glm::inverseTranspose(model), glm::vec4(inVerts[thrId].nor, 0.0f));
 		//printf("newVert 2: %f, new vert 3: %f \n", newVert[2], newVert[3]);
 		if (newVert[3] != 0) {
 			outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
-			outVerts[thrId].nor = glm::vec3(newNorm); //inVerts[thrId].nor;
+			outVerts[thrId].nor = glm::vec3(newNorm); //inVerts[thrId].nor; //
 			outVerts[thrId].col = inVerts[thrId].col;
 			//printf("%i newVert: (%f, %f, %f) \n", thrId, outVerts[thrId].pos[0], outVerts[thrId].pos[1], outVerts[thrId].pos[2]);
 		}
@@ -217,7 +220,7 @@ __global__ void backWard(Triangle* tris, int triCount) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < triCount) {
 		glm::vec3 camera(0.0f, 3.0f, 3.0f);
-		glm::vec3 normal = glm::cross((tris[thrId].v[1].pos - tris[thrId].v[0].pos), (tris[thrId].v[2].pos - tris[thrId].v[0].pos));
+		glm::vec3 normal = tris[thrId].v[0].nor; //glm::cross((tris[thrId].v[1].pos - tris[thrId].v[0].pos), (tris[thrId].v[2].pos - tris[thrId].v[0].pos));
 		glm::vec3 newVec = tris[thrId].v[0].pos; //(tris[thrId].v[0].pos + tris[thrId].v[1].pos + tris[thrId].v[2].pos) / 3.0f;
 		newVec = (newVec - camera);
 		//printf("normal: (%f, %f, %f) \n", normal[0], normal[1], normal[2]);
@@ -234,6 +237,174 @@ __global__ void backWard(Triangle* tris, int triCount) {
 	}
 }
 
+__global__ void lineRasterize(Triangle* tris, Fragment* buf, int width, int height, int triCount, glm::mat4 matrix) {
+	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (thrId < triCount) {
+		for (int m = 0; m < 3; m++) {
+			glm::mat4 screenCoords(0.0f);
+			screenCoords[0][0] = (float)width;
+			screenCoords[1][1] = (float)height;
+			screenCoords[2][2] = .5f;
+			screenCoords[0][3] = (float)width;
+			screenCoords[1][3] = (float)height;
+			screenCoords[2][3] = .5f;
+			screenCoords[3][3] = 1.0f;
+			//printf("p0: (%f, %f, %f) \n", tris[thrId].v[2].pos[0], tris[thrId].v[2].pos[1], tris[thrId].v[2].pos[2]);
+			//printf("p1: (%f, %f, %f) \n", tris[thrId].v[1].pos[0], tris[thrId].v[1].pos[1], tris[thrId].v[1].pos[2]);
+			//glm::vec4 p0 = mul(screenCoords, glm::vec4(tris[thrId].v[0].pos, 1.0f));
+			//p0 = mul(screenCoords, p0);
+			//glm::vec4 p1 = mul(screenCoords, glm::vec4(tris[thrId].v[1].pos, 1.0f));
+			//p1 = mul(screenCoords, p1);
+			float p0x, p0y, p1x, p1y;
+			if (m != 2) {
+				p0x = (tris[thrId].v[m].pos[0] + 1) * (width / 2.0f);
+				p0y = (tris[thrId].v[m].pos[1] + 1) * (height / 2.0f);
+				p1x = (tris[thrId].v[m + 1].pos[0] + 1) * (width / 2.0f);
+				p1y = (tris[thrId].v[m + 1].pos[1] + 1) * (height / 2.0f);
+			}
+			else {
+				p0x = (tris[thrId].v[m].pos[0] + 1) * (width / 2.0f);
+				p0y = (tris[thrId].v[m].pos[1] + 1) * (height / 2.0f);
+				p1x = (tris[thrId].v[0].pos[0] + 1) * (width / 2.0f);
+				p1y = (tris[thrId].v[0].pos[1] + 1) * (height / 2.0f);
+			}
+			glm::vec2 p0(p0x, p0y);
+			glm::vec2 p1(p1x, p1y);
+			//printf("point1: (%f, %f) \n point 2: (%f, %f) \n", p0.x, p0.y, p1.x, p1.y);
+
+			//glm::vec2 p0(30, 0);
+			//glm::vec2 p1(30, 400);
+			float slope;
+			if (p1.x - p0.x > 0.0001f || p1.x - p0.x < -.00001f) {
+				slope = (p1.y - p0.y) / (p1.x - p0.x);
+				//printf("slode: %f \n", slope);
+				if (slope >= -1.0f && slope <= 1.0f) {
+					if (p1.x > p0.x) {
+						for (int x = ceil(p0.x); x < floor(p1.x); x++) {
+							float y = p0.y + (((float)x - p0.x) / (p1.x - p0.x))*(p1.y - p0.y);
+							int newY = glm::round(y);
+							//printf("points: (%i, %i) \n", x, newY);
+							if (x < width && x >= 0 && newY < height && newY >= 0) {
+						
+								buf[4*x + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 1 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 2 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 3 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*x + newY*4*width].idepth = -1;
+							}
+						}
+					}
+					else {
+						for (int x = floor(p0.x); x > ceil(p1.x); x--) {
+							float y = p0.y + (((float)x - p0.x) / (p1.x - p0.x))*(p1.y - p0.y);
+							int newY = glm::round(y);
+							//printf("points: (%i, %i) \n", x, newY);
+							if (x < width && x >= 0 && newY < height && newY >= 0) {
+								//printf("pixel: (%i, %i) \n", x, newY);
+								buf[4*x + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 1 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 2 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 3 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*x + newY*4*width].idepth = -1;
+							}
+						}
+					}
+				}
+				else {
+					if (p1.y > p0.y) {
+						for (int y = ceil(p0.y); y < floor(p1.y); y++) {
+							float x = p0.x + (((float)y - p0.y)*(1.0f / slope));
+							int newX = glm::round(x);
+							//printf("points: (%i, %i) \n", newX, y);
+							if (y < height && y >= 0 && newX < width && newX >= 0) {
+								buf[4*newX + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 1 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 2 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 3 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*newX + y*4*width].idepth = -1;
+							}
+						}
+					}
+					else {
+						for (int y = floor(p0.y); y > ceil(p1.y); y--) {
+							float x = p0.x + (((float)y - p0.y)*(1.0f / slope));
+							int newX = glm::round(x);
+							//printf("points: (%i, %i) \n", newX, y);
+							if (y < height && y >= 0 && newX < width && newX >= 0) {
+								buf[4*newX + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 1 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 2 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 3 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*newX + y*4*width].idepth = -1;
+							}
+						}
+					}
+			
+				}
+			}
+			else {
+				if (glm::abs(p1.x - p0.x) < .00001f) {
+					if (p1.y > p0.y) {
+						for (int y = ceil(p0.y); y < floor(p1.y); y++) {
+							int newX = p0.x;
+							if (y < height && y >= 0 && newX < width && newX >= 0) {
+								buf[4*newX + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 1 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 2 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 3 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*newX + y*4*width].idepth = -1;
+							}
+						}
+					}
+					else {
+						for (int y = floor(p0.y); y > ceil(p1.y); y--) {
+							int newX = p0.x;
+							//printf("points: (%i, %i) \n", newX, y);
+							if (y < height && y >= 0 && newX < width && newX >= 0) {
+								buf[4*newX + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 1 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 2 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*newX + 3 + y*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*newX + y*4*width].idepth = -1;
+							}
+						}
+					}
+				}
+				else {
+					if (p1.x > p0.x) {
+						for (int x = ceil(p0.x); x < floor(p1.x); x++) {
+							int newY = p0.y;
+							//printf("points: (%i, %i) \n", x, newY);
+							if (x < width && x >= 0 && newY < height && newY >= 0) {
+						
+								buf[4*x + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 1 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 2 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 3 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*x + newY*4*width].idepth = -1;
+							}
+						}
+					}
+					else {
+						for (int x = floor(p0.x); x > ceil(p1.x); x--) {
+							int newY = p0.y;
+							//printf("points: (%i, %i) \n", x, newY);
+							if (x < width && x >= 0 && newY < height && newY >= 0) {
+								//printf("pixel: (%i, %i) \n", x, newY);
+								buf[4*x + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 1 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 2 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								buf[4*x + 3 + newY*4*width].color = glm::vec3(1.0f, 1.0f, 0.0f);
+								//buf[4*x + newY*4*width].idepth = -1;
+							}
+						}
+					}
+				}
+			}
+		
+		}
+	}
+}
 __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int height, int triCount) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < triCount) {
@@ -260,43 +431,57 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 			for (int y = glm::max(0.0f, floor(minY)); y < glm::min(height - 1.0f, ceil(maxY)); y++) {
 				
 				//LOOP THROUGH 4 TIMES, jitter fragment placement, buf must be 4 times as big.  When in fragment shader average 4 depths together to get new color
-
-				if (x < 0 || x > width - 1) {
-					printf("error with x, %i \n", x);
-				}
-				if (y < 0 || y > height - 1) {
-					printf("error with y, %i \n", y);
-				}
-				//printf("heyo4 \n");
-				float tempX = (((float)x / (float)width) * 2.0f) - 1.0f;
-				float tempY = (((float)y / (float)height) * 2.0f) - 1.0f;
-				//float minZ = (bbox.min.z + 1) * (width / 2.0f);
-				//printf("z: %f, %f \n", minZ, bbox.min.z);
+				for (int m = 0; m < 4; m++) {
+					float rand = .25f;
+					//printf("heyo4 \n");
+					float newX;
+					float newY;
+					if (m == 0) {
+						newX = x + rand;
+						newY = y + rand;
+					}
+					else if (m == 1) {
+						newX = x + rand + .5f;
+						newY = y + rand;
+					}
+					else if (m == 2) {
+						newX = x + rand;
+						newY = y + rand + .5f;
+					}
+					else {
+						newX = x + rand + .5f;
+						newY = y + rand + .5f;
+					}
+					float tempX = ((newX / (float)width) * 2.0f) - 1.0f;
+					float tempY = ((newY / (float)height) * 2.0f) - 1.0f;
+					//float minZ = (bbox.min.z + 1) * (width / 2.0f);
+					//printf("z: %f, %f \n", minZ, bbox.min.z);
 				
-				//printf("depth int: %i \n", myDepth);
-				if (tempX >= -1.0f && tempX <= 1.0f && tempY >= -1.0f && tempY <= 1.0f) {
-					glm::vec3 baryCoord = calculateBarycentricCoordinate(triangle, glm::vec2(tempX, tempY));
-					int myDepth = getZAtCoordinate(baryCoord, triangle) * INT_MAX;
-					//printf("heyo5 \n");
-					//__syncthreads();
-					//printf("index: %i , buffer depth: %i \n", thrId, buf[x + y*width].idepth);
-					if(isBarycentricCoordInBounds(baryCoord)) {
-						//printf("(%i, %i) \n", x, y);
-						atomicMin(&buf[x + y*width].idepth, myDepth);
-						if(myDepth == buf[x + y*width].idepth) {
-							//printf("heyo6 \n");
-							//printf("index: %i   depth: %f   pixel: (%i, %i) \n", thrId, buf[x + y*width].depth, x, y);
+					//printf("depth int: %i \n", myDepth);
+					if (tempX >= -1.0f && tempX <= 1.0f && tempY >= -1.0f && tempY <= 1.0f) {
+						glm::vec3 baryCoord = calculateBarycentricCoordinate(triangle, glm::vec2(tempX, tempY));
+						int myDepth = getZAtCoordinate(baryCoord, triangle) * INT_MAX;
+						//printf("heyo5 \n");
+						//__syncthreads();
 						
-							glm::vec3 normal = baryCoord[0] * tris[thrId].v[0].nor + baryCoord[1] * tris[thrId].v[1].nor + baryCoord[2] * tris[thrId].v[2].nor;
-							//normal = glm::abs(normal);
-							buf[x + y*width].color = glm::vec3(1.0f); //normal;
-							buf[x + y*width].nor = normal;
-							buf[x + y*width].depth = bbox.min.z;
+						if(isBarycentricCoordInBounds(baryCoord)) {
+							//printf("(%i, %i) \n", x, y);
+							atomicMin(&buf[4*x + m + y*4*width].idepth, myDepth);
+							if(myDepth == buf[4*x + m + y*4*width].idepth) {
+								//printf("heyo6 \n");
+								
+						
+								glm::vec3 normal = baryCoord[0] * tris[thrId].v[0].nor + baryCoord[1] * tris[thrId].v[1].nor + baryCoord[2] * tris[thrId].v[2].nor;
+								normal = glm::normalize(normal);
+								//normal = glm::abs(normal);
+								buf[4*x + m + y*4*width].color = normal;
+								buf[4*x + m + y*4*width].nor = normal;
+								buf[4*x + m + y*4*width].depth = bbox.min.z;
 					
+							}
 						}
 					}
 				}
-				
 			}
 		}
 	}
@@ -309,28 +494,32 @@ __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int h
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
     int index = x + (y * width);
-
+	int depthIndex = 4*x + y*4*width;
 	if (index < width * height) {
-		if (depth[index].depth < MAX_DEPTH) {
+		int minDepth = glm::min(depth[depthIndex + 3].idepth, glm::min(depth[depthIndex + 2].idepth, glm::min(depth[depthIndex].idepth, depth[depthIndex + 1].idepth)));
+		//printf("%i minDepth: %i < %i \n", index, minDepth, MAX_DEPTH);
+		if (minDepth < MAX_DEPTH && minDepth != 0) {
+			glm::vec3 finalColor = (depth[depthIndex + 3].color + depth[depthIndex + 2].color + depth[depthIndex + 1].color + depth[depthIndex].color) / 4.0f;
+			//printf("%i final color (%f, %f, %f) %i \n", index, finalColor.x, finalColor.y, finalColor.z, minDepth);
 			float ambientTerm = 0.2f;
-			float diffuseTerm = glm::dot(glm::normalize(depth[index].nor), glm::normalize(-light));
+			float diffuseTerm = glm::dot(glm::normalize(depth[depthIndex].nor), glm::normalize(-light));
 			if (diffuseTerm < 0.0f) diffuseTerm = 0.0f;
 			if (diffuseTerm > 1.0f) diffuseTerm = 1.0f;
-			//printf("diff: %f norm: (%f, %f, %f) \n", diffuseTerm, depth[index].nor[0], depth[index].nor[1], depth[index].nor[2]);
-			//frag[index].color = diffuseTerm * depth[index].color;//depth[index].nor; //glm::dot(light, depth[index].nor)*depth[index].color;
+			//printf("diff: %f norm: (%f, %f, %f) \n", diffuseTerm, depth[depthIndex].nor[0], depth[depthIndex].nor[1], depth[depthIndex].nor[2]);
+			//frag[index].color = diffuseTerm * finalColor;//depth[depthIndex].nor; //glm::dot(light, depth[depthIndex].nor)*depth[depthIndex].color;
 			//printf("(%f, %f, %f) \n", frag[index].color[0], frag[index].color[1], frag[index].color[2]);
 			
 			float lightIntensity = diffuseTerm + ambientTerm;
-			glm::vec3 Ia = depth[index].color;
-			glm::vec3 Ii = lightColor*depth[index].color;
-			glm::vec3 R = glm::reflect(glm::normalize(-light), glm::normalize(depth[index].nor));
+			glm::vec3 Ia = finalColor;
+			glm::vec3 Ii = lightColor*finalColor;
+			glm::vec3 R = glm::reflect(glm::normalize(-light), glm::normalize(depth[depthIndex].nor));
 			R = glm::normalize(R);
 			glm::vec3 V = normalize(glm::vec3(0.0f, 3.0f, 3.0f));
 			float spec = glm::dot(R, V);
 			if (spec < 0.0f) spec = 0.0f;
 			if (spec < 1.0f) spec = 1.0f;
 	
-			frag[index].color = ambientTerm*Ia + Ii*diffuseTerm;
+			frag[index].color = finalColor; //ambientTerm*Ia + Ii*diffuseTerm;
 
 
 		}
@@ -347,12 +536,13 @@ void rasterize(uchar4 *pbo) {
                       (height - 1) / blockSize2d.y + 1);
 	dim3 blockSize1d(64);
 	dim3 blockCount1d((vertCount + 64 - 1) / 64);
+	dim3 blockCountAnti((4*width - 1) / blockSize2d.x + 1, (height - 1) / blockSize2d.y + 1);
 	//cam.x += camCoords.x;
 	//cam.y += camCoords.y;
 	//camCoords.x = 0.0;
 	//camCoords.y = 0.0;
 	glm::vec3 camera(0.0f, 3.0f, 3.0f);
-	glm::mat4 model = utilityCore::buildTransformationMatrix(glm::vec3(0.0f), glm::vec3(-camCoords.y, -camCoords.x, 0.0f), glm::vec3(.2f));
+	glm::mat4 model = utilityCore::buildTransformationMatrix(glm::vec3(0.0f), glm::vec3(-camCoords.y, -camCoords.x, 0.0f), glm::vec3(camCoords.z));
 	glm::mat4 view = glm::lookAt(glm::vec3(0.0, 3, 3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 	glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.5f, 1000.0f);
 	//glm::mat4 model = glm::mat4();
@@ -362,11 +552,11 @@ void rasterize(uchar4 *pbo) {
     // (See README for rasterization pipeline outline.)
 
 	//Set buffer to default value
-	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
-	setDepth<<<blockCount2d, blockSize2d>>>(dev_depthbuffer, width);
+	cudaMemset(dev_depthbuffer, 0, 4 * width * height * sizeof(Fragment));
+	setDepth<<<blockCountAnti, blockSize2d>>>(dev_depthbuffer, width);
 	setDepth<<<blockCount2d, blockSize2d>>>(dev_fragbuffer, width);
 	//Transfer from VertexIn to VertexOut (vertex shading)
-	vertexShader<<<blockCount1d, blockSize1d>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, matrix);
+	vertexShader<<<blockCount1d, blockSize1d>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, matrix, model);
 	checkCUDAError("rasterize");
 	int k;
 	//std::cin >> k;
@@ -378,8 +568,7 @@ void rasterize(uchar4 *pbo) {
 	//Scanline each triangle to get fragment color (rasterize)
 	int triCount = vertCount / 3;
 	blockCount1d = ((triCount + 64 - 1) / 64);
-	printf("old triangle count: %i \n", triCount);
-	//backCulling<<<blockCount1d, blockSize1d>>>(dev_primitives, triCount);
+	//printf("old triangle count: %i \n", triCount);
 	//checkCUDAError("rasterize");
 	//THRUST REMOVE IF
 	
@@ -388,9 +577,11 @@ void rasterize(uchar4 *pbo) {
 	//printf("triEnd: %i , %i, %i\n", sizeof(triEnd), sizeof(Triangle), sizeof(triEnd)/sizeof(Triangle));
 	triCount = triEnd - dev_primitives;
 	blockCount1d = ((triCount + 64 - 1) / 64);
-	printf("new triangle count: %i \n", triCount);
+	//printf("new triangle count: %i \n", triCount);
 	//printf("tri count: %i, block count: %i \n", triCount, (triCount + 64 - 1) / 64);
 	kernRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
+
+	lineRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount, matrix);
 	checkCUDAError("rasterize");
     
     //Fragment shader
