@@ -120,13 +120,13 @@ __global__
 void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut,int tessLevel,int tessIncre,glm::mat4 Mats,glm::mat4 M_win)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	bufIdxSize *= tessIncre;
+	//bufIdxSize *= tessIncre;
 	if (index<bufIdxSize/3)
 	{
 		int i = 3 * index;
 		//index*tessIncre~index*tessIncre+3
 		index *= tessIncre;
-		if (tessLevel>0)
+		/*if (tessLevel>0)
 		{
 			VertexOut v0 = bufVtxOut[bufIdx[i + 0]];
 			VertexOut v1 = bufVtxOut[bufIdx[i + 1]];
@@ -152,14 +152,51 @@ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, Vert
 			primitives[index + 3].v[1] = m2;
 			primitives[index + 3].v[2] = v2;
 		}
-		else
-		{
+		else*/
+		//{
 			primitives[index].v[0] = bufVtxOut[bufIdx[i + 0]];		//p0
 			primitives[index].v[1] = bufVtxOut[bufIdx[i + 1]];	//p1
 			primitives[index].v[2] = bufVtxOut[bufIdx[i + 2]];	//p2
-		}
+		//}
 
 	}
+}
+
+__global__
+void kernTessellation(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
+{
+	
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < crntSize)
+	{
+		index *= crntInce;
+		crntInce = crntInce/4;
+		VertexOut v0 = primitives[index ].v[0];
+		VertexOut v1 = primitives[index ].v[1];
+		VertexOut v2 = primitives[index ].v[2];
+
+		VertexOut m0 = EdgeTessellator(v0, v1, Mats, M_win);
+		VertexOut m1 = EdgeTessellator(v0, v2, Mats, M_win);
+		VertexOut m2 = EdgeTessellator(v1, v2, Mats, M_win);
+
+		primitives[index + 0 * crntInce].v[0] = v0;
+		primitives[index + 0 * crntInce].v[1] = m0;
+		primitives[index + 0 * crntInce].v[2] = m1;
+
+		primitives[index + 1 * crntInce].v[0] = m0;
+		primitives[index + 1 * crntInce].v[1] = m2;
+		primitives[index + 1 * crntInce].v[2] = m1;
+
+		primitives[index + 2 * crntInce].v[0] = v1;
+		primitives[index + 2 * crntInce].v[1] = m0;
+		primitives[index + 2 * crntInce].v[2] = m2;
+
+		primitives[index + 3 * crntInce].v[0] = m1;
+		primitives[index + 3 * crntInce].v[1] = m2;
+		primitives[index + 3 * crntInce].v[2] = v2;
+
+	}
+	
 }
 
 __host__ __device__ glm::vec3 ColorInTex(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv)
@@ -485,7 +522,8 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 	int bSize_vtx = 128;
 	int bSize_pri = 128;
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
-	dim3 gSize_pri((bufIdxSize*tessIncre/3 + bSize_pri - 1) / bSize_pri);
+	int priSize = bufIdxSize / 3;
+	dim3 gSize_pri((priSize*tessIncre + bSize_pri - 1) / bSize_pri);
 
 	glm::vec3 light(0.3, 0.4, 0.5);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
@@ -502,6 +540,19 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
 	//****** 3. Primitive Assembly
 	//  VertexOut[n] vs_output -> Triangle[n/3] primitives
 	kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre, projMat * M_view * glm::mat4(), M_win);
+	
+	//priSize *= tessIncre;
+	//gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
+
+	int tempSize = bufIdxSize / 3;
+	int tempIncre = tessIncre;
+	for (int i = 0; i < tessLevel; i++)
+	{
+		kernTessellation << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
+		tempSize *= 4;
+		tempIncre /= 4;
+	}
+
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input

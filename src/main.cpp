@@ -13,7 +13,7 @@
 //-------------------------------
 
 glm::vec3 eye(0, 0, 0);
-int tessLevel = 1;
+int tessLevel = 3;
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
