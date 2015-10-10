@@ -12,6 +12,11 @@
 //-------------MAIN--------------
 //-------------------------------
 
+float theta = 1.57079632679f;
+float phi = 0.0f;
+float zoom = 10.0f;
+glm::mat4 camMatrix;
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
@@ -80,19 +85,10 @@ void runCuda() {
     cudaGLMapBufferObject((void **)&dptr, pbo);
 	// set up soooooome matrices!
 	glm::mat4 ID = glm::mat4();
-	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-	glm::mat4 projection = glm::perspective(45.0f, (float) width / (float) height, 0.1f, 100.0f);
-	// Camera matrix
-	glm::mat4 view = glm::lookAt(
-		glm::vec3(100, 100, 100), // Camera position in World Space
-		glm::vec3(0, 0, 0), // camera lookAt
-		glm::vec3(0, 1, 0)  // Head is up
-		);
-	// Our ModelViewProjection : multiplication of our 3 matrices
-	glm::mat4 cam = projection * view;
-	glm::mat4 tf;
-	tf = glm::translate(tf, glm::vec3(1.0f, 0.0f, 0.0f));
-	firstTryRasterize(dptr, tf, ID);
+
+	//glm::mat4 tf;
+	//tf = glm::translate(tf, glm::vec3(0.0f, 0.0f, 0.0f));
+	firstTryRasterize(dptr, ID, camMatrix);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -106,7 +102,7 @@ void runCuda() {
 
 bool init(obj *mesh) {
     glfwSetErrorCallback(errorCallback);
-
+	computeCameraMatrix();
     if (!glfwInit()) {
         return false;
     }
@@ -284,7 +280,56 @@ void errorCallback(int error, const char *description) {
 }
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+	if (action == GLFW_PRESS) {
+		//printf("%f %f %f\n", theta, phi, zoom);
+		switch (key) {
+		case GLFW_KEY_ESCAPE:
+			glfwSetWindowShouldClose(window, GL_TRUE);
+			break;
+		case GLFW_KEY_DOWN:  
+			theta += -0.1f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_UP:    
+			theta += 0.1f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_RIGHT: 
+			phi += -0.1f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_LEFT:
+			phi += 0.1f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_Z:
+			zoom += 1.0f;
+			break;
+		case GLFW_KEY_X:
+			zoom -= 1.0f;
+			computeCameraMatrix();
+			break;
+		}
+	}
+}
+
+void computeCameraMatrix() {
+    // Projection matrix : 45° Field of View, 1:1 ratio, display range : 0.1 unit <-> 100 units
+    glm::mat4 projection = glm::perspective(45.0f, (float) width / (float) height, 0.1f, 100.0f);
+    // compute position: http://www.cs.cmu.edu/~barbic/camera.html
+    if (theta < 0.0f) theta = 0.01f;
+	if (theta > 3.141592653589) theta = 3.14;
+
+    glm::vec3 cameraPos;
+	cameraPos.x = zoom * sin(phi) * sin(theta);
+	cameraPos.y = zoom * cos(theta);
+	cameraPos.z = zoom * cos(phi) * sin(theta);
+
+    // Camera matrix
+    glm::mat4 view = glm::lookAt(
+		cameraPos, // Camera position in World Space
+        glm::vec3(0, 0, 0), // camera lookAt
+        glm::vec3(0, 1, 0)  // Head is up
+        );
+	camMatrix = projection * view;
 }

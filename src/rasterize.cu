@@ -52,15 +52,26 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 
 /**
- * Kernel that writes a background color into dev_fragsOut.
+ * Kernel that clears frags in
  */
-__global__ void clearFragsOut(glm::vec3 bgColor, int w, int h, FragmentOut *dev_fragsOut) {
+__global__ void clearFragsIn(int w, int h, FragmentIn *dev_fragsIn) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (x < w && y < h) {
-		dev_fragsOut[x + (y * w)].color = bgColor;
-		//glm::vec3 peek = dev_fragsOut[x + (y * w)].color;
-		//bgColor = bgColor;
+		dev_fragsIn[x + (y * w)].depth = 0xfff0000000000000;
+		dev_fragsIn[x + (y * w)].color = glm::vec3(0.0f, 0.0f, 0.0f);
+		dev_fragsIn[x + (y * w)].normal = glm::vec3(0.0f, 0.0f, 0.0f);
+	}
+}
+
+/**
+* Kernel that clears frags out
+*/
+__global__ void clearFragsOut(int w, int h, FragmentOut *dev_fragsOut) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	if (x < w && y < h) {
+		dev_fragsOut[x + (y * w)].color = glm::vec3(0.0f, 0.0f, 0.0f);
 	}
 }
 
@@ -201,6 +212,12 @@ __global__ void minScanlineRasterization(int w, int h, int numPrimitives, Triang
 		int BBXmin = triangleBB.min.x * (w / 2);
 		int BBXmax = triangleBB.max.x * (w / 2);
 
+		// fake clip
+		if (BBYmin < -h / 2) BBYmin = h / 2;
+		if (BBXmin < -w / 2) BBXmin = w / 2;
+		if (BBYmax > h / 2) BBYmax = h / 2;
+		if (BBXmax > w / 2) BBXmax = w / 2;
+
 		// scan over the AABB
 		for (int y = BBYmin; y < BBYmax; y++) {
 			for (int x = BBXmin; x < BBXmax; x++) {
@@ -219,7 +236,7 @@ __global__ void minScanlineRasterization(int w, int h, int numPrimitives, Triang
 				// so a fragIndx(0,0) is at NDC -1 -1
 				// btw, going from NDC back to pixel coordinates:
 				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
-				int fragIndex = (x + (w / 2)) + ((y + (h / 2)) * w);
+				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
 				// if all things pass ok, then insert into fragment.
 				if (zDepth <= dev_frags[fragIndex].depth) {
 					dev_frags[fragIndex].depth = zDepth;
@@ -266,8 +283,10 @@ void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cam
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
-	// 1) clear fragment buffer with some default value.
-	clearFragsOut << <blockCount2d_display, blockSize2d >> >(glm::vec3(0.5f, 0.5f, 0.5f), width, height, dev_fragsOut);
+	// 1) clear frame buffer with some default value.
+	cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+	clearFragsIn <<<blockCount2d_display, blockSize2d >>>(width, height, dev_fragsIn);
+	clearFragsOut << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut);
 
 	// 2) vertex shade
 	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
