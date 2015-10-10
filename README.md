@@ -36,7 +36,7 @@ An interactive GPU accelerated rasterizer (Add here)
 #### Points
 ![](renders/dragon_points.png "Stanford Dragon Rendered Using Point Primitives")
 
-* **Overview**:
+* **Overview**: For this effect, the standard rasterization step of the pipeline is replaced with one to output points. Because we are only rendering a point and not an entire triangle, bary centric coordinates do not need to be calculated, nor do we have to interpolate the normals or colors across each verticy. Instead we just output the values for a single vertex to the depth buffer (I use the middle vertex at index one) and lead the others as zero. This vertex will be the point that is rendered to the screen.
 * **Perfromance Impact**:
 * 
 
