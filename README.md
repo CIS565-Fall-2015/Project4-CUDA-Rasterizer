@@ -44,7 +44,7 @@ To render the basic rasterization primitive, the triangle, each GPU thread is re
 #### Normal and Color Interpolation
 ![](renders/dragon_interp_comp.png "Stanford Dragon With and Without Normal Interpolation")
 
-* **Overview**:
+* **Overview**: Implementing normal and color interpolation gives significantly more visually pleasing results, as can be seen above. Without the interpolation, models look obviously contructed of triangles. With interpolation, the models are smooth and provide the realistic effect we'd expect. To achieve these smooth models, the obj file must provide vertex normals. If not, the result will look like interpolation is disabled. The same for color, if not provided in the object file per vertex, the model will be one solid color. 
 * **Perfromance Impact**:
 * 
 
