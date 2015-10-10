@@ -37,7 +37,7 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	light.color = lightColor;
 
 	this->culling = culling;
-	scissor = true;
+	scissor = false;
 	this->pointRasterization = false;
 	this->lineRasterization = false;
 	mouseState.initialPositionsSet = false;
