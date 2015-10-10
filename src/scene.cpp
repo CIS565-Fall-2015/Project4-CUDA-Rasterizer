@@ -10,12 +10,10 @@ Scene::Scene() {
 	camera.lookAt = glm::vec3(0.0f);
 	camera.right = glm::vec3(1.0f, 0.0f, 0.0f);
 
-	light1.position = glm::vec3(1000.0f);
-	light1.color = glm::vec3(1.0f);
-	light2.position = glm::vec3(-1000.0f, 1000.0f, -1000.0f);
-	light2.color = glm::vec3(1.0f);
+	light.position = 1000.0f * camera.position;
+	light.color = glm::vec3(1.0f);
 
-	culling = true;
+	culling = false;
 	scissor = false;
 	pointRasterization = false;
 	lineRasterization = false;
@@ -27,7 +25,7 @@ Scene::Scene() {
 }
 
 Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, 
-	glm::vec3 cameraRight, glm::vec3 light1Position, glm::vec3 light1Color, glm::vec3 light2Position, glm::vec3 light2Color, bool culling) {
+	glm::vec3 cameraRight, glm::vec3 lightPosition, glm::vec3 lightColor, bool culling) {
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
 	camera.fieldOfView = fieldOfView;
@@ -35,10 +33,8 @@ Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPos
 	camera.lookAt = cameraLookAt;
 	camera.right = cameraRight;
 
-	light1.position = light1Position;
-	light1.color = light1Color;
-	light2.position = light2Position;
-	light2.color = light2Color;
+	light.position = lightPosition;
+	light.color = lightColor;
 
 	this->culling = culling;
 	scissor = true;
@@ -65,4 +61,6 @@ void Scene::updateModelView() {
 	view = glm::lookAt(camera.position, camera.lookAt, camera.up);
 	projection = glm::perspective(camera.fieldOfView, 1.0f, -nearPlane, -farPlane);
 	modelView = projection * view * model;
+
+	light.position = 1000.0f * camera.position;
 }

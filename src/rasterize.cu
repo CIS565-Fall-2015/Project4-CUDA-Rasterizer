@@ -151,6 +151,31 @@ void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragm
 					int z = getZAtCoordinate(baryCentricCoordiante, coordinate) * 10000.0f;
 					int depthIndex = w - x + (h - y) * w;
 
+					// Wait, should I be doing a mutex lock?
+					/*
+					bool isSet;
+					do {
+						isSet = (atomicMin(&depth[depthIndex], z) == 0);
+						if (isSet) {
+							// critical section
+							// is this where the depth buffers are worked on then?
+							if (depth[depthIndex] == z) {
+								Fragment fragment;
+								fragment.color = baryCentricCoordiante.x * primitive.v[0].col + baryCentricCoordiante.y
+									* primitive.v[1].col + baryCentricCoordiante.z * primitive.v[2].col;
+								fragment.position = baryCentricCoordiante.x * primitive.v[0].pos + baryCentricCoordiante.y
+									* primitive.v[1].pos + baryCentricCoordiante.z * primitive.v[2].pos;
+								fragment.normal = baryCentricCoordiante.x * primitive.v[0].nor + baryCentricCoordiante.y
+									* primitive.v[1].nor + baryCentricCoordiante.z * primitive.v[2].nor;
+								depthbuffer[depthIndex] = fragment;
+							}
+						}
+						if (isSet) {
+							&(depth[depthIndex]) = 0.0f;
+						}
+
+					} while (!isSet);
+					*/
 					atomicMin(&depth[depthIndex], z);
 
 					if (depth[depthIndex] == z) {
@@ -258,15 +283,14 @@ void lineRasterization(int w, int h, int primitiveCount, Triangle *primitives, F
 * Fragment shader
 */
 __global__
-void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light1, const Light light2) {
+void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light) {
 	// TODO: Handle an array of lights
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < (w * h)) {
 		Fragment fragment = depthBuffer[index];
-		depthBuffer[index].color = (glm::dot(glm::normalize(light1.position - fragment.position), fragment.normal)
-			* fragment.color * light1.color) + (glm::dot(glm::normalize(light2.position - fragment.position),
-			fragment.normal) * fragment.color * light2.color);
+		depthBuffer[index].color = (glm::dot(glm::normalize(light.position - fragment.position), fragment.normal)
+			* fragment.color * light.color);
 	}
 }
 
@@ -409,7 +433,7 @@ void rasterize(uchar4 *pbo) {
 	}
 
 	// Fragment shading
-	fragmentShading<<<fragmentGridSize, fragmentBlockSize>>>(width, height, dev_depthbuffer, scene->light1, scene->light2);
+	fragmentShading<<<fragmentGridSize, fragmentBlockSize>>>(width, height, dev_depthbuffer, scene->light);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
