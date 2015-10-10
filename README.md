@@ -8,3 +8,4 @@ CUDA Rasterizer
 
 ## Description
 An interactive GPU accelerated rasterizer (Add here)
+![](renders/dragon.png "Stanford Dragon")
