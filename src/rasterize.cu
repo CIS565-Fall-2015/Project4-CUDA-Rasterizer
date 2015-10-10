@@ -32,6 +32,8 @@
 
 #define BILINEAR_FILTERING
 
+//#define BACKFACE_CULLING
+
 //#define ANTIALIASING
 
 //#define SCISSOR_TEST
@@ -131,8 +133,9 @@ static float materialNs;
 static glm::vec3 materialAmbient;
 
 
-static ShaderMode shaderMode = SHADER_NORMAL;
+static ShaderMode shaderMode = SHADER_WHITE_MATERIAL;
 static GeomMode geomMode = GEOM_COMPLETE;
+static bool backFaceCulling = false;
 
 static Light hst_lights[NUM_LIGHTS] = {
 	Light{ DIRECTION_LIGHT
@@ -167,6 +170,20 @@ void changeGeomMode()
 	printf("change geometry shading mode %d\n", (int)geomMode);
 }
 
+void changeBackFaceCulling()
+{
+	backFaceCulling = !backFaceCulling;
+
+	if (backFaceCulling)
+	{
+		printf("enable back face culling \n");
+	}
+	else
+	{
+		printf("disable back face culling \n");
+	}
+	
+}
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -334,7 +351,7 @@ void initTextureData(bool has_diffuse_tex,int d_w, int d_h, glm::vec3 * diffuse_
 * each thread copy info for one vertex
 */
 __global__ 
-void kernVertexShader(int N,glm::mat4 M, glm::mat4 M_model_view, glm::mat4 M_normal_view, VertexIn * dev_vertex, Triangle * dev_triangles)
+void kernVertexShader(int width,int height,int N,glm::mat4 M, glm::mat4 M_model_view, glm::mat4 M_normal_view, VertexIn * dev_vertex, Triangle * dev_triangles)
 {
 	int vertexId = blockDim.x * blockIdx.x + threadIdx.x;
 	
@@ -360,6 +377,33 @@ void kernVertexShader(int N,glm::mat4 M, glm::mat4 M_model_view, glm::mat4 M_nor
 		vo.uv = vi.uv;
 
 		//printf("%f,%f\n", vo.uv.x, vo.uv.y);
+
+
+
+
+
+
+		//viewport
+		vo.divide_w_clip = 1.0f / vo.pos.w;
+
+		vo.pos.x = 0.5f * (float)width * (vo.pos.x * vo.divide_w_clip + 1.0f);
+		vo.pos.y = 0.5f * (float)height * (vo.pos.y * vo.divide_w_clip + 1.0f);
+		vo.pos.z = 0.5f * (vo.pos.z * vo.divide_w_clip + 1.0f);
+		vo.pos.w = 1.0f;
+
+
+
+
+		//perspective correct interpolation
+		vo.color *= vo.divide_w_clip;
+		vo.noraml_eye_space *= vo.divide_w_clip;
+		vo.pos_eye_space *= vo.divide_w_clip;
+		vo.uv *= vo.divide_w_clip;
+
+
+
+		////////
+		
 	}
 }
 
@@ -376,7 +420,7 @@ void vertexShader(const glm::mat4 & M, const glm::mat4 & M_model_view, const glm
 
 	// get M, M_normal_view
 
-	kernVertexShader << <blockCount, blockSize >> >(vertCount, M, M_model_view, inv_trans_M, dev_bufVertex, dev_primitives);
+	kernVertexShader << <blockCount, blockSize >> >(width,height,vertCount, M, M_model_view, inv_trans_M, dev_bufVertex, dev_primitives);
 }
 
 //------------------------------------------------------------------------------
@@ -521,8 +565,8 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, float u
 
 
 	//TODO: get two interpolated segment end points
-	VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], u1);
-	VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], u2);
+	//VertexOut cur_v_e1 = interpolateVertexOut(e1.v[0], e1.v[1], u1);
+	//VertexOut cur_v_e2 = interpolateVertexOut(e2.v[0], e2.v[1], u2);
 
 
 	//Initialize attributes
@@ -535,7 +579,7 @@ void drawOneScanLine(int width, const Edge & e1, const Edge & e2, int y, float u
 
 	//Interpolate
 	//printf("%d,%d\n", x_left, x_right);
-	float gap_x = x_right_origin - x_left_origin;
+	//float gap_x = x_right_origin - x_left_origin;
 	for (int x = x_left; x < x_right; ++x)
 	{
 #ifdef ANTIALIASING
@@ -777,25 +821,25 @@ void kernScanLineForOneTriangle(int num_tri, int width,int height
 		//}
 		//else
 		//{
-		tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		
 		//}
 		
-		
-		
-		//view port
-		tri.v[i].pos.x = 0.5f * (float)width * (tri.v[i].pos.x * tri.v[i].divide_w_clip + 1.0f);
-		tri.v[i].pos.y = 0.5f * (float)height * (tri.v[i].pos.y * tri.v[i].divide_w_clip + 1.0f);
-		tri.v[i].pos.z = 0.5f * (tri.v[i].pos.z * tri.v[i].divide_w_clip + 1.0f);
-		tri.v[i].pos.w = 1.0f;
+		//tri.v[i].divide_w_clip = 1.0f / tri.v[i].pos.w;
+		//
+		////view port
+		//tri.v[i].pos.x = 0.5f * (float)width * (tri.v[i].pos.x * tri.v[i].divide_w_clip + 1.0f);
+		//tri.v[i].pos.y = 0.5f * (float)height * (tri.v[i].pos.y * tri.v[i].divide_w_clip + 1.0f);
+		//tri.v[i].pos.z = 0.5f * (tri.v[i].pos.z * tri.v[i].divide_w_clip + 1.0f);
+		//tri.v[i].pos.w = 1.0f;
 
 
-		
+		//
 
-		//perspective correct interpolation
-		tri.v[i].color *= tri.v[i].divide_w_clip;
-		tri.v[i].noraml_eye_space *= tri.v[i].divide_w_clip;
-		tri.v[i].pos_eye_space *= tri.v[i].divide_w_clip;
-		tri.v[i].uv *= tri.v[i].divide_w_clip;
+		////perspective correct interpolation
+		//tri.v[i].color *= tri.v[i].divide_w_clip;
+		//tri.v[i].noraml_eye_space *= tri.v[i].divide_w_clip;
+		//tri.v[i].pos_eye_space *= tri.v[i].divide_w_clip;
+		//tri.v[i].uv *= tri.v[i].divide_w_clip;
 		
 
 
@@ -885,12 +929,7 @@ void kernVertexRasterize(int num_tri, int width, int height, Triangle* triangles
 		VertexOut p = triangles[triId].v[i];
 
 
-		p.divide_w_clip = 1.0f / p.pos.w;
-		//view port
-		p.pos.x = 0.5f * (float)width * (p.pos.x * p.divide_w_clip + 1.0f);
-		p.pos.y = 0.5f * (float)height * (p.pos.y * p.divide_w_clip + 1.0f);
-		p.pos.z = 0.5f * (p.pos.z * p.divide_w_clip + 1.0f);
-		p.pos.w = 1.0f;
+		
 
 		int x = (int)p.pos.x;
 		int y = (int)p.pos.y;
@@ -918,10 +957,10 @@ void kernVertexRasterize(int num_tri, int width, int height, Triangle* triangles
 		if (*address == z_int)
 		{
 			//fragments[idx].depth = z;
-			depth_fragment[idx].color = p.color;
-			depth_fragment[idx].normal_eye_space = p.noraml_eye_space;
-			depth_fragment[idx].pos_eye_space = p.noraml_eye_space;
-			depth_fragment[idx].uv = p.uv;
+			depth_fragment[idx].color = p.color / p.divide_w_clip;
+			depth_fragment[idx].normal_eye_space = p.noraml_eye_space / p.divide_w_clip;
+			depth_fragment[idx].pos_eye_space = p.noraml_eye_space / p.divide_w_clip;
+			depth_fragment[idx].uv = p.uv / p.divide_w_clip;
 
 			depth_fragment[idx].has_fragment = true;
 
@@ -1288,11 +1327,14 @@ void rasterize(uchar4 *pbo) {
 	initDepth << <blockCount2d, blockSize2d >> >(width,height,dev_depth);
 
 
-	//TODO: back surface sculling
-	Triangle * primitives_end = dev_primitives + (triCount);
-	primitives_end = thrust::remove_if(thrust::device, dev_primitives, primitives_end, is_backface());
-	int cur_triCount = primitives_end - dev_primitives;
-
+	int cur_triCount = triCount;
+	if (backFaceCulling)
+	{
+		// back surface sculling
+		Triangle * primitives_end = dev_primitives + (triCount);
+		primitives_end = thrust::remove_if(thrust::device, dev_primitives, primitives_end, is_backface());
+		int cur_triCount = primitives_end - dev_primitives;
+	}
 
 
 
@@ -1326,6 +1368,7 @@ void rasterize(uchar4 *pbo) {
 
     // Copy depthbuffer colors into framebuffer
 	cudaDeviceSynchronize();
+
 	render << <blockCount2d, blockSize2d >> >(width, height,
 		dev_depthbuffer, dev_framebuffer,
 		dev_lights, lightsCount, shaderMode
