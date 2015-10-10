@@ -265,9 +265,8 @@ void scissorTest(int w, int primitiveCount, Triangle *primitives, const glm::vec
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
 
 	if (index < primitiveCount) {
-		Triangle primitive = primitives[index];
-		if (primitive.boundingBox.min.y > scissorMax.y || primitive.boundingBox.max.y < scissorMin.y ||
-			primitive.boundingBox.max.x > scissorMax.x || primitive.boundingBox.max.x < scissorMin.x) {
+		if (primitives[index].boundingBox.min.y > scissorMax.y || primitives[index].boundingBox.max.y < scissorMin.y ||
+			primitives[index].boundingBox.max.x > scissorMax.x || primitives[index].boundingBox.max.x < scissorMin.x) {
 			primitives[index].visible = false;
 		}
 	}
