@@ -30,8 +30,7 @@ int main(int argc, char **argv) {
     fpstracker = 0;
 
     // Launch CUDA/GL
-    if (init(mesh)) {
-        // GLFW main loop
+    if (init(mesh)) { // GLFW main loop
         mainLoop();
     }
 
@@ -46,7 +45,6 @@ void mainLoop() {
         time_t seconds2 = time (NULL);
 
         if (seconds2 - seconds >= 1) {
-
             fps = fpstracker / (seconds2 - seconds);
             fpstracker = 0;
             seconds = seconds2;
@@ -83,7 +81,6 @@ void runCuda() {
 
     frame++;
     fpstracker++;
-
 }
 
 //-------------------------------
@@ -152,7 +149,6 @@ void initPBO() {
     // Allocate data for the buffer. 4-channel 8-bit image
     glBufferData(GL_PIXEL_UNPACK_BUFFER, size_tex_data, NULL, GL_DYNAMIC_COPY);
     cudaGLRegisterBufferObject(pbo);
-
 }
 
 void initCuda() {
