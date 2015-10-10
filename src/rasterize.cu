@@ -151,31 +151,6 @@ void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragm
 					int z = getZAtCoordinate(baryCentricCoordiante, coordinate) * 10000.0f;
 					int depthIndex = w - x + (h - y) * w;
 
-					// Wait, should I be doing a mutex lock?
-					/*
-					bool isSet;
-					do {
-						isSet = (atomicMin(&depth[depthIndex], z) == 0);
-						if (isSet) {
-							// critical section
-							// is this where the depth buffers are worked on then?
-							if (depth[depthIndex] == z) {
-								Fragment fragment;
-								fragment.color = baryCentricCoordiante.x * primitive.v[0].col + baryCentricCoordiante.y
-									* primitive.v[1].col + baryCentricCoordiante.z * primitive.v[2].col;
-								fragment.position = baryCentricCoordiante.x * primitive.v[0].pos + baryCentricCoordiante.y
-									* primitive.v[1].pos + baryCentricCoordiante.z * primitive.v[2].pos;
-								fragment.normal = baryCentricCoordiante.x * primitive.v[0].nor + baryCentricCoordiante.y
-									* primitive.v[1].nor + baryCentricCoordiante.z * primitive.v[2].nor;
-								depthbuffer[depthIndex] = fragment;
-							}
-						}
-						if (isSet) {
-							&(depth[depthIndex]) = 0.0f;
-						}
-
-					} while (!isSet);
-					*/
 					atomicMin(&depth[depthIndex], z);
 
 					if (depth[depthIndex] == z) {
