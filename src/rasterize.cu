@@ -47,6 +47,7 @@ static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static bool* dev_is_writable = NULL;  // mutex for race condition
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -94,11 +95,13 @@ void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out
 	{
 		VertexIn cur_v_in = dev_bufVertex_in[index];
 		//calculate pos 
-		dev_bufVertex_out[index].pos = glm::vec3(trans*glm::vec4(cu_v_in.pos,1.f));
+		dev_bufVertex_out[index].pos = glm::vec3(trans*glm::vec4(cur_v_in.pos,1.f));
 		//calculate normal
-		dev_bufVertex_out[index].nor = glm::vec3(trans_inv_T*glm::vec4(cu_v_in.nor,1.f));
+		dev_bufVertex_out[index].nor = glm::vec3(trans_inv_T*glm::vec4(cur_v_in.nor,1.f));
 		//calculate color
-		dev_bufVertex_out[index].col = cur_v_in[index].col;
+		dev_bufVertex_out[index].col = cur_v_in.col;
+
+		
 	}
 
 }
@@ -126,7 +129,7 @@ void kern_premitive_assemble(VertexOut* dev_bufVertex_out,int* dev_bufIdx,Triang
 
 //Rasterization
 __global__ 
-void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int num_of_primitives, int width, int height)
+void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int num_of_primitives, int width, int height, bool* dev_is_writable)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -138,18 +141,18 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 		glm::vec3 m_colors[3] = {cur_triangle.v[0].col,cur_triangle.v[1].col,cur_triangle.v[2].col};
 		AABB cur_AABB = getAABBForTriangle(m_tri);
 
-		float min_x = max(cur_AABB.min.x,-1) ;
-		float min_y = max(cur_AABB.min.y,-1);
-		float max_x = min(cur_AABB.max.x,1);
-		float max_y = min(cur_AABB.max.y,1);
+		float min_x = max(cur_AABB.min.x,-1.f) ;
+		float min_y = max(cur_AABB.min.y,-1.f);
+		float max_x = min(cur_AABB.max.x,1.f);
+		float max_y = min(cur_AABB.max.y,1.f);
 
 		float dx = 2.f/width;
 		float dy = 2.f/height;
 
-		int min_x_idx = max((min_x+1)/dx,0);
-		int min_y_idx = max((min_y+1)/dy,0);
-		int max_x_idx = min((max_x+1)/dx,width-1);
-		int max_y_idx = min((max_y+1)/dy,height-1);
+		int min_x_idx = max((int)((min_x+1)/dx),(int)0);
+		int min_y_idx = max((int)((min_y+1)/dy),(int)0);
+		int max_x_idx = min((int)((max_x+1)/dx),(int)width-1);
+		int max_y_idx = min((int)((max_y+1)/dy),(int)height-1);
 
 
 		
@@ -157,12 +160,12 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 		
 		for(int i = min_y_idx;i<=max_y_idx;i++)
 		{
-			for(int j = min_x_idx ; j<=max_y_idx ;j++)
+			for(int j = min_x_idx ; j<=max_x_idx ;j++)
 			{
-				int buffer_index = i*width + j;
+				int buffer_index = (height-i)*width + j;
 
-				float cur_y = ((float)i*2+1.f)/(float)height;
-				float cur_x = ((float)j*2+1.f)/(float)width;
+				float cur_y = -1+ ((float)i*2+1.f)/(float)height;
+				float cur_x = -1+ ((float)j*2+1.f)/(float)width;
 
 				glm::vec2 cur_vec2 (cur_x,cur_y);
 
@@ -176,14 +179,27 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 					{
 						if(dev_depthbuffer[buffer_index].z<cur_z)
 						{
+							// attention for the race condition
+							//resolve later
+							while(!dev_is_writable[buffer_index])
+							{}
+
+							//enter critical area
+							dev_is_writable[buffer_index] =false;
+
+
 							dev_depthbuffer[buffer_index].z = cur_z;
 							
 							//interpolate the color
 							
-							dev_depthbuffer[buffer_index].col =m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z;
+							dev_depthbuffer[buffer_index].color =m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z;
 							
 							//interpolate the normal
 							dev_depthbuffer[buffer_index].nor = m_normals[0]*b_c.x +m_normals[1]*b_c.y+m_normals[2]*b_c.z;
+						
+							//leave critical area
+							dev_is_writable[buffer_index] = true;
+						
 						}
 					}
 				}
@@ -192,12 +208,41 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 		}
 
 
-
-
-
-
 	}
 	
+}
+
+//fragment shader
+__global__
+void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	
+	if(index < num_of_fragment)
+	{
+		// for now just doing nothing to test
+		if(abs(dev_depthbuffer[index].z + 2.f)>1e-6)
+		{
+			dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
+		}
+		
+
+	}
+
+}
+
+//fragment init
+__global__
+void kern_fragment_init(Fragment *dev_depthbuffer, int num_of_fragment)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	
+	if(index < num_of_fragment)
+	{
+		// for now just doing nothing to test
+		dev_depthbuffer[index].z = -2.f;
+
+	}
 }
 
 /**
@@ -209,9 +254,16 @@ void rasterizeInit(int w, int h) {
     cudaFree(dev_depthbuffer);
     cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
     cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
-    cudaFree(dev_framebuffer);
+	cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+
+
+	cudaFree(dev_is_writable);
+    cudaMalloc(&dev_is_writable,   width * height * sizeof(bool));
+    cudaMemset(dev_is_writable, true, width * height * sizeof(bool));
+
+	
     checkCUDAError("rasterizeInit");
 }
 
@@ -234,7 +286,10 @@ void rasterizeSetBuffers(
         bufVertex[i].pos = glm::vec3(bufPos[j + 0], bufPos[j + 1], bufPos[j + 2]);
         bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
         bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
-    }
+    
+	
+	
+	}
     cudaFree(dev_bufVertex);
     cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
     cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
@@ -244,7 +299,7 @@ void rasterizeSetBuffers(
 
     cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, bufIdxSize / 3 * sizeof(Triangle));
-    //cudaMemset(dev_primitives, 0, bufIdxSize / 3 * sizeof(Triangle));
+    cudaMemset(dev_primitives, 0, bufIdxSize / 3 * sizeof(Triangle));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -272,9 +327,23 @@ void rasterize(uchar4 *pbo) {
 	blockCount1d.x = num_of_primitives/THREADS_PER_BLOCK+1;
 
 	
-	kern_premitive_assemble(dev_bufVertex_out,dev_bufIdx,dev_primitives, num_of_primitives);
+	kern_premitive_assemble<<<blockCount1d,blockSize1d>>>(dev_bufVertex_out,dev_bufIdx,dev_primitives, num_of_primitives);
 
+	
+	//fragment init
+	int num_of_fragment = width * height;
+	blockCount1d.x = num_of_fragment/THREADS_PER_BLOCK+1;
+
+	kern_fragment_init<<<blockCount1d,blockSize1d>>>(dev_depthbuffer,num_of_fragment);
+	
+	
 	//rasterization
+	kern_rasterization<<<blockCount1d,blockSize1d>>>(dev_primitives, dev_depthbuffer, num_of_primitives, width, height, dev_is_writable);
+
+	//fragment shader
+	blockCount1d.x = num_of_fragment/THREADS_PER_BLOCK+1;
+
+	kern_fragment_shader<<<blockCount1d,blockSize1d>>>(dev_depthbuffer,num_of_fragment);
 
 
     // Copy depthbuffer colors into framebuffer
@@ -305,6 +374,9 @@ void rasterizeFree() {
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
+
+	cudaFree(dev_is_writable);
+	dev_is_writable = NULL;
 
     checkCUDAError("rasterizeFree");
 }

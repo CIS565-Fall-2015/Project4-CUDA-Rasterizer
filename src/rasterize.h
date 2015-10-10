@@ -10,6 +10,8 @@
 
 #include <glm/glm.hpp>
 
+#define THREADS_PER_BLOCK 256
+
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
