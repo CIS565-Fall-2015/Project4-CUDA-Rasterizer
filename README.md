@@ -71,7 +71,7 @@ These fragments are finally output to the framebuffer, and from there displayed 
 
 ## Additional Features
 
-### Mouse Controls
+### Mouse Interaction
 
 * **Overview**: The rasterizer renders in real time and can be interacted with by the user using mouse controls.
 * **Rotation**: Holding the left mouse button and moving the cursor rotates the camera around the object.
