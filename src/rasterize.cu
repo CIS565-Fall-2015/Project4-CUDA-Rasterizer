@@ -34,6 +34,7 @@ struct VertexOut {
 	glm::vec3 winPos;
 
 	glm::vec3 tex;
+	bool DispAdded = false;
     // TODO
 };
 struct Triangle {
@@ -102,7 +103,7 @@ void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat
 
 
 
-__device__ VertexOut EdgeTessellator(VertexOut vtxA, VertexOut vtxB, glm::mat4 Mats, glm::mat4 M_win)
+__device__ VertexOut EdgeTessellator_MipP(VertexOut vtxA, VertexOut vtxB, glm::mat4 Mats, glm::mat4 M_win)
 {
 	//now, all linear. (mid point)
 	//!!!later..catmull??
@@ -114,6 +115,7 @@ __device__ VertexOut EdgeTessellator(VertexOut vtxA, VertexOut vtxB, glm::mat4 M
 	vtxC.winPos = glm::vec3(M_win*glm::vec4(vtxC.ndc,1));// (vtxA.winPos + vtxB.winPos)*0.5f;
 	vtxC.tex = (vtxA.tex + vtxB.tex)*0.5f;
 	vtxC.col = (vtxA.col + vtxB.col)*0.5f;
+	vtxC.DispAdded = false;
 	return vtxC;
 }
 
@@ -176,9 +178,9 @@ void kernTessellation(Triangle* primitives,int crntSize,  int crntInce, glm::mat
 		VertexOut v1 = primitives[index ].v[1];
 		VertexOut v2 = primitives[index ].v[2];
 
-		VertexOut m0 = EdgeTessellator(v0, v1, Mats, M_win);
-		VertexOut m1 = EdgeTessellator(v0, v2, Mats, M_win);
-		VertexOut m2 = EdgeTessellator(v1, v2, Mats, M_win);
+		VertexOut m0 = EdgeTessellator_MipP(v0, v1, Mats, M_win);
+		VertexOut m1 = EdgeTessellator_MipP(v0, v2, Mats, M_win);
+		VertexOut m2 = EdgeTessellator_MipP(v1, v2, Mats, M_win);
 
 		primitives[index + 0 * crntInce].v[0] = v0;
 		primitives[index + 0 * crntInce].v[1] = m0;
@@ -303,6 +305,35 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 	return result;
 }
 
+__global__ 
+void kernDispMapping(Triangle* primitives, int crntSize, glm::mat4 Mats, glm::mat4 M_win, glm::vec3** texs, glm::vec2* tInfo)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (texs == NULL || tInfo == NULL) return;
+	if (index < crntSize)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			if (!primitives[index].v[i].DispAdded)
+			{
+				float disp = 0.1*glm::length( ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex)) );
+				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
+				printf("disp:%2f\n",disp);
+				//vtxC.pos = (vtxA.pos + vtxB.pos)*0.5f;
+				//vtxC.nor = glm::normalize(vtxA.nor + vtxB.nor);
+				glm::vec4 clip = Mats*glm::vec4(primitives[index].v[i].pos, 1);
+				primitives[index].v[i].ndc = glm::vec3(clip*(1 / clip.w));
+				primitives[index].v[i].winPos = glm::vec3(M_win*glm::vec4(primitives[index].v[i].ndc, 1));// (vtxA.winPos + vtxB.winPos)*0.5f;
+				//vtxC.tex = (vtxA.tex + vtxB.tex)*0.5f;
+				//vtxC.col = (vtxA.col + vtxB.col)*0.5f;
+				primitives[index].v[i].DispAdded = true;
+				//primitives[index].v[i].col = glm::vec3(disp,0,0);
+			}
+		}
+
+	}
+}
+
 __global__
 void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
 {
@@ -343,8 +374,8 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
 				
-				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
-				//if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
+				//if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
+				if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
 				{
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
@@ -566,7 +597,8 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 		gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
 	}
 
-
+	checkCUDAError("rasterize----");
+	kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, projMat * M_view * glm::mat4(), M_win, dev_textures, dev_texInfo);
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
 	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
@@ -574,7 +606,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments
 	//****** 8. Fragment to framebuffer writing
-
+	checkCUDAError("rasterizeAAAA");
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
@@ -617,5 +649,7 @@ void rasterizeFree() {
     checkCUDAError("rasterizeFree");
 }
 
-//tessellation & geometry
+//tessellation & geometry : read later
 //http://prideout.net/blog/?p=48
+//http://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/lectures/25_micropolygons.pdf
+//http://www.eecs.berkeley.edu/~sequin/CS284/PROJ_12/Brandon/Smooth%20GPU%20Tessellation.pdf
