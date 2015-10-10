@@ -76,8 +76,8 @@ AABB getAABBForTriangle(const Triangle tri) {
  * Calculate the signed area of a given triangle.
  */
 __host__ __device__ static
-float calculateSignedArea(const glm::vec3 tri[3]) {
-    return 0.5 * ((tri[2].x - tri[0].x) * (tri[1].y - tri[0].y) - (tri[1].x - tri[0].x) * (tri[2].y - tri[0].y));
+float calculateSignedArea(const Triangle tri) {
+	return 0.5 * ((tri.v[2].pos.x - tri.v[0].pos.x) * (tri.v[1].pos.y - tri.v[0].pos.y) - (tri.v[1].pos.x - tri.v[0].pos.x) * (tri.v[2].pos.y - tri.v[0].pos.y));
 }
 
 // CHECKITOUT
@@ -85,12 +85,12 @@ float calculateSignedArea(const glm::vec3 tri[3]) {
  * Helper function for calculating barycentric coordinates.
  */
 __host__ __device__ static
-float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec3 tri[3]) {
-    glm::vec3 baryTri[3];
-    baryTri[0] = glm::vec3(a, 0);
-    baryTri[1] = glm::vec3(b, 0);
-    baryTri[2] = glm::vec3(c, 0);
-    return calculateSignedArea(baryTri) / calculateSignedArea(tri);
+float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c, const Triangle tri) {
+	Triangle baryTri;
+	baryTri.v[0].pos = glm::vec3(a, 0);
+	baryTri.v[1].pos = glm::vec3(b, 0);
+	baryTri.v[2].pos = glm::vec3(c, 0);
+	return calculateSignedArea(baryTri) / calculateSignedArea(tri);
 }
 
 // CHECKITOUT
@@ -99,11 +99,11 @@ float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c,
  * TODO: Update to handle triangles coming in and not the array
  */
 __host__ __device__ static
-glm::vec3 calculateBarycentricCoordinate(const glm::vec3 tri[3], glm::vec2 point) {
-    float beta  = calculateBarycentricCoordinateValue(glm::vec2(tri[0].x, tri[0].y), point, glm::vec2(tri[2].x, tri[2].y), tri);
-    float gamma = calculateBarycentricCoordinateValue(glm::vec2(tri[0].x, tri[0].y), glm::vec2(tri[1].x, tri[1].y), point, tri);
-    float alpha = 1.0 - beta - gamma;
-    return glm::vec3(alpha, beta, gamma);
+glm::vec3 calculateBarycentricCoordinate(const Triangle tri, glm::vec2 point) {
+	float beta = calculateBarycentricCoordinateValue(glm::vec2(tri.v[0].pos.x, tri.v[0].pos.y), point, glm::vec2(tri.v[2].pos.x, tri.v[2].pos.y), tri);
+	float gamma = calculateBarycentricCoordinateValue(glm::vec2(tri.v[0].pos.x, tri.v[0].pos.y), glm::vec2(tri.v[1].pos.x, tri.v[1].pos.y), point, tri);
+	float alpha = 1.0 - beta - gamma;
+	return glm::vec3(alpha, beta, gamma);
 }
 
 // CHECKITOUT
@@ -123,8 +123,8 @@ bool isBarycentricCoordInBounds(const glm::vec3 barycentricCoord) {
  * (i.e. depth) on the triangle.
  */
 __host__ __device__ static
-float getZAtCoordinate(const glm::vec3 barycentricCoord, const glm::vec3 tri[3]) {
-    return -(barycentricCoord.x * tri[0].z
-           + barycentricCoord.y * tri[1].z
-           + barycentricCoord.z * tri[2].z);
+float getZAtCoordinate(const glm::vec3 barycentricCoord, const Triangle tri) {
+	return -(barycentricCoord.x * tri.v[0].pos.z
+		+ barycentricCoord.y * tri.v[1].pos.z
+		+ barycentricCoord.z * tri.v[2].pos.z);
 }
