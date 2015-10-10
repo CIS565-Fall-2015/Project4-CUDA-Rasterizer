@@ -64,16 +64,18 @@ To render the basic rasterization primitive, the triangle, each GPU thread is re
 
 ### Fragment Shading
 
+The fragment shader updates the color value of a fragment in the depth buffer using a basic Lambert shader. It essentially adds lighting to the scene. As of this writing the implementation uses a single light source at located at the camera position to keep the object lit while the user moves the camera using the mouse controls.
 
-
-### Fragments to Depth Buffer?
-
-Fragment to framebuffer?
+### Fragments to Framebuffer
+These fragments are finally output to the framebuffer, and from there displayed to the screen.
 
 ## Additional Features
 
-### Mouse Controls
+### Mouse Interaction
 
-* **Overview**:
+* **Overview**: The rasterizer renders in real time and can be interacted with by the user using mouse controls.
+* **Rotation**: Holding the left mouse button and moving the cursor rotates the camera around the object.
+* **Panning**: Holding the middle mouse button and moving the cursor pans the camera along the x and y directions.
+* **Zooming**: Moving the scroll wheel in and out moves the camera along the z axis.
 
 ## Performance Analysis
