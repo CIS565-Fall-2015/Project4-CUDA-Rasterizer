@@ -1,0 +1,4 @@
+add:
+-tile based pipeline
+-tessellation shader
+-instancing

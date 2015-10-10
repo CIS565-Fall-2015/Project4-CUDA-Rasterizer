@@ -45,7 +45,8 @@ static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL;
 static VertexOut *dev_shadedVertices = NULL;
 static Triangle *dev_primitives = NULL;
-static FragmentIn *dev_depthbuffer = NULL;
+static FragmentIn *dev_fragsIn = NULL;
+static FragmentOut *dev_fragsOut = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
@@ -72,7 +73,7 @@ __global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
 }
 
 // Writes fragment colors to the framebuffer
-__global__ void render(int w, int h, FragmentIn *depthbuffer, glm::vec3 *framebuffer) {
+__global__ void render(int w, int h, FragmentOut *frags, glm::vec3 *framebuffer) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
     int index = x + (y * w);
@@ -80,7 +81,7 @@ __global__ void render(int w, int h, FragmentIn *depthbuffer, glm::vec3 *framebu
 	// but this code assumes it's at the top right.
 	int frameBufferIndex = (w - x) + (h - y) * w;
     if (x < w && y < h) {
-		framebuffer[index] = depthbuffer[frameBufferIndex].color;
+		framebuffer[index] = frags[frameBufferIndex].color;
     }
 }
 
@@ -90,9 +91,14 @@ __global__ void render(int w, int h, FragmentIn *depthbuffer, glm::vec3 *framebu
 void rasterizeInit(int w, int h) {
     width = w;
     height = h;
-    cudaFree(dev_depthbuffer);
-	cudaMalloc(&dev_depthbuffer, width * height * sizeof(FragmentIn));
-    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(FragmentIn));
+    cudaFree(dev_fragsIn);
+	cudaMalloc(&dev_fragsIn, width * height * sizeof(FragmentIn));
+    cudaMemset(dev_fragsIn, 0, width * height * sizeof(FragmentIn));
+
+    cudaFree(dev_fragsOut);
+	cudaMalloc(&dev_fragsOut, width * height * sizeof(FragmentIn));
+    cudaMemset(dev_fragsOut, 0, width * height * sizeof(FragmentIn));
+       
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
@@ -207,16 +213,52 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives, Triangle 
 					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
 					interpColor += dev_primitives[i].v[2].col * baryCoordinate[2];
 					dev_frags[fragIndex].color = interpColor;
+
+					// interpolate normal
+					glm::vec3 interpNorm = dev_primitives[i].v[0].nor * baryCoordinate[0];
+					interpNorm += dev_primitives[i].v[1].nor * baryCoordinate[1];
+					interpNorm += dev_primitives[i].v[2].nor * baryCoordinate[2];
+					dev_frags[fragIndex].normal = interpNorm;					
 				}
 			}
 		}
 	}
 }
 
+__global__ void primitiveFragmentShading(int numFrags, FragmentIn *dev_fragsIn, FragmentOut *dev_fragsOut) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numFrags) {
+		//dev_fragsOut[i].color = dev_fragsIn[i].color * abs(dev_fragsIn[i].depth);
+		dev_fragsOut[i].color[0] = abs(dev_fragsIn[i].normal[0]);
+		dev_fragsOut[i].color[1] = abs(dev_fragsIn[i].normal[1]);
+		dev_fragsOut[i].color[2] = abs(dev_fragsIn[i].normal[2]);		
+	}
+
+}
+
+void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
+	 int sideLength2d = 8;
+    dim3 blockSize2d(sideLength2d, sideLength2d);
+	dim3 blockSize1d(sideLength2d * sideLength2d);
+
+    dim3 blockCount2d_display((width  - 1) / blockSize2d.x + 1,
+                      (height - 1) / blockSize2d.y + 1);
+	// 1) vertex shade: apply vertex transformation
+	//	- first compute the overall matrix from transform and view
+	//	- AND THEN TRANSFORM IT!
+	// 2) primitive assembly
+	// 3) rasterize (use scanline, but don't do any depth stuff there
+	// 4) fragment shade
+	// 5) fragment to depth buffer
+	// 6) depth buffer and test
+	// 7) fragment to frame buffer write
+
+}
+
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo) {
+void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockSize1d(sideLength2d * sideLength2d);
@@ -227,14 +269,14 @@ void rasterize(uchar4 *pbo) {
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
-	// 1) clear depth buffer with some default value. black seems reasonable.
-	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(FragmentIn));
+	// 1) clear fragment buffer with some default value. black seems reasonable.
+	cudaMemset(dev_fragsOut, 0, width * height * sizeof(FragmentIn));
 
 	// 2) vertex shade
-	glm::mat4 ID = glm::mat4();
+	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
 	dim3 blockCount1d_vertices((vertCount - 1) / blockSize1d.x + 1);
 
-	minVertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, ID, dev_bufVertex, dev_shadedVertices);
+	minVertexShader << <blockCount1d_vertices, blockSize1d >> >(vertCount, tf, dev_bufVertex, dev_shadedVertices);
 	checkCUDAError("debug: vertex shading");
 
 	// 3) primitive assembly
@@ -245,10 +287,13 @@ void rasterize(uchar4 *pbo) {
 
 	// 4) rasterization
 	scanlineRasterization<<<blockCount1d_primitives, blockSize1d>>>(width, height, numPrimitives,
-		dev_primitives, dev_depthbuffer);
+		dev_primitives, dev_fragsIn);
 	checkCUDAError("debug: scanline rasterization");
 
 	// 5) fragment shading
+	dim3 blockCount1d_fragments(width * height);
+	primitiveFragmentShading<<<blockCount1d_fragments, blockSize1d>>>(width * height, dev_fragsIn, dev_fragsOut);
+	checkCUDAError("debug: primitive fragment shading");
 
 	// 6) fragments to depth buffer
 
@@ -256,7 +301,7 @@ void rasterize(uchar4 *pbo) {
 
 	// 8) frag to frame buffer
     // Copy depthbuffer colors into framebuffer
-	render << <blockCount2d_display, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+	render << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
 	sendImageToPBO << <blockCount2d_display, blockSize2d >> >(pbo, width, height, dev_framebuffer);
     checkCUDAError("rasterize");
@@ -278,8 +323,11 @@ void rasterizeFree() {
     cudaFree(dev_primitives);
     dev_primitives = NULL;
 
-    cudaFree(dev_depthbuffer);
-    dev_depthbuffer = NULL;
+    cudaFree(dev_fragsIn);
+    dev_fragsIn = NULL;
+
+    cudaFree(dev_fragsOut);
+    dev_fragsOut = NULL;
 
     cudaFree(dev_framebuffer);
     dev_framebuffer = NULL;
