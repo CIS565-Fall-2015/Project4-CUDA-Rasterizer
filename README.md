@@ -7,6 +7,7 @@ CUDA Rasterizer
 * Tested on: Windows 10, i7-3770K @ 3.50GHz 16GB, 2 x GTX 980 4096MB (Personal Computer)
 
 ## Description
+
 An interactive GPU accelerated rasterizer (Add here)
 ![](renders/dragon.png "Stanford Dragon")
 
@@ -36,6 +37,8 @@ While this project supports the rendering of different primitive types (triangle
 ### Rasterization
 
 #### Triangles
+![](renders/dragon_tri.png "Stanford Dragon Rendered Using Triangle Primitives (No Normal Interpolation)")
+
 
 #### Points
 ![](renders/dragon_points.png "Stanford Dragon Rendered Using Point Primitives")
