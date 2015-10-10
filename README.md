@@ -34,12 +34,15 @@ An interactive GPU accelerated rasterizer (Add here)
 #### Triangles
 
 #### Points
+![](renders/dragon_points.png "Stanford Dragon Rendered Using Point Primitives")
 
 * **Overview**:
 * **Perfromance Impact**:
 * 
 
 #### Lines
+![](renders/dragon_lines.png "Stanford Dragon Rendered Using Line Primitives")
+
 * **Overview**:
 * **Perfromance Impact**:
 * 
