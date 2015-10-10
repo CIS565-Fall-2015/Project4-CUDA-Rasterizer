@@ -30,9 +30,13 @@ struct VertexOut {
 struct Triangle {
     VertexOut v[3];
 };
-struct Fragment {
+struct FragmentIn {
     glm::vec3 color;
+	glm::vec3 normal;
 	float depth;
+};
+struct FragmentOut {
+	glm::vec3 color;
 };
 
 static int width = 0;
@@ -41,7 +45,7 @@ static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL;
 static VertexOut *dev_shadedVertices = NULL;
 static Triangle *dev_primitives = NULL;
-static Fragment *dev_depthbuffer = NULL;
+static FragmentIn *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
@@ -49,8 +53,7 @@ static int vertCount = 0;
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
  */
-__global__
-void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
+__global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
     int index = x + (y * w);
@@ -69,14 +72,15 @@ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
 }
 
 // Writes fragment colors to the framebuffer
-__global__
-void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
+__global__ void render(int w, int h, FragmentIn *depthbuffer, glm::vec3 *framebuffer) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
     int index = x + (y * w);
-
+	// frameBuffer code assumes (0,0) is at the bottom left in pix coords,
+	// but this code assumes it's at the top right.
+	int frameBufferIndex = (w - x) + (h - y) * w;
     if (x < w && y < h) {
-        framebuffer[index] = depthbuffer[index].color;
+		framebuffer[index] = depthbuffer[frameBufferIndex].color;
     }
 }
 
@@ -87,8 +91,8 @@ void rasterizeInit(int w, int h) {
     width = w;
     height = h;
     cudaFree(dev_depthbuffer);
-    cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
-    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+	cudaMalloc(&dev_depthbuffer, width * height * sizeof(FragmentIn));
+    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(FragmentIn));
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
@@ -140,13 +144,12 @@ void minVertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_verticesIn, Vert
 	if (i < vertCount) {
 		dev_verticesOut[i].pos = tfPoint(tf, dev_verticesIn[i].pos);
 		dev_verticesOut[i].nor = tfDir(tf, dev_verticesIn[i].nor);
-		dev_verticesOut[i].col = tfDir(tf, dev_verticesIn[i].col);
+		dev_verticesOut[i].col = dev_verticesIn[i].col;
 	}
 }
 
 // primitive assembly. 1D linear blocks expected
-__global__
-void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev_primitives) {
+__global__ void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev_primitives) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		dev_primitives[i].v[0] = dev_vertices[i * 3];
@@ -156,8 +159,7 @@ void primitiveAssembly(int numPrimitives, VertexOut *dev_vertices, Triangle *dev
 }
 
 // scanline rasterization. 1D linear blocks expected
-__global__
-void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, Fragment *dev_frags) {
+__global__ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primitives, FragmentIn *dev_frags) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
@@ -192,8 +194,11 @@ void scanlineRasterization(int w, int h, int numPrimitives, Triangle *dev_primit
 				}
 				// check depth using bary
 				float zDepth = getZAtCoordinate(baryCoordinate, v);
-
-				int fragIndex = (x + w / 2) + ((y + h / 2) * w);
+				// we're pretending NDC is -1 to +1 along each axis
+				// so a fragIndx(0,0) is at NDC -1 -1
+				// btw, going from NDC back to pixel coordinates:
+				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
+				int fragIndex = (x + (w / 2)) + ((y + (h / 2)) * w);
 				// if all things pass ok, then insert into fragment.
 				if (zDepth <= dev_frags[fragIndex].depth) {
 					dev_frags[fragIndex].depth = zDepth;
@@ -223,7 +228,7 @@ void rasterize(uchar4 *pbo) {
     // (See README for rasterization pipeline outline.)
 
 	// 1) clear depth buffer with some default value. black seems reasonable.
-	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(FragmentIn));
 
 	// 2) vertex shade
 	glm::mat4 ID = glm::mat4();

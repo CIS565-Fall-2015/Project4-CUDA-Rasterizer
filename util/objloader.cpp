@@ -30,6 +30,7 @@ objLoader::objLoader(string filename, obj *newMesh) {
             if (line.empty()) {
                 line = "42";
             }
+			//cout << line << endl;
             istringstream liness(line);
             if (line[0] == 'v' && line[1] == 't') {
                 string v;
