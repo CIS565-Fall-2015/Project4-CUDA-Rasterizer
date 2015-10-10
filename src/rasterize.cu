@@ -18,7 +18,7 @@
 #include "../stream_compaction/efficient.h"
 
 //TODO: Experiment with these values
-#define VERTBLOCKSIZE 128
+#define VERTBLOCKSIZE 256
 #define FRAGBLOCKSIZE 256
 
 static int width = 0;
@@ -74,7 +74,6 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
  * Clears the depth buffers and primitive buffer.
  */
 void clearDepthBuffer() {
-	// TODO: Should I be clearing primitives ever? If I add mouse movement?
 	cudaMemset(dev_depth, scene->farPlane * 10000, width * height * sizeof(int));
 	cudaMemset(dev_depthbuffer, 0.0f, width * height * sizeof(Fragment));
 }
@@ -88,18 +87,15 @@ void vertexShading(int w, int h, int nearPlane, int farPlane, int vertexCount, c
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
 	
 	if (index < vertexCount) {
-		VertexIn vertexIn = vertexBufferIn[index];
-		VertexOut vertexOut;
-		glm::vec4 clipCoordinates = modelView * glm::vec4(vertexIn.pos, 1.0f);
+		glm::vec4 clipCoordinates = modelView * glm::vec4(vertexBufferIn[index].pos, 1.0f);
 		glm::vec3 normDeviceCoordinates = glm::vec3(clipCoordinates.x, clipCoordinates.y, clipCoordinates.z) / clipCoordinates.w;
 
-		vertexOut.pos = glm::vec3(w * 0.5f * (normDeviceCoordinates.x + 1.0f),
+		vertexBufferOut[index].pos = glm::vec3(w * 0.5f * (normDeviceCoordinates.x + 1.0f),
 			h * 0.5f * (normDeviceCoordinates.y + 1.0f), 0.5f * ((farPlane - nearPlane) 
 			* normDeviceCoordinates.z + (farPlane + nearPlane)));
-		vertexOut.col = vertexIn.col;
-		vertexOut.nor = vertexIn.nor;
-		vertexOut.model_pos = vertexIn.pos;
-		vertexBufferOut[index] = vertexOut;
+		vertexBufferOut[index].col = vertexBufferIn[index].col;
+		vertexBufferOut[index].nor = vertexBufferIn[index].nor;
+		vertexBufferOut[index].model_pos = vertexBufferIn[index].pos;
 	}
 }
 
@@ -364,7 +360,7 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockCount2d((width + blockSize2d.x - 1) / blockSize2d.x,
 		(height + blockSize2d.y - 1) / blockSize2d.y);
 	int vertexBlockSize = VERTBLOCKSIZE, fragmentBlockSize = FRAGBLOCKSIZE;
-	int vertexGridSize = (width * height + VERTBLOCKSIZE - 1) / VERTBLOCKSIZE;
+	int vertexGridSize = (vertCount + VERTBLOCKSIZE - 1) / VERTBLOCKSIZE;
 	int fragmentGridSize = (width * height + FRAGBLOCKSIZE - 1) / FRAGBLOCKSIZE;
 
 	primitiveCount = vertCount / 3;
