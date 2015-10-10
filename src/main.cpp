@@ -119,6 +119,10 @@ bool init(obj *mesh) {
     initCuda();
     initPBO();
 
+	//init the camera
+	g_camera = new Camera();
+	g_camera->Reset(width, height);
+
     float cbo[] = {
         0.0, 1.0, 0.0,
         0.0, 0.0, 1.0,
@@ -273,4 +277,56 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+}
+
+void mouseCallback(GLFWwindow *window, int button, int action, int mods)
+{
+	if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	{
+		glfwGetCursorPos(window,g_mouse_old_x,g_mouse_old_y);		 
+	}
+	else if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
+	{
+
+	}
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	 g_camera->MouseChangeDistance(1.0f,xoffset ,yoffset );
+}
+
+void cursorPosCallback(GLFWwindow *window, double xpos, double ypos)
+{
+	if(glfwGetMouseButton(window,GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+	{
+		double dx, dy;
+		dx = (double)(xpos - g_mouse_old_x);
+		dy = (double)(ypos - g_mouse_old_y);
+		g_camera->MouseChangeHeadPitch(0.2f, dx, dy);
+
+		g_mouse_old_x = xpos;
+		g_mouse_old_y = ypos;
+
+	}
+	else if(glfwGetMouseButton(window,GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
+	{
+		double dx, dy;
+		dx = (double)(xpos - g_mouse_old_x);
+		dy = (double)(ypos - g_mouse_old_y);
+		g_camera->MouseChangeLookat(0.01f, dx, dy);
+
+		g_mouse_old_x = xpos;
+		g_mouse_old_y = ypos;
+	}
+	else if(glfwGetMouseButton(window,GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+	{
+		double dx, dy;
+		dx = (double)(xpos - g_mouse_old_x);
+		dy = (double)(ypos - g_mouse_old_y);
+		g_camera->MouseChangeDistance(0.05f, dx, dy);
+
+		g_mouse_old_x = xpos;
+		g_mouse_old_y = ypos;
+	}
 }
