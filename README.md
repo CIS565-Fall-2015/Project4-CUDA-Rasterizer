@@ -39,6 +39,13 @@ While this project supports the rendering of different primitive types (triangle
 #### Triangles
 ![](renders/dragon_tri.png "Stanford Dragon Rendered Using Triangle Primitives (No Normal Interpolation)")
 
+To render the basic rasterization primitive, the triangle, each GPU thread is responsible for one triangle. The bounding box for that triangle is retreived, and, through the scanline implementation, the thread loops over each pixel in the bounding box.
+
+#### Normal and Color Interpolation
+
+* **Overview**:
+* **Perfromance Impact**:
+* 
 
 #### Points
 ![](renders/dragon_points.png "Stanford Dragon Rendered Using Point Primitives")
@@ -56,11 +63,6 @@ While this project supports the rendering of different primitive types (triangle
 
 ### Fragment Shading
 
-#### Normal and Color Interpolation
-
-* **Overview**:
-* **Perfromance Impact**:
-* 
 
 ### Fragments to Depth Buffer?
 
@@ -69,5 +71,7 @@ Fragment to framebuffer?
 ## Additional Features
 
 ### Mouse Controls
+
+* **Overview**:
 
 ## Performance Analysis
