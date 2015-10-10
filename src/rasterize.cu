@@ -295,15 +295,9 @@ void resetRasterize(){
 	cudaFree(dev_bufVertexOut);
 	cudaMalloc(&dev_bufVertexOut, vertCount * sizeof(VertexOut));
 
-	cudaFree(dev_bufVertexOut2);
-	cudaMalloc((void**)&dev_bufVertexOut2, vertCount*3*sizeof(VertexOut));
-
-	cudaFree(dev_bufIdx2);
-	cudaMalloc((void**)&dev_bufIdx2, sizeof(int)*vertCount*3);
-
 	cudaFree(dev_primitives);
-	cudaMalloc(&dev_primitives, vertCount * sizeof(Triangle));
-	cudaMemset(dev_primitives, 0, vertCount * sizeof(Triangle));
+	cudaMalloc(&dev_primitives, vertCount/3 * sizeof(Triangle));
+	cudaMemset(dev_primitives, 0, vertCount/3 * sizeof(Triangle));
 
 	cudaFree(dev_depthbuffer);
 	cudaMalloc(&dev_depthbuffer, fragCount * sizeof(Fragment));
@@ -338,22 +332,17 @@ void rasterize(uchar4 *pbo, Cam cam) {
 	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);
 	checkCUDAError("shadeVertices");
 
-	kernShadeGeometries<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut2, dev_bufIdx2, dev_bufVertexOut);
-	checkCUDAError("shadeGeometries");
-	int numPrimBlocks3 = (primCount*3 - 1) / MAX_THREADS + 1;
-
 	// Primitive Assembly
-	//kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
-	kernAssemblePrimitives<<<numPrimBlocks3, MAX_THREADS>>>(primCount*3, dev_primitives, dev_bufVertexOut2, dev_bufIdx2);
+	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
 	checkCUDAError("assemblePrimitives");
 
 	// Rasterization
-	kernRasterize<<<numPrimBlocks3, MAX_THREADS>>>(primCount*3, cam, dev_depthbuffer, dev_primitives, Mvm, Mproj);
+	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives, Mvm, Mproj);
 	checkCUDAError("rasterizePrimitives");
 
 	// Fragment shading
-	//kernShadeFragments<<<numFragBlocks, MAX_THREADS>>>(fragCount, dev_depthbuffer, light);
-	//checkCUDAError("shadeFragments");
+	kernShadeFragments<<<numFragBlocks, MAX_THREADS>>>(fragCount, dev_depthbuffer, light);
+	checkCUDAError("shadeFragments");
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
