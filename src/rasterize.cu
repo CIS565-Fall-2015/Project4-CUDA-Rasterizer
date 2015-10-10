@@ -212,7 +212,7 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 }
 
 __global__
-void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
+void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -250,14 +250,21 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 			{
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
-				if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
+				
+				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges
+				/*{
+					if (x<0 || x>w || y<0 || y>h)
+						continue;
+					float crntDepth = getZAtCoordinate(bPoint, tri);
+					crntDepth *= MAX_DEPTH;
+					int orig = atomicMin(&(depthbuffer[x + y*w].depth), (int)crntDepth);
+					if (orig >= crntDepth)
+					{
+						depthbuffer[x + y*w].color = glm::vec3(0, 0, 0);
+					}
+				}*/
+				//else if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
 				{
-					//glm::vec4 crntNDC = glm::inverse(M_win)*glm::vec4(x, y, 1,1);
-					//crntNDC.z = (a*crntNDC.x + b*crntNDC.y + d) / (-c);
-					//crntNDC = M_win*crntNDC;
-					//int crntDepth = (int)(tri[0].z * 1000);
-					//int crntDepth = (int)(crntNDC.z * 1000);
-					//!!! later clipping
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
 					float crntDepth = getZAtCoordinate(bPoint, tri);
@@ -273,8 +280,9 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 							color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv));
 						glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
 						glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
+						float ambient = 0.2;
 						float diffuse = max(dot(lightDir, normal), 0.0);
-						depthbuffer[x + y*w].color =  color*diffuse;
+						depthbuffer[x + y*w].color =  color*(ambient+(1.f-ambient)*diffuse);
 						//depthbuffer[x + y*w].color = normal;
 					}
 				}
@@ -414,7 +422,7 @@ void rasterizeSetBuffers( obj * mesh ) {
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -429,9 +437,9 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
 	dim3 gSize_pri((bufIdxSize/3 + bSize_pri - 1) / bSize_pri);
 
-	glm::vec4 light(0.3, 0.4, 0.5,1);
+	glm::vec3 light(0.3, 0.4, 0.5);
 	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
-	glm::vec4 lightW = light;// projMat * M_view * glm::mat4() *light;
+	//glm::vec4 lightW = light;// projMat * M_view * glm::mat4() *light;
 	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();
 	//****** 1. Clear depth buffer
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
@@ -454,7 +462,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat) {
 
 	//****** 4. Rasterization
 	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
-	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, glm::vec3(lightW),M_all,dev_textures,dev_texInfo);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize, light, eye, M_all, dev_textures, dev_texInfo);
 	//****** 5. Fragment shading
 	//****** 6. Fragments to depth buffer
 	//****** 7. Depth buffer for storing & testing fragments

@@ -12,6 +12,8 @@
 //-------------MAIN--------------
 //-------------------------------
 
+glm::vec3 eye(0, 0, 0);
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
@@ -80,7 +82,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr, ViewMatrix, ProjectionMatrix);
+	rasterize(dptr, ViewMatrix, ProjectionMatrix,eye);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -326,7 +328,7 @@ void CalcViewPersMat(float x_move, float y_move)
 	center -= (y_move*up);
 	glm::vec3 position = center - direction;
 	position += (zoom*direction);
-	
+	eye = position;
 	ProjectionMatrix = glm::perspective(FOV, 1.f, -0.1f,- 100.0f);
 	//ProjectionMatrix = glm::mat4();
 	ViewMatrix = glm::lookAt(

@@ -13,5 +13,5 @@
 
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(obj * mesh);
-void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat);
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye);
 void rasterizeFree();
