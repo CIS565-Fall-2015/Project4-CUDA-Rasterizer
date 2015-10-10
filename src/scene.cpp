@@ -6,8 +6,8 @@ Scene::Scene() {
 	this->nearPlane = 0.1f;
 	this->farPlane = 100.0f;
 	camera.fieldOfView = 45.0f;
-	camera.position = glm::vec3(0.0f, 0.0f, 3.0f);
-	camera.lookAt = glm::vec3(0.0f);
+	camera.position = glm::vec3(0.0f, 1.0f, 4.0f);
+	camera.lookAt = glm::vec3(0.0f, 1.0f, 0.0f);
 	camera.right = glm::vec3(1.0f, 0.0f, 0.0f);
 
 	light.position = 1000.0f * camera.position;
