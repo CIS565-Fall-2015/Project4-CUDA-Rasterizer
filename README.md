@@ -14,7 +14,11 @@ An interactive GPU accelerated rasterizer (Add here)
 
 ### Vertex Shading
 
+For vertex shading we take input vertices from a vertex in buffer and transform them by applying the model-view projection matrix so they are orientated correctly within our scene. After being transformed they are sent to a vertex out buffer.
+
 ### Primitive Assembly
+
+While this project supports the rendering of different primitive types (triangles, points, and lines, see below for details), that is achieved through manipulating the only true primtive supported, triangles. The vertices that were transformed in the previous stage and sent to the vertex out buffer are turned into triangle primitives in groups of three, each making up one vertex of the triangle. The total size of the primtives array we create will be a third the size of the vertex out buffer.
 
 ### Backface Culling (Optional)
 
