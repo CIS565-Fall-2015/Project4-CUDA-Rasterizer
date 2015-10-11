@@ -12,8 +12,12 @@
 #include <cstdio>
 #include <cuda.h>
 #include <thrust/random.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+#include "sceneStructs.h"
 
 /************************* Struct Definitions *********************************/
 
@@ -154,16 +158,16 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
     }
 }
 
-// Applies no transformation to a vertex.
+// Applies vertex transformations (from given model-view-projection matrix)
 __global__ void vertexShader(int vertcount, VertexIn *verticesIn,
-        VertexOut *verticesOut) {
+        VertexOut *verticesOut, glm::mat4 mvp) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < vertcount) {
         VertexIn vin = verticesIn[k];
 
         VertexOut vo;
-        vo.pos = vin.pos;
+        vo.pos = multiplyMV(mvp, glm::vec4(vin.pos, 1));
         vo.nor = vin.nor;
         vo.col = vin.col;
         verticesOut[k] = vo;
@@ -230,10 +234,22 @@ void rasterize(uchar4 *pbo) {
 
     int tricount = vertCount / 3;
 
+    Camera c;
+    c.position = glm::vec3(0, 3, -10);
+    c.view = glm::vec3(0, 0, 1);
+    c.up = glm::vec3(0, -1, 0);
+    c.light = glm::vec3(0, 4, 0);
+
+    glm::mat4 model = glm::mat4(1.f);
+    glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
+    glm::mat4 persp = glm::perspective(45.f, 1.f, .1f, 100.f);
+    glm::mat4 mvp = persp * view * model;
+
     clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
     checkCUDAError("scan");
 
-    vertexShader<<<vertBlockCount, blockSize1d>>>(vertCount, dev_bufVertexIn, dev_bufVertexOut);
+    vertexShader<<<vertBlockCount, blockSize1d>>>(
+            vertCount, dev_bufVertexIn, dev_bufVertexOut, mvp);
     checkCUDAError("scan");
 
     // VertexOut -> Triangle
@@ -241,6 +257,10 @@ void rasterize(uchar4 *pbo) {
     checkCUDAError("rasterize");
 
     // Triangle -> Fragment
+    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
+    checkCUDAError("rasterize");
+
+    // Fragment -> Fragment
     scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
     checkCUDAError("rasterize");
 

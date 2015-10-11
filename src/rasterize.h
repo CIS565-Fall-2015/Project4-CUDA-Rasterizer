@@ -8,8 +8,6 @@
 
 #pragma once
 
-#include <glm/glm.hpp>
-
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
