@@ -99,8 +99,10 @@ You can see that there is occupancy issues with the vertexShading, assemblePrimi
 
 Note: Ignore the kernel durations, as this data is for two different models. I accidentally took the wrong original data on too simple of a model. The model for the second data set is the much more complicated Smooth Stanford Dragon model.
 
-* vertexShading
+* **vertexShading**
  * Increased block size from 128 to 256 and based grid size off of number of vertices, not screen size. Dramatically reduced execution time of the kernel.
  * Reduced register count to 30 per thread from 38, achieving 100% occupancy.
-* assemblePrimitives
- * 
+* **assemblePrimitives**
+ * Reduced register count to 18 from 48, achieving 100% occupancy.
+* **rasterization**
+ * Reduced register count to 48 from 104, going from 25% occupancy to 62.50%.
