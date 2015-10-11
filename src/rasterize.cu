@@ -17,7 +17,6 @@
 #include "rasterizeTools.h"
 #include "../stream_compaction/efficient.h"
 
-//TODO: Experiment with these values
 #define VERTBLOCKSIZE 256
 #define FRAGBLOCKSIZE 256
 
@@ -345,9 +344,6 @@ void rasterize(uchar4 *pbo) {
 	int fragmentGridSize = (width * height + FRAGBLOCKSIZE - 1) / FRAGBLOCKSIZE;
 
 	primitiveCount = vertCount / 3;
-	
-    // TODO: Execute your rasterization pipeline here
-    // (See README for rasterization pipeline outline.)
 
 	// Clear depth buffer
 	clearDepthBuffer();
