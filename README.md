@@ -41,18 +41,19 @@ Features
 
 **Texture Repeat:** 
 
+||
 :--------------:|:--------------:|:--------------:
-![](img/UV0.png)|![](img/UV1.png)|![](img/UV2.png)
+![](img/UV0.PNG)|![](img/UV1.PNG)|![](img/UV2.PNG)
 
 #### Displacement Mapping
 
 Tessellation level	|without displacement map	|with displacement map
 :------------------:|:-------------------------:|:-------------------:
-		5			|![](img/tess_5_w.PNG)		|![](img/tess_5_d.png)
+		5			|![](img/tess_5_w.PNG)		|![](img/tess_5_d.PNG)
 
 Tessellation level	|after displacement map		|normal testing for displacement map
 :------------------:|:-------------------------:|:-------------------:
-		8			|![](img/tess_8_.PNG)		|![](img/tess_8n.png)
+		8			|![](img/tess_8_.PNG)		|![](img/tess_8n.PNG)
 
 ![](img/DispGif.gif)
 
