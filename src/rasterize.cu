@@ -14,7 +14,7 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
-
+#include <stdint.h>
 
 struct VertexIn {
 	glm::vec3 pos;
@@ -33,12 +33,12 @@ struct Triangle {
 struct Fragment {
 	glm::vec3 color;
 	glm::vec3 norm;
-	float depth;
 };
 
 static int width = 0;
 static int height = 0;
 static int *dev_bufIdx = NULL;
+static unsigned int *dev_intDepths = NULL;
 static VertexIn *dev_bufVertex = NULL; // the raw vertices
 //static int *dev_tesselatedIdx = NULL; // tesselated indices
 //static VertexIn *dev_tesselatedVertex = NULL; // tesselated vertices
@@ -95,6 +95,11 @@ void rasterizeInit(int w, int h) {
 	height = h;
 	cudaFree(dev_depthbuffer);
 	cudaMalloc(&dev_depthbuffer, width * height * sizeof(Fragment));
+
+	cudaFree(dev_intDepths);
+	cudaMalloc(&dev_intDepths, width * height * sizeof(unsigned int));
+	cudaMemset(dev_intDepths, 0, width * height * sizeof(unsigned int));
+
 	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 	cudaFree(dev_framebuffer);
 	cudaMalloc(&dev_framebuffer, width * height * sizeof(glm::vec3));
@@ -151,12 +156,11 @@ void rasterizeSetVariableBuffers() {
 */
 __global__ 
 void clearDepthBuffer(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
-	float defaultDepth, Fragment *dev_depthbuffer) {
+	Fragment *dev_depthbuffer) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < bufSize) {
 		dev_depthbuffer[i].color = bgColor;
 		dev_depthbuffer[i].norm = defaultNorm;
-		dev_depthbuffer[i].depth = defaultDepth;
 	}
 }
 
@@ -189,7 +193,7 @@ __global__ void primitiveAssembly(int numPrimitives, int *dev_idx,
 * Perform scanline rasterization. 1D linear blocks expected.
 */
 __global__ void scanlineRasterization(int w, int h, int numPrimitives,
-	Triangle *dev_primitives, Fragment *dev_fragsDepths) {
+	Triangle *dev_primitives, Fragment *dev_fragsDepths, unsigned int *dev_intDepths) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
@@ -225,17 +229,20 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 				if (!isBarycentricCoordInBounds(baryCoordinate)) {
 					continue;
 				}
-				// check depth using bary. the version in utils returns a negative z for some reason,
-				// so depths are assumed to be negative, with "more negative" indicating further away.
-				float zDepth = getZAtCoordinate(baryCoordinate, v);
 
 				// we're pretending NDC is -1 to +1 along each axis
 				// so a fragIndx(0,0) is at NDC -1 -1
 				// btw, going from NDC back to pixel coordinates:
 				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
-				if (zDepth > dev_fragsDepths[fragIndex].depth) { // remember, depths are negative
-					dev_fragsDepths[fragIndex].depth = zDepth;
+				
+				// do int depthTest using atomicMin. we'll use the whole range of uint to do this.
+				// check depth using bary. the version in utils returns a negative z for some reason
+				int zDepth = UINT16_MAX  * - getZAtCoordinate(baryCoordinate, v);
+
+				atomicMin(&dev_intDepths[fragIndex], zDepth);
+
+				if (zDepth == dev_intDepths[fragIndex]) {
 					// interpolate color
 					glm::vec3 interpColor = dev_primitives[i].v[0].col * baryCoordinate[0];
 					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
@@ -280,9 +287,10 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
 	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
-	float depth = -HUGE_VAL; // -infinity. really should be extracting this from the camera or passing in.
 	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor,
-		bgColor, depth, dev_depthbuffer);
+		bgColor, dev_depthbuffer);
+	int depth = UINT16_MAX; // really should get this from cam params somehow
+	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
 
 	// 2) vertex shading - pass in vertex tf
 	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
@@ -294,7 +302,7 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 
 	// 4) rasterize and depth test
 	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, bufIdxSize / 3,
-		dev_primitives, dev_depthbuffer);
+		dev_primitives, dev_depthbuffer, dev_intDepths);
 
 	// 5) fragment shade
 	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer);
@@ -321,6 +329,9 @@ void rasterizeFree() {
 
 	cudaFree(dev_depthbuffer);
 	dev_depthbuffer = NULL;
+
+	cudaFree(dev_intDepths);
+	dev_intDepths = NULL;
 
 	cudaFree(dev_framebuffer);
 	dev_framebuffer = NULL;

@@ -152,6 +152,7 @@ bool init(obj *mesh) {
 			mesh->getBufPossize() / 3,
 			mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
 		rasterizeSetVariableBuffers();
+
 	}
 
     GLuint passthroughProgram;
