@@ -326,6 +326,29 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 	return result;
 }
 
+__device__ glm::vec3 getTriangleSurfaceNormal(Triangle tri)
+{
+	//https://www.opengl.org/wiki/Calculating_a_Surface_Normal
+	glm::vec3 p1 = tri.v[0].pos;
+	glm::vec3 p2 = tri.v[1].pos;
+	glm::vec3 p3 = tri.v[2].pos;
+
+	glm::vec3 origN = glm::normalize(tri.v[0].nor + tri.v[1].nor + tri.v[1].nor);
+
+	glm::vec3 u = p2 - p1;
+	glm::vec3 v = p3 - p2;
+
+	glm::vec3 n;
+	n.x = u.y*v.z - u.z*v.y;
+	n.y = u.z*v.x - u.x*v.z;
+	n.z = u.x*v.y - u.y*v.x;
+	if (glm::dot(n,origN)<0)
+	{
+		n = -n;
+	}
+	return glm::normalize(n);
+}
+
 __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -340,10 +363,12 @@ __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** 
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
 				//!!! later !!! normal
 				primitives[index].v[i].DispAdded = true;
-
 			}
 		}
-
+		glm::vec3 normal = getTriangleSurfaceNormal(primitives[index]);
+		primitives[index].v[0].nor = normal;
+		primitives[index].v[1].nor = normal;
+		primitives[index].v[2].nor = normal;
 	}
 }
 
