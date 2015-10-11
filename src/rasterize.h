@@ -12,5 +12,6 @@ void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
 	int bufIdxSize, int *bufIdx,
 	int vertCount, float *bufPos, float *bufNor, float *bufCol);
+void rasterizeSetVariableBuffers();
 void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix);
 void rasterizeFree();

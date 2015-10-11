@@ -174,8 +174,8 @@ __global__ void minVertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_verti
 	if (i < vertCount) {
 		dev_verticesOut[i].pos = tfPoint(tf, dev_verticesIn[i].pos);
 		dev_verticesOut[i].nor = dev_verticesIn[i].nor;
-		glm::vec3 pos = dev_verticesOut[i].pos;
-		glm::vec3 untf = dev_verticesIn[i].pos;
+		glm::vec3 pos = dev_verticesOut[i].pos; // debug
+		glm::vec3 untf = dev_verticesIn[i].pos; // debug
 		dev_verticesOut[i].col = dev_verticesIn[i].col;
 	}
 }
@@ -219,14 +219,14 @@ __global__ void minScanlineRasterization(int w, int h, int numPrimitives, Triang
 		if (BBYmax > h / 2) BBYmax = h / 2;
 		if (BBXmax > w / 2) BBXmax = w / 2;
 
-		float normX = dev_primitives[i].v[0].nor.x;
-		float normY = dev_primitives[i].v[0].nor.y;
-		float normZ = dev_primitives[i].v[0].nor.z;
+		float normX = dev_primitives[i].v[0].nor.x; // debug
+		float normY = dev_primitives[i].v[0].nor.y; // debug
+		float normZ = dev_primitives[i].v[0].nor.z; // debug
 		//
 		//float depth0 = v[0].z;
 		//float depth1 = v[1].z;
 		//float depth2 = v[2].z;
-		float depthz = v[0].x;
+		//float depthz = v[0].x;
 
 		// scan over the AABB
 		for (int y = BBYmin; y < BBYmax; y++) {

@@ -7,7 +7,7 @@
  */
 
 #include "main.hpp"
-#define RUN_MIN true
+#define RUN_MIN false
 
 //-------------------------------
 //-------------MAIN--------------
@@ -151,6 +151,7 @@ bool init(obj *mesh) {
 		rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
 			mesh->getBufPossize() / 3,
 			mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+		rasterizeSetVariableBuffers();
 	}
 
     GLuint passthroughProgram;
