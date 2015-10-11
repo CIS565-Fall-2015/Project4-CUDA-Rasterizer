@@ -12,6 +12,8 @@
 
 #define THREADS_PER_BLOCK 256
 
+#define M_INFINITE 10e6
+
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,

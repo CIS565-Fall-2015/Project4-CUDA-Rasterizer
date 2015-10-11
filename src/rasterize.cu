@@ -175,7 +175,7 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 				if(is_inside)
 				{
 					float cur_z = getZAtCoordinate(b_c,m_tri);
-					if(cur_z <= 1 && cur_z >= -1) //within the range
+					if(cur_z<=1 && cur_z>= -1) //within the range
 					{
 						if(dev_depthbuffer[buffer_index].z<cur_z)
 						{
@@ -221,7 +221,7 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 	if(index < num_of_fragment)
 	{
 		// for now just doing nothing to test
-		if(abs(dev_depthbuffer[index].z + 2.f)>1e-6)
+		if(abs(dev_depthbuffer[index].z + M_INFINITE)>1e-6)
 		{
 			dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
 		}
@@ -240,7 +240,7 @@ void kern_fragment_init(Fragment *dev_depthbuffer, int num_of_fragment)
 	if(index < num_of_fragment)
 	{
 		// for now just doing nothing to test
-		dev_depthbuffer[index].z = -2.f;
+		dev_depthbuffer[index].z = -M_INFINITE;
 
 	}
 }
