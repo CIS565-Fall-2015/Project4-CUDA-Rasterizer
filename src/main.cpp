@@ -334,6 +334,20 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		string t = sCtrl.DispMap ? "on" : "off";
 		printf("press 'd': displacement mapping %s\n", t);
 	}
+	if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
+	{
+		sCtrl.UVrepeat += 0.2;		
+		printf("UV repeat : %2f \n", sCtrl.UVrepeat);
+	}
+	if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
+	{
+		sCtrl.UVrepeat -= 0.2;
+		if (sCtrl.UVrepeat<0.2)
+		{
+			sCtrl.UVrepeat = 0.2;
+		}
+		printf("UV repeat : %2f \n", sCtrl.UVrepeat);
+	}
 
 }
 

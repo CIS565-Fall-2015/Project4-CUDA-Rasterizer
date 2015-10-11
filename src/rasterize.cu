@@ -239,71 +239,22 @@ __host__ __device__ glm::vec3 ColorInTex(int texId, glm::vec3**texs, glm::vec2*i
 	}
 	//else return glm::vec3(0, 0, 0);
 	//bilinear filtering - within
-	/*
 	//https://en.wikipedia.org/wiki/Bilinear_interpolation
-	if (x < (float)k + 0.5)	//left part
-	k -= 1;
-	if (y < (float)j + 0.5)//left top
-	j -= 1;
 
-	//k,k+1
-	//j,j+1
-	glm::vec3 p11 = texs[texId][(j * xSize) + k];
-	glm::vec3 p12 = texs[texId][(j * xSize) + k + 1];
-	glm::vec3 p21 = texs[texId][((j + 1) * xSize) + k];
-	glm::vec3 p22 = texs[texId][((j + 1) * xSize) + k + 1];
-
-	float x1 = k;
-	float x2 = k + 2;
-	float y1 = j;
-	float y2 = j + 2;
-
-	glm::vec3 f_xy1 = p11*(x2 - x) / (x2 - x1) + p21*(x - x1) / (x2 - x1);
-	glm::vec3 f_xy2 = p12*(x2 - x) / (x2 - x1) + p22*(x - x1) / (x2 - x1);
-
-	glm::vec3 f_xy = f_xy1*(y2 - y) / (y2 - y1) + f_xy2*(y - y1) / (y2 - y1);
-	return f_xy;*/
-
-	//bilnear - 9 pixels
-	/*
-	glm::vec3 t[3][3];
-	for (int m = 0; m < 3; m++)
-	{
-		for (int n = 0; n < 3; n++)
-		{
-			t[m][n] = texs[texId][((j + m - 1) * xSize) + (k + n - 1)];
-		}
-
-	}
-
-	glm::vec3 p11 = (t[0][0] + t[0][1] + t[1][0] + t[1][1])*0.25f;
-	glm::vec3 p12 = (t[0][1] + t[0][2] + t[1][1] + t[1][1])*0.25f;
-	glm::vec3 p21 = (t[1][0] + t[1][1] + t[2][0] + t[2][1])*0.25f;
-	glm::vec3 p22 = (t[1][1] + t[1][2] + t[2][1] + t[2][2])*0.25f;
-
-	float x1 = k;
-	float x2 = k + 1;
-	float y1 = j;
-	float y2 = j + 1;
-	float c1 = (x2 - x) / (x2 - x1);
-	float c2 = (x - x1) / (x2 - x1);
-	float c3 = (y2 - y) / (y2 - y1);
-	float c4 = (y - y1) / (y2 - y1);
-
-	glm::vec3 f_xy1 = p11*c1 + p21*c2;
-	glm::vec3 f_xy2 = p12*c1 + p22*c2;
-
-	glm::vec3 f_xy = f_xy1*c3 + f_xy2*c4;
-	return f_xy;*/
 
 }
 
-__host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv)
+__host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv,float repeat)
 {
 	//https://en.wikipedia.org/wiki/Bilinear_filtering
+
+	uv *= repeat;
+
 	int xSize = info[texId].x;
 	int ySize = info[texId].y;
-	if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
+	//if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
+	uv.x = uv.x < 0 ? (uv.x - int(uv.x) + 1) : (uv.x>1 ? uv.x - (int)uv.x : uv.x);
+	uv.y = uv.y < 0 ? (uv.y - int(uv.y) + 1) : (uv.y>1 ? uv.y - (int)uv.y : uv.y);
 	float u = (float)(uv.x*(float)xSize - 0.5);
 	float v = (float)(uv.y*(float)ySize - 0.5);
 
@@ -349,7 +300,7 @@ __device__ glm::vec3 getTriangleSurfaceNormal(Triangle tri)
 	return glm::normalize(n);
 }
 
-__global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo)
+__global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo,float UVrepeat)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (texs == NULL || tInfo == NULL) return;
@@ -359,7 +310,7 @@ __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** 
 		{
 			if (!primitives[index].v[i].DispAdded)
 			{
-				float disp = 0.1*glm::length( ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex)) );
+				float disp = 0.1*glm::length(ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex), UVrepeat));
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
 				//!!! later !!! normal
 				primitives[index].v[i].DispAdded = true;
@@ -372,7 +323,7 @@ __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** 
 	}
 }
 
-__global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
+__global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo,float UVrepeat)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -400,7 +351,7 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 				//!!! later line segment
 				//!!! later color interpolation
 				bool shade = false;
-				bool OnEdge = isBarycentricCoordOnBounds(bPoint);
+				bool OnEdge = isBarycentricCoordOnBounds(bPoint,1);
 				bool InTri = isBarycentricCoordInBounds(bPoint);
 				if (sctrl.Wireframe&&!sctrl.Color)
 					shade = OnEdge;
@@ -424,14 +375,15 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 							glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
 							//texture mapping !!! later : repeat, offset...
 							if (texs != NULL &&tInfo != NULL && sctrl.Texture)
-								color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv));
+								color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv), UVrepeat);
 							glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
 							glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
-							float ambient = 0.2;
+							float ambient = 0.2*max(dot(glm::normalize(eyeWorld - glm::vec3(PosWorld)), normal), 0.0);
 							float diffuse = max(dot(lightDir, normal), 0.0);
 							if (sctrl.Wireframe && sctrl.Color && OnEdge)
-								color = glm::vec3(0,0,0.7);
-							depthbuffer[x + y*w].color = color*(ambient + (1.f - ambient)*diffuse);
+								depthbuffer[x + y*w].color = glm::vec3(0, 0, 0.7);
+							else
+								depthbuffer[x + y*w].color = color*(ambient + (1.f - ambient)*diffuse);
 						}
 					}
 				}
@@ -591,6 +543,7 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
  * Perform rasterization.
  */
 bool lastDisp = true;
+float lastUVrepeat = 1;
 void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel,shadeControl sCtrl) {
     int sideLength2d = 8;
 
@@ -615,7 +568,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 
 	//kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
-	if (TessLevel != lastLevel || lastDisp!=sCtrl.DispMap)
+	if (TessLevel != lastLevel || lastDisp != sCtrl.DispMap || lastUVrepeat != sCtrl.UVrepeat)
 	{
 		lastDisp = sCtrl.DispMap;
 		if (TessLevel > lastLevel)
@@ -638,11 +591,11 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 		}
 		//priSize /= 4;
 		if (dev_textures != NULL && dev_texInfo != NULL && sCtrl.DispMap)
-			kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, dev_textures, dev_texInfo);
+			kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, dev_textures, dev_texInfo, sCtrl.UVrepeat);
 	}
 	gSize_pri = dim3((bufIdxSize*tessIncre/3+ bSize_pri - 1) / bSize_pri);
 	kernPrimUpdate << <gSize_pri, bSize_pri >> >(dev_primitives, priSize, glm::mat4(), M_view, projMat, M_win);
-	kernRasterizer << <gSize_pri, bSize_pri >> >(sCtrl, width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(sCtrl, width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo, sCtrl.UVrepeat);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
