@@ -30,14 +30,23 @@ struct VertexOut {
     glm::vec3 pos;
     glm::vec3 nor;
     glm::vec3 col;
+
+    glm::vec3 worldPos;
+    glm::vec3 worldNor;
 };
 struct Triangle {
     glm::vec3 pos[3];
     glm::vec3 nor[3];
     glm::vec3 col[3];
+
+    glm::vec3 worldPos[3];
+    glm::vec3 worldNor[3];
 };
 struct Fragment {
     glm::vec3 color;
+    Triangle tri;
+    glm::vec3 baryCoords;
+    float z;
 };
 
 static int width = 0;
@@ -170,8 +179,11 @@ __global__ void vertexShader(int vertcount, VertexIn *verticesIn,
 
         VertexOut vo;
         vo.pos = multiplyMV(mvp, glm::vec4(vin.pos, 1));
-        vo.nor = vin.nor;
+        vo.nor = multiplyMV(mvp, glm::vec4(vin.nor, 1));
         vo.col = vin.col;
+
+        vo.worldPos = vin.pos;
+        vo.worldNor = vin.nor;
         verticesOut[k] = vo;
     }
 }
@@ -199,28 +211,34 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
         tri.col[0] = v[0].col;
         tri.col[1] = v[1].col;
         tri.col[2] = v[2].col;
+
+        tri.worldPos[0] = v[0].worldPos;
+        tri.worldPos[1] = v[1].worldPos;
+        tri.worldPos[2] = v[2].worldPos;
+
+        tri.worldNor[0] = v[0].worldNor;
+        tri.worldNor[1] = v[1].worldNor;
+        tri.worldNor[2] = v[2].worldNor;
         primitives[k] = tri;
     }
 }
 
-__device__ void shadeFragment(float x, float y, float width, float height,
-        Triangle tri, glm::vec3 light,
-        Fragment *fragments) {
+__device__ void storeFragment(float x, float y, float width, float height,
+        Triangle tri, Fragment *fragments) {
 
     glm::vec3 bary = calculateBarycentricCoordinate(tri.pos, glm::vec2(x, y));
+    glm::vec3 pos = glm::vec3(fromNDC(x, y, width, height), getZAtCoordinate(tri.pos, bary));
+    int pixelIndex = pos.x + (pos.y * width);
 
     if (isBarycentricCoordInBounds(bary)) {
-        glm::vec3 pos = glm::vec3(fromNDC(x, y, width, height), getZAtCoordinate(bary, tri.pos));
-        int pixelIndex = pos.x + (pos.y * width);
-
-        glm::vec3 norm = barycentricInterpolate(tri.nor, bary);
-        fragments[pixelIndex] = (Fragment) { norm };
+        fragments[pixelIndex] = (Fragment) { glm::vec3(0, 0, 0), tri, bary, pos.z };
+    } else {
     }
 }
 
 // Scans across triangles to generate primitives (pixels).
 __global__ void scanline(int width, int height, int tricount,
-        Triangle *primitives, Fragment *fragments, glm::vec3 light) {
+        Triangle *primitives, Fragment *fragments) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < tricount) {
@@ -235,8 +253,25 @@ __global__ void scanline(int width, int height, int tricount,
         float xmin = (int) (bb.min.x / xstep) * xstep;
         for (float y = ymin; y < bb.max.y; y += ystep) {
             for (float x = xmin; x < bb.max.x; x += xstep) {
-                shadeFragment(x, y, width, height, tri, light, fragments);
+                storeFragment(x, y, width, height, tri, fragments);
             }
+        }
+    }
+}
+
+// Scans across triangles to generate primitives (pixels).
+__global__ void fragmentShader(int width, int height,
+        Fragment *fragments, glm::vec3 light) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+    int index = x + (y * width);
+
+    if (x < width && y < height) {
+        Fragment &frag = fragments[index];
+        if (!isnan(frag.z)) {
+            glm::vec3 norm = barycentricInterpolate(frag.tri.worldNor, frag.baryCoords);
+            frag.color = norm;
+        } else {
         }
     }
 }
@@ -283,7 +318,12 @@ void rasterize(uchar4 *pbo) {
 
     // Triangle -> Fragment
     scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount,
-            dev_primitives, dev_depthbuffer, c.light);
+            dev_primitives, dev_depthbuffer);
+    checkCUDAError("rasterize");
+
+    // Fragment -> Fragment
+    fragmentShader<<<blockCount2d, blockSize2d>>>(width, height,
+            dev_depthbuffer, c.light);
     checkCUDAError("rasterize");
 
     // Copy depthbuffer colors into framebuffer

@@ -113,7 +113,7 @@ glm::vec3 barycentricInterpolate(const glm::vec3 tri[3], const glm::vec3 barycen
  * (i.e. depth) on the triangle.
  */
 __host__ __device__ static
-float getZAtCoordinate(const glm::vec3 barycentricCoord, const glm::vec3 tri[3]) {
+float getZAtCoordinate(const glm::vec3 tri[3], const glm::vec3 barycentricCoord) {
     return -(barycentricCoord.x * tri[0].z
            + barycentricCoord.y * tri[1].z
            + barycentricCoord.z * tri[2].z);
