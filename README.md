@@ -25,7 +25,24 @@ This is an implementation of a CUDA-based graphics pipeline with the following s
 
 ### Feature Demos
 
+## Proper normals
+
+Simple illustration of proper handling of normals during Model-world transformations.
+
+![](renders/cows_normals.PNG)
+
+## Half-done Geometry Shader
+
+This was an initial attempt at a Geometry Shader stage for the pipeline. The input was
+triangle vertices, and for each vertex, output an additional triangle (1 prim -> 3 prim).
+However, I was unable to finish with this stage due to time contraints.
+
+![](renders/cow_initial_GS.PNG)
+
 ## Depth-Testing
+
+Simple illustration of a properly depth-tested image (without race conditions) and what happens when the
+depth test has been reversed (the incorrect image).
 
 Correct:
 
@@ -36,6 +53,8 @@ Incorrect:
 ![](renders/render_gone_wrong.PNG)
 
 ## Color Interpolation
+
+Each vertex of each primitive was set to a different color to illustrate proper interpolation of colors, normals can be visualized in a similar manner.
 
 ![](renders/cow_color_interpolation.PNG)
 
@@ -62,14 +81,14 @@ primitives to be rasterized vs. the size of the primitives on screen. If the rat
 number is large, then instead of launching 1 thread per primitive, then launch one thread per
 fragment and depth test sequentially that way.
 
-![](renders/trisize_vs_fps.png)
+![](renders/trisize_vs_fps.png.png)
 
-Comparison of pipeline stages
+##Comparison of pipeline stages
 
 ![](renders/pie_chart.png)
 
-Performance Effects of super-sampled Anti-Aliasing
+##Performance Effects of super-sampled Anti-Aliasing
 
 It is quite clear that AAing in this manner is extremely costly as the samples per pixels increases.
 
-![](renders/aa_vs_fps.png)
+![](renders/aa_vs_fps.png.png)
