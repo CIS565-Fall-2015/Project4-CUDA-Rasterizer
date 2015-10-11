@@ -40,10 +40,10 @@ struct Fragment {
 
 static int width = 0;
 static int height = 0;
-static int *dev_bufIdx = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
 
+static int       *dev_bufIdx       = NULL;
 static VertexIn  *dev_bufVertexIn  = NULL;
 static VertexOut *dev_bufVertexOut = NULL;
 static Triangle  *dev_primitives   = NULL;
@@ -176,20 +176,20 @@ __global__ void vertexShader(int vertcount, VertexIn *verticesIn,
 
 // Assembles sets of 3 vertices into Triangles.
 __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
-        Triangle *primitives) {
+        int *indices, Triangle *primitives) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < primitivecount) {
         Triangle tri;
-        tri.v[0] = vertices[k];
-        tri.v[1] = vertices[k+1];
-        tri.v[2] = vertices[k+2];
+        tri.v[0] = vertices[indices[k*3  ]];
+        tri.v[1] = vertices[indices[k*3+1]];
+        tri.v[2] = vertices[indices[k*3+2]];
         primitives[k] = tri;
     }
 }
 
 __global__ void scanline(int width, int height, int tricount,
-        Triangle *primitives, Fragment *fragments) {
+        Triangle *primitives, Fragment *fragments, glm::vec3 light) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < tricount) {
@@ -211,7 +211,8 @@ __global__ void scanline(int width, int height, int tricount,
                     glm::vec2 pix = fromNDC(x, y, width, height);
                     int pixelIndex = pix.x + (pix.y * width);
 
-                    fragments[pixelIndex] = (Fragment) { glm::vec3(1, 0, 0) };
+                    glm::vec3 norm = tri.v[0].nor;
+                    fragments[pixelIndex] = (Fragment) { norm };
                 }
             }
         }
@@ -227,12 +228,12 @@ void rasterize(uchar4 *pbo) {
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
+    int tricount = bufIdxSize / 3;
+
     int sideLength1d = 16;
     dim3 blockSize1d(sideLength1d);
     dim3 vertBlockCount((vertCount + sideLength1d - 1) / sideLength1d);
-    dim3 triBlockCount(((vertCount/3) + sideLength1d - 1) / sideLength1d);
-
-    int tricount = vertCount / 3;
+    dim3 triBlockCount((tricount + sideLength1d - 1) / sideLength1d);
 
     Camera c;
     c.position = glm::vec3(0, 3, -10);
@@ -248,20 +249,18 @@ void rasterize(uchar4 *pbo) {
     clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
     checkCUDAError("scan");
 
-    vertexShader<<<vertBlockCount, blockSize1d>>>(
-            vertCount, dev_bufVertexIn, dev_bufVertexOut, mvp);
+    vertexShader<<<vertBlockCount, blockSize1d>>>( vertCount,
+            dev_bufVertexIn, dev_bufVertexOut, mvp);
     checkCUDAError("scan");
 
     // VertexOut -> Triangle
-    assemblePrimitives<<<triBlockCount, blockSize1d>>>(tricount, dev_bufVertexOut, dev_primitives);
+    assemblePrimitives<<<triBlockCount, blockSize1d>>>(tricount,
+            dev_bufVertexOut, dev_bufIdx, dev_primitives);
     checkCUDAError("rasterize");
 
     // Triangle -> Fragment
-    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
-    checkCUDAError("rasterize");
-
-    // Fragment -> Fragment
-    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
+    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount,
+            dev_primitives, dev_depthbuffer, c.light);
     checkCUDAError("rasterize");
 
     // Copy depthbuffer colors into framebuffer
