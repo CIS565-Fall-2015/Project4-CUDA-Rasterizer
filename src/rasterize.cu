@@ -514,7 +514,7 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 
 __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int height) {
 	glm::vec3 light(0.0f, 3.0f, 6.0f);
-	glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+	glm::vec3 lightColor(1.0f, 0.0f, 0.0f);
 
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -537,14 +537,14 @@ __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int h
 			float lightIntensity = diffuseTerm + ambientTerm;
 			glm::vec3 Ia = finalColor;
 			glm::vec3 Ii = lightColor*finalColor;
-			glm::vec3 R = glm::reflect(glm::normalize(-light), glm::normalize(depth[depthIndex].nor));
+			glm::vec3 R = glm::reflect(glm::normalize(light), glm::normalize(depth[depthIndex].nor));
 			R = glm::normalize(R);
-			glm::vec3 V = normalize(glm::vec3(0.0f, 3.0f, 3.0f));
+			glm::vec3 V = normalize(glm::vec3(0.0f, -3.0f, -3.0f));
 			float spec = glm::dot(R, V);
 			if (spec < 0.0f) spec = 0.0f;
 			if (spec < 1.0f) spec = 1.0f;
 	
-			frag[index].color = ambientTerm*Ia + Ii*diffuseTerm;
+			frag[index].color = ambientTerm*Ia + Ii*(.4f*diffuseTerm + .4f*pow(spec, 100));
 
 
 		}
