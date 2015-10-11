@@ -6,12 +6,6 @@ CUDA Rasterizer
 * Ziwei Zong
 * Tested on: Windows 10, i7-5500 @ 2.40GHz 8GB, GTX 950M (Personal)
 
-### (TODO: Your README)
-
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
-
-
 Overview
 ========================
 
@@ -21,12 +15,11 @@ Description here:...
 
 #### Controls
 
-* Left Mouse   : Rotate
-* Middle Mouse : Zoom
-* Right Mouse  : Move
-
-|  KEY			|   Function						| Demo Image|
+|  KEY/Mouse	|   Function						| Demo Image|
 |---------------|-----------------------------------|-----------|
+|Left Mouse		| Rotate							|  [pic]    |
+|Middle Mouse	| Zoom								|  [pic]    |
+|Right Mouse	| Move								|  [pic]    |
 |Key '0'		| Wireframe only					|  [pic]    |
 |Key '1'		|     Color							|  [pic]    |
 |Key 'w'		| turn wireframe on/off				|  [pic]    |
@@ -68,6 +61,16 @@ time spent analysis here...
 
 #### Obj Analysis
 
+References
+========================
+
+**Mouse Control**
+
+**Tessellation**
+
+**Texture Mapping**
+
+**Displacement Map**
 
 To Do...
 ========================
