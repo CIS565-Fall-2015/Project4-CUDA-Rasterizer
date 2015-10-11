@@ -351,8 +351,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 
 }
 
-float horizontalAngle = 0;
-float verticalAngle = -PI;
+float horizontalAngle = 0.04;
+float verticalAngle = -2.5;
 bool isMoving = false;
 bool isRotating = false;
 glm::vec3 center(0,0,0);
@@ -362,7 +362,7 @@ glm::vec3 up;
 float x_lsPos;
 float y_lsPos;
 float lastTime;
-float zoom = -2.5;
+float zoom = -5;
 float FOV = PI/4;
 //http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
 //http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
@@ -415,6 +415,7 @@ void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 	{
 		horizontalAngle -= mouseSpeed * deltaTime * float(xpos - x_lsPos);//!!!
 		verticalAngle += mouseSpeed * deltaTime * float(ypos - y_lsPos);
+		printf("h:%2f, v:%2f\n", horizontalAngle, verticalAngle);
 	}
 	else if (isMoving)
 	{

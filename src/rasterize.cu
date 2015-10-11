@@ -14,6 +14,7 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+#include <time.h>
 
 
 
@@ -313,7 +314,7 @@ __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** 
 		{
 			if (!primitives[index].v[i].DispAdded)
 			{
-				float disp = 0.1*glm::length(ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex), UVrepeat));
+				float disp = 0.08*glm::length(ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex), UVrepeat));
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
 				//!!! later !!! normal
 				primitives[index].v[i].DispAdded = true;
@@ -582,9 +583,10 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	tessIncre = pow(4, tessLevel);
 
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
-
+	checkCUDAError("kernBufInit");
 	//kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
 	if (TessLevel != lastLevel || lastDisp != sCtrl.DispMap || lastUVrepeat != sCtrl.UVrepeat)
+	//if (true)
 	{
 		lastDisp = sCtrl.DispMap;
 		if (TessLevel > lastLevel)
@@ -599,6 +601,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 		int tempIncre = tessIncre;
 		for (int i = 0; i < tessLevel; i++)
 		{
+			//printf("%dth level tessellated\n", i);
 			kernTessellation_aftPri << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
 			tempSize *= 4;
 			tempIncre /= 4;
@@ -611,8 +614,10 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	}
 	gSize_pri = dim3((bufIdxSize*tessIncre/3+ bSize_pri - 1) / bSize_pri);
 	kernPrimUpdate << <gSize_pri, bSize_pri >> >(dev_primitives, priSize, glm::mat4(), M_view, projMat, M_win);
+	checkCUDAError("kernPrimUpdate");
 	kernRasterizer << <gSize_pri, bSize_pri >> >(sCtrl, width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo, sCtrl.UVrepeat);
-
+	checkCUDAError("kernRast");
+	
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
