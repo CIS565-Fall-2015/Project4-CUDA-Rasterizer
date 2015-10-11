@@ -27,6 +27,7 @@ public:
 
 	int renderMode;
 	bool backFaceCulling;
+	bool antiAliasing;
 	bool run;
 	Camera cam;
 	Light light1, light2;
@@ -44,6 +45,7 @@ public:
 	void updateRenderMode();
 	void configureMVPMatrices();
 	void moveLights();
+	void toggleAntiAliasing();
 };
 
 

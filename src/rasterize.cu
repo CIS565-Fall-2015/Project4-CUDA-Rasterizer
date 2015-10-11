@@ -327,13 +327,13 @@ void kernRasterizePoints(int numVertices, int w, int h, Fragment *fragments, Ver
 	{
 		glm::ivec2 point(vertices[index].pos.x, vertices[index].pos.y);
 
+		//If point within bounds
 		if(point.x > -w*0.5
 				&& point.x < w*0.5f
 				&& point.y > -h*0.5f
 				&& point.y < h*0.5f )
 		{
-
-//			int fragIndex = ;
+			//Color the corresponding fragment
 			fragments[int((point.x + w*0.5f) + (point.y + h*0.5f)*w)].color = glm::vec3(1.0f);
 		}
 	}
@@ -352,6 +352,7 @@ void kernRasterizeLines(int numVertices, int w, int h, Fragment *fragments, Edge
 		glm::vec2 v1(e.v1.x, e.v1.y);
 		glm::vec2 v2(e.v2.x, e.v2.y);
 
+		//Clamp edge to screen boundaries
 		v1.x = glm::clamp(v1.x, -(float)w*0.5f, (float)w*0.5f);
 		v1.y = glm::clamp(v1.y, -(float)h*0.5f, (float)h*0.5f);
 		v2.x = glm::clamp(v2.x, -(float)w*0.5f, (float)w*0.5f);
@@ -377,8 +378,6 @@ void kernRasterizeLines(int numVertices, int w, int h, Fragment *fragments, Edge
 			for(j=v1.y; j!=(int)v2.y; j += inc)
 			{
 				i = ((float)j - v1.y) / m + v1.x;
-				//			printf("i, j : %d %d\n", i, j);
-				//			int fragIndex = int((i + w*0.5f) + (j + h*0.5f)*w);
 				fragments[int((i + w*0.5f) + (j + h*0.5f)*w)].color = glm::vec3(1.0f);
 			}
 		}
@@ -400,14 +399,62 @@ void kernRasterizeLines(int numVertices, int w, int h, Fragment *fragments, Edge
 			for(i=v1.x; i!=(int)v2.x; i += inc)
 			{
 				j = m * ((float)i - v1.x) + v1.y;
-				//			printf("i, j : %d %d\n", i, j);
-				//			int fragIndex = int((i + w*0.5f) + (j + h*0.5f)*w);
 				fragments[int((i + w*0.5f) + (j + h*0.5f)*w)].color = glm::vec3(1.0f);
 			}
 		}
 	}
 }
 
+__global__
+void kernAntiAliasing(int numTriangles, int w, int h, Fragment * fragment, Triangle * triangles)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (index < numTriangles)
+	{
+		Triangle &t = triangles[index];
+
+		glm::vec3 tri[3];
+		tri[0] = t.vOut[0].pos;
+		tri[1] = t.vOut[1].pos;
+		tri[2] = t.vOut[2].pos;
+
+		AABB aabb = getAABBForTriangle(tri);
+		glm::ivec3 min, max;
+
+		//Attempted clipping
+		min.x = glm::clamp(aabb.min.x, -(float)w*0.5f+2, (float)w*0.5f-2);
+		min.y = glm::clamp(aabb.min.y, -(float)h*0.5f+2, (float)h*0.5f-2);
+		max.x = glm::clamp(aabb.max.x, -(float)w*0.5f+2, (float)w*0.5f-2);
+		max.y = glm::clamp(aabb.max.y, -(float)h*0.5f+2, (float)h*0.5f-2);
+
+		for(int i=min.x-1; i<=max.x+1; ++i)
+		{
+			for(int j=min.y-1; j<=max.y+1; ++j)
+			{
+				int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
+				int fragIndex0 = int((i+1 + w*0.5) + (j+1 + h*0.5)*w);
+				int fragIndex1 = int((i+1 + w*0.5) + (j-1 + h*0.5)*w);
+				int fragIndex2 = int((i-1 + w*0.5) + (j+1 + h*0.5)*w);
+				int fragIndex3 = int((i-1 + w*0.5) + (j-1 + h*0.5)*w);
+				int fragIndex4 = int((i+1 + w*0.5) + (j + h*0.5)*w);
+				int fragIndex5 = int((i-1 + w*0.5) + (j + h*0.5)*w);
+				int fragIndex6 = int((i + w*0.5) + (j+1 + h*0.5)*w);
+				int fragIndex7 = int((i + w*0.5) + (j-1 + h*0.5)*w);
+
+				fragment[fragIndex].color = 0.25f * fragment[fragIndex].color +
+											0.125f * (fragment[fragIndex4].color+
+													fragment[fragIndex5].color+
+													fragment[fragIndex6].color+
+													fragment[fragIndex7].color) +
+											0.0625f* (fragment[fragIndex0].color+
+													fragment[fragIndex1].color+
+													fragment[fragIndex2].color+
+													fragment[fragIndex3].color);
+			}
+		}
+	}
+}
 
 /**
  * Called once at the beginning of the program to allocate memory.
@@ -503,7 +550,7 @@ void rasterize(uchar4 *pbo) {
 				numBlocks = (vertCount + numThreads -1)/numThreads;
 				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
 
-				//Do primitive assembly
+				//Do primitive (triangle) assembly
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
 				kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
 
@@ -511,22 +558,26 @@ void rasterize(uchar4 *pbo) {
 				dev_primitivesEnd = dev_primitives + numTriangles;
 				dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
 				numTriangles = dev_primitivesEnd - dev_primitives;
-		////    	std::cout<<numTriangles;
 
 				//Rasterization per triangle
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
 				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, light1, light2);
+
+				if(scene->antiAliasing)
+				{
+					kernAntiAliasing<<<numBlocks, numThreads>>>(numTriangles, width, height, dev_depthbuffer, dev_primitives);
+				}
 
 				break;
 			}
 
 			case POINTS:
 			{
-//				std::cout<<"HERE";
 				//Do vertex shading
 				numBlocks = (vertCount + numThreads -1)/numThreads;
 				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
 
+				//Rasterization per vertex
 				kernRasterizePoints<<<numBlocks, numThreads>>>(vertCount, width, height, dev_depthbuffer, dev_outVertex, cam, light1, light2);
 
 				break;
@@ -534,15 +585,15 @@ void rasterize(uchar4 *pbo) {
 
 			case LINES:
 			{
-//				std::cout<<"HERE";
 				//Do vertex shading
 				numBlocks = (vertCount + numThreads -1)/numThreads;
 				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
 
-				//Do primitive assembly
+				//Do primitive (edge) assembly
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
 				kernEdgeAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_edges, dev_bufIdx);
 
+				//Rasterization per edge
 				numBlocks = (vertCount + numThreads -1)/numThreads;
 				kernRasterizeLines<<<numBlocks, numThreads>>>(vertCount, width, height, dev_depthbuffer, dev_edges, cam, light1, light2);
 

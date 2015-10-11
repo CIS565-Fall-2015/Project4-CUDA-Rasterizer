@@ -14,8 +14,9 @@
 
 Scene::Scene(int w, int h)
 {
-	renderMode = LINES;
+	renderMode = TRIANGLES;
 	backFaceCulling = true;
+	antiAliasing = true;
 	run = true;
 	width = w;
 	height = h;
@@ -123,4 +124,10 @@ void Scene::updateRenderMode()
 	{
 		backFaceCulling = false;
 	}
+}
+
+void Scene::toggleAntiAliasing()
+{
+	antiAliasing = !antiAliasing;
+	run = true;
 }

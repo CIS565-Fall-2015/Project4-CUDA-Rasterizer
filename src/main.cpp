@@ -331,6 +331,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		scene->updateRenderMode();
 	}
 
+	else if(key == GLFW_KEY_N && action == GLFW_PRESS)
+	{
+		scene->toggleAntiAliasing();
+	}
+
 	else
 	{
 		float move = 0.1f;
