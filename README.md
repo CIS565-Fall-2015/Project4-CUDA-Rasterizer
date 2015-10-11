@@ -26,6 +26,7 @@ Description here:...
 * Right Mouse  : Move
 
 |  KEY			|   Function						| Demo Image|
+|---------------|-----------------------------------|-----------|
 |Key '0'		| Wireframe only					|  [pic]    |
 |Key '1'		|     Color							|  [pic]    |
 |Key 'w'		| turn wireframe on/off				|  [pic]    |
@@ -51,6 +52,7 @@ Features
 #### Interpolation
 
 **Normal**
+
 **Color**
 
 Performance Analysis
@@ -59,7 +61,9 @@ Performance Analysis
 #### Pipeline Optimization
 
 [flow chart here...]
+
 description here...
+
 time spent analysis here...
 
 #### Obj Analysis
