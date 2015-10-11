@@ -13,7 +13,17 @@
 //-------------------------------
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
+    
+	/*glm::mat4 m_model = glm::translate(glm::mat4(1.0),glm::vec3(1.0,0.0,0.0));
+
+	glm::vec3 a (0.0);
+
+	a = glm::vec3(m_model*glm::vec4(a,1.0));*/
+
+
+	
+	
+	if (argc != 2) {
         cout << "Usage: [obj file]" << endl;
         return 0;
     }
@@ -23,6 +33,7 @@ int main(int argc, char **argv) {
     {
         objLoader loader(argv[1], mesh);
         mesh->buildBufPoss();
+		//mesh->setFirstTriColor();
     }
 
     frame = 0;
@@ -281,6 +292,41 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
+	else if (key == GLFW_KEY_UP && action == GLFW_PRESS) {
+
+		g_camera->KeyChangeScale(true);
+	}
+	else if (key == GLFW_KEY_DOWN && action == GLFW_PRESS) {
+
+		g_camera->KeyChangeScale(false);
+
+	}
+	else if(key == GLFW_KEY_W && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(2,true);
+	}
+	else if(key == GLFW_KEY_S && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(2,false);
+	}
+	else if(key == GLFW_KEY_A && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(1,true);
+	}
+	else if(key == GLFW_KEY_D && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(1,false);
+	}
+	else if(key == GLFW_KEY_X && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(3,false);
+	}
+	else if(key == GLFW_KEY_Z && action == GLFW_PRESS)
+	{
+		g_camera->KeyChangeTranslate(3,true);
+	}
+		
+		
 }
 
 void mouseCallback(GLFWwindow *window, int button, int action, int mods)
@@ -290,6 +336,10 @@ void mouseCallback(GLFWwindow *window, int button, int action, int mods)
 		glfwGetCursorPos(window,&g_mouse_old_x,&g_mouse_old_y);		 
 	}
 	else if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		glfwGetCursorPos(window,&g_mouse_old_x,&g_mouse_old_y);	
+	}
+	else if(button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS)
 	{
 		glfwGetCursorPos(window,&g_mouse_old_x,&g_mouse_old_y);	
 	}

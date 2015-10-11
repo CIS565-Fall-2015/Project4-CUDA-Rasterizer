@@ -15,6 +15,9 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 
+#define ENABLE_ANTI_ALIASING
+#define ENABLE_BLENDING
+
 struct VertexIn {
     glm::vec3 pos;
     glm::vec3 nor;
@@ -85,7 +88,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 
 //vertex shader function
 __global__
-void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out, int vertCount,glm::mat4 trans,glm::mat4 trans_inv_T) //trans = proj*view*model
+void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out, int vertCount,glm::mat4 MVP,glm::mat4 M_inv_T) //trans = proj*view*model
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//simple version for doing nothing
@@ -95,9 +98,10 @@ void kern_vertex_shader(VertexIn *dev_bufVertex_in, VertexOut *dev_bufVertex_out
 	{
 		VertexIn cur_v_in = dev_bufVertex_in[index];
 		//calculate pos 
-		dev_bufVertex_out[index].pos = glm::vec3(trans*glm::vec4(cur_v_in.pos,1.f));
+		dev_bufVertex_out[index].pos = multiplyMV(MVP,glm::vec4(cur_v_in.pos,1.f));
+		
 		//calculate normal
-		dev_bufVertex_out[index].nor = glm::vec3(trans_inv_T*glm::vec4(cur_v_in.nor,1.f));
+		dev_bufVertex_out[index].nor = multiplyMV(M_inv_T, glm::vec4(cur_v_in.nor,1.f));
 		//calculate color
 		dev_bufVertex_out[index].col = cur_v_in.col;
 
@@ -146,6 +150,12 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 		float max_x = min(cur_AABB.max.x,1.f);
 		float max_y = min(cur_AABB.max.y,1.f);
 
+		if(min_x > 1 || max_x < -1 || min_y >1 || max_y<-1)
+		{
+			return;
+		}
+		
+		
 		float dx = 2.f/width;
 		float dy = 2.f/height;
 
@@ -164,6 +174,7 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 			{
 				int buffer_index = (height-i)*width + j;
 
+				//center point sample
 				float cur_y = -1+ ((float)i*2+1.f)/(float)height;
 				float cur_x = -1+ ((float)j*2+1.f)/(float)width;
 
@@ -172,15 +183,41 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 				glm::vec3 b_c = calculateBarycentricCoordinate(m_tri,cur_vec2);
 				bool is_inside = isBarycentricCoordInBounds(b_c);
 
-				if(is_inside)
+				//subpixel center 1
+				float sub_y1 = cur_y + dy/4.f;
+				float sub_x1 = cur_x - dx/4.f;
+				glm::vec3 b_c1 = calculateBarycentricCoordinate(m_tri,glm::vec2(sub_x1,sub_y1));
+				bool is_inside1 = isBarycentricCoordInBounds(b_c1);
+
+				//subpixel center 2
+				float sub_y2 = cur_y + dy/4.f;
+				float sub_x2 = cur_x + dx/4.f;
+				glm::vec3 b_c2 = calculateBarycentricCoordinate(m_tri,glm::vec2(sub_x2,sub_y2));
+				bool is_inside2 = isBarycentricCoordInBounds(b_c2);
+				
+				//subpixel center 3
+				float sub_y3 = cur_y - dy/4.f;
+				float sub_x3 = cur_x - dx/4.f;
+				glm::vec3 b_c3 = calculateBarycentricCoordinate(m_tri,glm::vec2(sub_x3,sub_y3));
+				bool is_inside3 = isBarycentricCoordInBounds(b_c3);
+				
+				//subpixel center 4
+				float sub_y4 = cur_y - dy/4.f;
+				float sub_x4 = cur_x + dx/4.f;
+				glm::vec3 b_c4 = calculateBarycentricCoordinate(m_tri,glm::vec2(sub_x4,sub_y4));
+				bool is_inside4 = isBarycentricCoordInBounds(b_c4);
+				
+				int sample_res = (int)is_inside + (int)is_inside1 + (int)is_inside2 + (int)is_inside3 + (int)is_inside4;
+				
+				if(sample_res)
 				{
 					float cur_z = getZAtCoordinate(b_c,m_tri);
-					if(cur_z<=1 && cur_z>= -1) //within the range
+					if(cur_z<=1 && cur_z>= -1) //within the range 
 					{
 						if(dev_depthbuffer[buffer_index].z<cur_z)
 						{
 							// attention for the race condition
-							//resolve later
+							//wait until it is writable
 							while(!dev_is_writable[buffer_index])
 							{}
 
@@ -192,8 +229,20 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 							
 							//interpolate the color
 							
-							dev_depthbuffer[buffer_index].color =m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z;
+#ifdef ENABLE_ANTI_ALIASING
+#ifdef ENABLE_BLENDING
+		dev_depthbuffer[buffer_index].color =0.7f*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f) + 0.3f*dev_depthbuffer[buffer_index].color;
+
+#else
+		dev_depthbuffer[buffer_index].color =(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f);
+
+#endif
+
 							
+
+#else
+							dev_depthbuffer[buffer_index].color =(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)is_inside);
+#endif
 							//interpolate the normal
 							dev_depthbuffer[buffer_index].nor = m_normals[0]*b_c.x +m_normals[1]*b_c.y+m_normals[2]*b_c.z;
 						
@@ -201,6 +250,21 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 							dev_is_writable[buffer_index] = true;
 						
 						}
+#ifdef ENABLE_BLENDING
+						if(dev_depthbuffer[buffer_index].z>cur_z)
+						{
+							while(!dev_is_writable[buffer_index])
+							{}
+
+							//enter critical area
+							dev_is_writable[buffer_index] =false;
+
+							dev_depthbuffer[buffer_index].color =0.7f*dev_depthbuffer[buffer_index].color + 0.3f*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f);
+
+							dev_is_writable[buffer_index] = true;
+						}
+#endif
+
 					}
 				}
 
@@ -223,7 +287,19 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 		// for now just doing nothing to test
 		if(abs(dev_depthbuffer[index].z + M_INFINITE)>1e-6)
 		{
-			dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
+			//dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
+			
+			//light direction glm::vec3(0,0,-1)
+			/*float dot_prod = glm::dot(glm::normalize(glm::vec3(1.0,0.0,0.0)),glm::normalize(dev_depthbuffer[index].nor));
+
+			if(dot_prod>0)
+			{
+				dev_depthbuffer[index].color *= dot_prod;
+			}
+			else
+			{
+				dev_depthbuffer[index].color = glm::vec3(0.0,0.0,0.0);
+			}*/
 		}
 		
 
@@ -233,7 +309,7 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 
 //fragment init
 __global__
-void kern_fragment_init(Fragment *dev_depthbuffer, int num_of_fragment)
+void kern_fragment_init(Fragment *dev_depthbuffer, bool * dev_is_writable, int num_of_fragment)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	
@@ -241,6 +317,10 @@ void kern_fragment_init(Fragment *dev_depthbuffer, int num_of_fragment)
 	{
 		// for now just doing nothing to test
 		dev_depthbuffer[index].z = -M_INFINITE;
+		dev_depthbuffer[index].color = glm::vec3(0.0);
+		dev_depthbuffer[index].nor = glm::vec3(0.0);
+
+		dev_is_writable[index] = true;
 
 	}
 }
@@ -321,12 +401,17 @@ void rasterize(uchar4 *pbo, Camera *m_camera)
 	dim3 blockSize1d (THREADS_PER_BLOCK);
 	dim3 blockCount1d (vertCount/THREADS_PER_BLOCK+1);
 
-	glm::mat4 m_view = glm::transpose(m_camera->GetViewMatrix());
-	glm::mat4 m_proj = glm::transpose(m_camera->GetProjectionMatrix());
-	
-	glm::mat4 MVP = m_proj * m_view;
-	glm::mat4 MVP_inv_T = glm::transpose(glm::inverse(MVP));
-	kern_vertex_shader<<<blockCount1d,blockSize1d>>>(dev_bufVertex, dev_bufVertex_out, vertCount, MVP, MVP_inv_T);
+	glm::mat4 m_view =  glm::transpose(m_camera->GetViewMatrix());
+	glm::mat4 m_proj =  m_camera->GetProjectionMatrix();
+	glm::mat4 m_model = m_camera->GetModelMatrix();
+	//glm::mat4 MVP = glm::mat4(1.0);
+	//glm::mat4 MVP_inv_T = glm::mat4(1.0);
+
+	glm::mat4 MVP = m_proj * m_view * m_model;
+	glm::mat4 M_inv_T = glm::transpose(glm::inverse(m_model));
+
+
+	kern_vertex_shader<<<blockCount1d,blockSize1d>>>(dev_bufVertex, dev_bufVertex_out, vertCount, MVP, M_inv_T);
 
 	//primitive assembler
 	int num_of_primitives = bufIdxSize/3;
@@ -340,7 +425,7 @@ void rasterize(uchar4 *pbo, Camera *m_camera)
 	int num_of_fragment = width * height;
 	blockCount1d.x = num_of_fragment/THREADS_PER_BLOCK+1;
 
-	kern_fragment_init<<<blockCount1d,blockSize1d>>>(dev_depthbuffer,num_of_fragment);
+	kern_fragment_init<<<blockCount1d,blockSize1d>>>(dev_depthbuffer,dev_is_writable,num_of_fragment);
 	
 	
 	//rasterization

@@ -81,4 +81,7 @@ public:
     vector<glm::vec4> *getNormals();
     vector<glm::vec4> *getTextureCoords();
     vector<float *> *getFaceBoxes();
+
+	//for testing the color interpolation
+	void setFirstTriColor();
 };

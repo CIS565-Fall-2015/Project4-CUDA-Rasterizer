@@ -41,19 +41,23 @@ Camera::~Camera(void)
 void Camera::Reset(int width, int height)
 {
     // setup default camera parameters
-    m_eye_distance = 5.0;
-    m_head = 30.0;
-    m_pitch = 45.0;
+    m_eye_distance = 20.0;
+    m_head = 0.0;
+    m_pitch = 90.0;
     m_lookat = glm::vec3(0.0, 0.0, -1.0);
     m_up = glm::vec3(0.0, 1.0, 0.0);
-    m_fovy = 75.0;
+    m_fovy = 45.0;
     m_width = width;
     m_height = height;
-    m_znear = 0.1;
+    m_znear = 0.01;
     m_zfar = 500.0;
+
+	m_scale = glm::vec3(1.0);
+	m_translate = glm::vec3(0.0);
 
     updateViewMatrix();
     updateProjectionMatrix();
+	updateModelMatrix();
 }
 
 //void Camera::Lookat(Mesh* mesh)
@@ -204,5 +208,67 @@ void Camera::updateViewMatrix()
 }
 void Camera::updateProjectionMatrix()
 {
-    m_projection = glm::perspective(m_fovy, static_cast<float>(m_width) / static_cast<float>(m_height), m_znear, m_zfar);
+    //m_projection  = glm::perspective(m_fovy, static_cast<float>(m_width) / static_cast<float>(m_height), m_znear, m_zfar);
+	//m_projection = glm::infinitePerspective(m_fovy, static_cast<float>(m_width) / static_cast<float>(m_height), m_znear);
+	m_projection  = glm::mat4(1.0);
+}
+
+void Camera::updateModelMatrix()
+{
+	m_model = glm::translate(glm::mat4(1.f),m_translate)*glm::scale(glm::mat4(1.f),m_scale);
+	//std::cout<< m_translate.x<< m_translate.y<< m_translate.z <<std::endl;
+}
+
+void Camera::KeyChangeScale(bool is_enlarge)
+{
+	if(is_enlarge)
+	{
+		m_scale += 0.2f *glm::vec3(1.0);
+	}
+	else
+	{
+		m_scale -= 0.2f *glm::vec3(1.0);
+	}
+
+	updateModelMatrix();
+
+}
+
+void Camera::KeyChangeTranslate(int dir, bool is_add)
+{
+	if(is_add)
+	{
+		switch (dir)
+		{
+		case 1: //x
+			m_translate += glm::vec3(0.2,0.0,0.0);
+			break;
+		case 2: //y
+			m_translate += glm::vec3(0.0,0.2,0.0);
+			break;
+		case 3: //z
+			m_translate += glm::vec3(0.0,0.0,0.2);
+			break;
+		}
+		
+	}
+	else
+	{
+		switch (dir)
+		{
+		case 1: //x
+			m_translate -= glm::vec3(0.2,0.0,0.0);
+			break;
+		case 2: //y
+			m_translate -= glm::vec3(0.0,0.2,0.0);
+			break;
+		case 3: //z
+			m_translate -= glm::vec3(0.0,0.0,0.2);
+			break;
+		}
+	
+	
+	}
+
+	updateModelMatrix();
 }

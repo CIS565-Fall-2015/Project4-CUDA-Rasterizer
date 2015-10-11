@@ -487,3 +487,18 @@ int obj::getBufColsize() {
     return cbosize;
 }
 
+void obj::setFirstTriColor()
+{
+	cbo[0 + 0] = 1.0;
+	cbo[0 + 1] = 0.0;
+	cbo[0 + 2] = 0.0;
+	
+	cbo[3 + 0] = 0.0;
+	cbo[3 + 1] = 1.0;
+	cbo[3 + 2] = 0.0;
+	
+	cbo[6 + 0] = 0.0;
+	cbo[6 + 1] = 0.0;
+	cbo[6 + 2] = 1.0;
+}
+

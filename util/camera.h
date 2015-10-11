@@ -32,6 +32,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <iostream>
 
 class Camera
 {
@@ -47,7 +48,9 @@ public:
     // get camera matrices:
     inline glm::mat4 GetViewMatrix() {return m_view;}
     inline glm::mat4 GetProjectionMatrix() {return m_projection;}
-    // get camera position and raycast direction:
+	inline glm::mat4 GetModelMatrix() {return m_model;}
+	
+	// get camera position and raycast direction:
     inline glm::vec3 GetCameraPosition() {return m_position;}
     inline float GetCameraDistance() {return m_eye_distance;}
     inline void SetProjectionPlaneDistance(float distance) {m_cached_projection_plane_distance = distance;}
@@ -59,6 +62,10 @@ public:
     void MouseChangeLookat(float coe, float dx, float dy);
     void MouseChangeHeadPitch(float coe, float dx, float dy);
 
+	//key interactions
+	void KeyChangeScale(bool is_enlarge);
+	void KeyChangeTranslate(int dir, bool is_add);
+	
     // Draw axis
    // void DrawAxis();
 
@@ -86,10 +93,14 @@ protected:
 
     glm::mat4 m_view;
     glm::mat4 m_projection;
+	glm::vec3 m_translate;
+	glm::vec3 m_scale;
+	glm::mat4 m_model;
 private:
     // update camera matrices:
     void updateViewMatrix();
     void updateProjectionMatrix();
+	void updateModelMatrix();
 };
 
 #endif

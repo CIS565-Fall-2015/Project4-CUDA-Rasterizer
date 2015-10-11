@@ -20,6 +20,7 @@
 #include <cuda_gl_interop.h>
 #include <cuda_runtime.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <util/glslUtility.hpp>
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
