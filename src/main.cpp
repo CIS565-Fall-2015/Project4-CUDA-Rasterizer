@@ -78,7 +78,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+    rasterize(dptr, viewProjection);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -104,8 +104,11 @@ bool init(obj *mesh) {
         glfwTerminate();
         return false;
     }
-    glfwMakeContextCurrent(window);
-    glfwSetKeyCallback(window, keyCallback);
+	glfwMakeContextCurrent(window);
+	glfwSetKeyCallback(window, keyCallback);
+	glfwSetCursorPosCallback(window, cursorCallback);
+	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	//glfwSetCursorPos(window, width/2, height / 2);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -118,6 +121,11 @@ bool init(obj *mesh) {
     initTextures();
     initCuda();
     initPBO();
+
+	float aspect = (float)width / height;
+	glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+	glm::mat4 view = glm::lookAt(glm::vec3(0, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+	viewProjection = projection * view;
 
     float cbo[] = {
         0.0, 1.0, 0.0,
@@ -269,8 +277,23 @@ void errorCallback(int error, const char *description) {
     fputs(description, stderr);
 }
 
-void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+#define YAW_SENSITIVITY 0.05f
+#define PITCH_SENSITIVITY 0.05f
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+		exit(0);
+	//else if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+	//TODO: print image
+}
+
+void cursorCallback(GLFWwindow* window, double xpos, double ypos){
+	//camera control
+	float yaw = (xpos - width / 2) * YAW_SENSITIVITY;
+	float pitch = (ypos - height/2) * PITCH_SENSITIVITY;
+
+	//cam->rotateBy_DEG(pitch, yaw, 0);
+
+	//reset cursor to middle pos.
+	//glfwSetCursorPos(window, width/2, height/2);
 }

@@ -13,8 +13,8 @@
 #include <util/utilityCore.hpp>
 
 struct AABB {
-    glm::vec3 min;
-    glm::vec3 max;
+    glm::vec2 min;
+    glm::vec2 max;
 };
 
 /**
@@ -32,14 +32,12 @@ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
 __host__ __device__ static
 AABB getAABBForTriangle(const glm::vec3 tri[3]) {
     AABB aabb;
-    aabb.min = glm::vec3(
+    aabb.min = glm::vec2(
             min(min(tri[0].x, tri[1].x), tri[2].x),
-            min(min(tri[0].y, tri[1].y), tri[2].y),
-            min(min(tri[0].z, tri[1].z), tri[2].z));
-    aabb.max = glm::vec3(
+            min(min(tri[0].y, tri[1].y), tri[2].y));
+    aabb.max = glm::vec2(
             max(max(tri[0].x, tri[1].x), tri[2].x),
-            max(max(tri[0].y, tri[1].y), tri[2].y),
-            max(max(tri[0].z, tri[1].z), tri[2].z));
+            max(max(tri[0].y, tri[1].y), tri[2].y));
     return aabb;
 }
 
