@@ -76,21 +76,15 @@ For each extra feature, please provide the following brief analysis:
 
 ### Performance Analysis
 
-The performance analysis is where you will investigate how to make your CUDA
-programs more efficient using the skills you've learned in class. You must have
-performed at least one experiment on your code to investigate the positive or
-negative effects on performance. 
+* For the cube, cow, suzanne, and flower model, I calculated how much time was spent in each step of the rasterizer.  This information is shown in the graphs below.  It is easy to see the rasterizer takes up the most amount of time in all the models.  This makes sense, as it loops through every fragment for each triangle.  Also, with the antialiasing, the number of fragment colors it is calculating is actually multiplied by four.  Also, the atomicMin function is in this step.  This will cause it to go slightly slower, as no two threads can access the same memory at once.  Thus, some threads will have to wait before they can pass the atomicMin step.  The backface culling was able to decrease the amount of time spent in this step, but it is still easily the most expensive step.  Also, the bounding box method was used for each triangle so that not all fragments had to be checked for each triangle.  Without this check, the rasterization step would take up an even larger portion of the running time.  
 
-We encourage you to get creative with your tweaks. Consider places in your code
-that could be considered bottlenecks and try to improve them. 
+![](img/Cube_pie.png)
 
-Provide summary of your optimizations (no more than one page), along with
-tables and or graphs to visually explain any performance differences.
+![](img/cow_pie.png)
 
-* Include a breakdown of time spent in each pipeline stage for a few different
-  models. It is suggested that you use pie charts or 100% stacked bar charts.
-* For optimization steps (like backface culling), include a performance
-  comparison to show the effectiveness.
+![](img/suzanne_pie.png)
+
+![](img/flower_pie.png)
 
 
 ## Submit
