@@ -108,6 +108,9 @@ __device__ VertexOut EdgeTessellator_MipP(VertexOut vtxA, VertexOut vtxB, glm::m
 	VertexOut vtxC;
 	vtxC.pos = (vtxA.pos + vtxB.pos)*0.5f;
 	vtxC.nor = glm::normalize(vtxA.nor + vtxB.nor);
+
+	//vtxC.pos += vtxC.nor*0.1f;
+
 	glm::vec4 clip = Mats*glm::vec4(vtxC.pos,1);
 	vtxC.ndc = glm::vec3(clip*(1 / clip.w));
 	vtxC.winPos = glm::vec3(M_win*glm::vec4(vtxC.ndc,1));// (vtxA.winPos + vtxB.winPos)*0.5f;
@@ -338,9 +341,20 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 		tex[0] = primitives[index].v[0].tex;
 		tex[1] = primitives[index].v[1].tex;
 		tex[2] = primitives[index].v[2].tex;
+
+		glm::vec3 norm[3];
+		norm[0] = primitives[index].v[0].nor;
+		norm[1] = primitives[index].v[1].nor;
+		norm[2] = primitives[index].v[2].nor;
 		//!!! currently linear . later interpolation
-		glm::vec3 normal = glm::normalize(primitives[index].v[0].nor + primitives[index].v[1].nor + primitives[index].v[2].nor);
-		glm::vec3 color = glm::normalize(primitives[index].v[0].col + primitives[index].v[1].col + primitives[index].v[2].col);
+		glm::vec3 normal = glm::normalize( norm[0]+norm[1]+norm[2]);
+
+		glm::vec3 cols[3];
+		cols[0] = primitives[index].v[0].col;
+		cols[1] = primitives[index].v[1].col;
+		cols[2] = primitives[index].v[2].col;
+
+		glm::vec3 color = glm::normalize(cols[0] + cols[1] + cols[2]);
 
 		AABB triBox = getAABBForTriangle(tri);
 		for (int x = triBox.min.x; x <= triBox.max.x; x++)
@@ -368,6 +382,8 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 					if (orig >= crntDepth)
 					//if (depthbuffer[x + y*w].depth==crntDepth)
 					{
+						normal = norm[0] * bPoint.x + norm[1] * bPoint.y + norm[2] * bPoint.z;
+						color = cols[0] * bPoint.x + cols[1] * bPoint.y + cols[2] * bPoint.z;
 						if (sctrl.Normal)		
 							depthbuffer[x + y*w].color = normal;
 						else{
@@ -639,7 +655,9 @@ void rasterizeFree() {
     checkCUDAError("rasterizeFree");
 }
 
-//tessellation & geometry : read later
+//tessellation & geometry : further reading...
 //http://prideout.net/blog/?p=48
 //http://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/lectures/25_micropolygons.pdf
 //http://www.eecs.berkeley.edu/~sequin/CS284/PROJ_12/Brandon/Smooth%20GPU%20Tessellation.pdf
+//http://http.developer.nvidia.com/GPUGems2/gpugems2_chapter07.html
+//http://perso.telecom-paristech.fr/~boubek/papers/PhongTessellation/PhongTessellation.pdf
