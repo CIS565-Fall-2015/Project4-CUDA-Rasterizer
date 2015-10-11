@@ -16,7 +16,7 @@ Scene::Scene(int w, int h)
 {
 	renderMode = TRIANGLES;
 	backFaceCulling = true;
-	antiAliasing = true;
+	antiAliasing = false;
 	run = true;
 
 	mouse.dragging = false;
@@ -24,10 +24,6 @@ Scene::Scene(int w, int h)
 	mouse.left = false;
 	mouse.right = false;
 	mouse.middle = false;
-
-	model.translate = glm::vec3(0.0f);
-	model.rotate = glm::vec3(0.0f);
-	model.scale = glm::vec3(1.0f);
 
 	width = w;
 	height = h;
@@ -87,6 +83,10 @@ void Scene::setDefaultCamera()
 	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
 	cam.model = glm::mat4();
 
+	model.translate = glm::vec3(0.0f);
+	model.rotate = glm::vec3(0.0f);
+	model.scale = glm::vec3(1.0f);
+
 	run = true;
 	configureCameraMatrix();
 }
@@ -127,7 +127,6 @@ void Scene::updateRenderMode()
 {
 	renderMode = (renderMode + 1) % 3;
 
-//	std::cout<<"Here now";
 	run = true;
 	if(renderMode == TRIANGLES)
 	{
@@ -142,5 +141,11 @@ void Scene::updateRenderMode()
 void Scene::toggleAntiAliasing()
 {
 	antiAliasing = !antiAliasing;
+	run = true;
+}
+
+void Scene::toggleBackFaceCulling()
+{
+	backFaceCulling = !backFaceCulling;
 	run = true;
 }

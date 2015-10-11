@@ -39,6 +39,9 @@ struct Triangle {
 struct Fragment {
     glm::vec3 color;
     int depth;
+    glm::vec3 primitiveCol;
+    glm::vec3 primitiveNor;
+    glm::vec3 primitivePos;
 };
 
 //Light struct

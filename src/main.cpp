@@ -152,7 +152,6 @@ bool init(obj *mesh) {
     //Mouse callbacks
     glfwSetCursorPosCallback(window, mouseCursorPosCallBack);
     glfwSetMouseButtonCallback(window, mouseButtonCallBack);
-	glfwSetScrollCallback(window, mouseScrollCallBack);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -320,91 +319,38 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 
-	if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	if(action == GLFW_PRESS)
 	{
-		delete(scene->imageColor);
-		glfwSetWindowShouldClose(window, GL_TRUE);
-	}
-
-	else if(key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-	{
-		saveImage();
-	}
-
-	else if(key == GLFW_KEY_M && action == GLFW_PRESS)
-	{
-		scene->updateRenderMode();
-	}
-
-	else if(key == GLFW_KEY_N && action == GLFW_PRESS)
-	{
-		scene->toggleAntiAliasing();
-	}
-
-	else
-	{
-		float move = 0.1f;
-		float angle = 0.1f;
-
-//		float move = 10.0f;
-//		float angle = .0f;
-
 		switch(key)
 		{
-			case GLFW_KEY_A:
-//			   	scene->updateCameraPos(glm::vec3(move,0,0));
-			   	scene->moveModel(glm::vec3(move,0,0));
-			    break;
-
-			case GLFW_KEY_D:
-//				scene->updateCameraPos(glm::vec3(-move,0,0));
-				scene->moveModel(glm::vec3(-move,0,0));
+			case GLFW_KEY_ESCAPE:
+				delete(scene->imageColor);
+				glfwSetWindowShouldClose(window, GL_TRUE);
 				break;
 
-			case GLFW_KEY_W:
-//				scene->updateCameraPos(glm::vec3(0,move,0));
-				scene->moveModel(glm::vec3(0,move,0));
+			case GLFW_KEY_SPACE:
+				saveImage();
 				break;
 
-			case GLFW_KEY_S:
-//				scene->updateCameraPos(glm::vec3(0,-move,0));
-				scene->moveModel(glm::vec3(0,-move,0));
-				break;
-
-			case GLFW_KEY_R:
-//				scene->updateCameraPos(glm::vec3(0,0,move));
-				scene->moveModel(glm::vec3(0,0,move));
+			case GLFW_KEY_M:
+				scene->updateRenderMode();
 				break;
 
 			case GLFW_KEY_F:
-//				scene->updateCameraPos(glm::vec3(0,0,-move));
-				scene->moveModel(glm::vec3(0,0,-move));
-				break;
-
-			case GLFW_KEY_UP:
-//			   	scene->updateCameraLookAt(glm::vec3(0,move,0));
-			   	scene->rotateModel(glm::vec3(angle,0,0));
-			    break;
-
-			case GLFW_KEY_DOWN:
-//				scene->updateCameraLookAt(glm::vec3(0,-move,0));
-				scene->rotateModel(glm::vec3(-angle,0,0));
-				break;
-
-			case GLFW_KEY_LEFT:
-//				scene->updateCameraLookAt(glm::vec3(-move,0,0));
-				scene->rotateModel(glm::vec3(0, -angle ,0));
-				break;
-
-			case GLFW_KEY_RIGHT:
-//				scene->updateCameraLookAt(glm::vec3(move,0,0));
-				scene->rotateModel(glm::vec3(0,angle,0));
-				break;
-
-			case GLFW_KEY_K:
 				scene->setDefaultCamera();
 				break;
 
+			case GLFW_KEY_A:
+				scene->toggleAntiAliasing();
+				break;
+
+			case GLFW_KEY_B:
+				scene->toggleBackFaceCulling();
+				break;
+
+			case GLFW_KEY_S:
+//				scene->toggleScissorTest();
+				break;
 			default:
 				break;
 		}
@@ -418,21 +364,18 @@ void mouseButtonCallBack(GLFWwindow *window, int button, int action, int mods)
 	if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
 		scene->mouse.left = true;
-//		scene->mouse.dragging = true;
 		scene->mouse.clicked = true;
 	}
 
 	else if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
 		scene->mouse.right = true;
-//		scene->mouse.dragging = true;
 		scene->mouse.clicked = true;
 	}
 
 	else if(button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS)
 	{
 		scene->mouse.middle = true;
-//		scene->mouse.dragging = true;
 		scene->mouse.clicked = true;
 	}
 
@@ -475,6 +418,7 @@ void mouseCursorPosCallBack(GLFWwindow *window, double x, double y)
 			float movedX = (float(x) - scene->mouse.pos.x) * 0.003f;
 
 			scene->moveModel(glm::vec3(0, 0, movedX));
+
 			scene->mouse.pos.x = x;
 			scene->mouse.pos.y = y;
 		}
@@ -489,9 +433,4 @@ void mouseCursorPosCallBack(GLFWwindow *window, double x, double y)
 			scene->mouse.pos.y = y;
 		}
 	}
-}
-
-void mouseScrollCallBack(GLFWwindow *window, double x, double y)
-{
-
 }

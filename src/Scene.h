@@ -26,8 +26,11 @@ public:
 //	~Scene();
 
 	int renderMode;
+
 	bool backFaceCulling;
 	bool antiAliasing;
+	bool scissorTest;
+
 	bool run;
 	Camera cam;
 	Light light1, light2;
@@ -49,6 +52,7 @@ public:
 	void configureMVPMatrices();
 	void moveLights();
 	void toggleAntiAliasing();
+	void toggleBackFaceCulling();
 };
 
 

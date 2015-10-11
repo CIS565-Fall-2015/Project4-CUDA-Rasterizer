@@ -117,7 +117,7 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 
 //Kernel function to assemble triangles
 __global__
-void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inVertex, Triangle *triangles, int* indices, glm::vec3 camDir)
+void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inVertex, Triangle *triangles, int* indices, glm::vec3 camDir, bool backFaceCulling)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -133,7 +133,7 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inV
 //		printf ("Tri Normal : %f %f %f\n", triNor.x, triNor.y, triNor.z);
 //		printf ("Cam Dir : %f %f %f\n", camDir.x, camDir.y, camDir.z);
 
-		if(glm::dot(triNor, camDir) > 0.0f)
+		if(backFaceCulling && glm::dot(triNor, camDir) > 0.0f)
 		{
 			//Triangle facing away from the camera
 			//	Mark for deletion
@@ -224,7 +224,7 @@ void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
 
 //Kernel function to rasterize the triangle
 __global__
-void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, Light light1, Light light2)
+void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam)
 {
 	//Rasterization per triangle
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -263,55 +263,69 @@ void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangl
 					triIn[1] = t.vOut[1].transformedPos;
 					triIn[2] = t.vOut[2].transformedPos;
 
-					glm::vec3 norm = barycentric.x * t.vOut[0].nor +
-										barycentric.y * t.vOut[1].nor +
-						                barycentric.z * t.vOut[2].nor;
+					int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
+					int depth = getZAtCoordinate(barycentric, triIn) * 10000;
 
-					glm::vec3 pos = barycentric.x * t.vOut[0].transformedPos +
-										barycentric.y * t.vOut[1].transformedPos +
-										barycentric.z * t.vOut[2].transformedPos;
-
-					glm::vec3 col = barycentric.x * tvIn[0].col +
-										barycentric.y * tvIn[1].col +
-										barycentric.z * tvIn[2].col;
-
-					glm::vec3 lightVector1 = glm::normalize(light1.pos - pos);
-					glm::vec3 lightVector2 = glm::normalize(light2.pos - pos);
-					//glm::vec3 camVector = glm::normalize(cam.pos - pos);
-
-					float diffusedTerm1 = glm::dot(lightVector1, norm);
-					float diffusedTerm2 = glm::dot(lightVector2, norm);
-
-//					if(diffusedTerm1 > 0.0f || diffusedTerm2 > 0.0f)
+					//Depth testing
+					if(depth < fragments[fragIndex].depth)
 					{
-						int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
-						int depth = getZAtCoordinate(barycentric, triIn) * 10000;
+						atomicMin(&fragments[fragIndex].depth, depth);
 
-						//TODO : Use cuda atomics to avoid race condition here
-						if(depth < fragments[fragIndex].depth)
-						{
-							atomicMin(&fragments[fragIndex].depth, depth);
-							if(diffusedTerm1 > 0.0f && diffusedTerm2 > 0.0f)
-							{
-								fragments[fragIndex].color = diffusedTerm1 * col * light1.col +
-															 diffusedTerm2 * col * light2.col;
-							}
+						//Fragment shading data
+						fragments[fragIndex].primitiveNor = barycentric.x * t.vOut[0].nor +
+											barycentric.y * t.vOut[1].nor +
+											barycentric.z * t.vOut[2].nor;
 
-							else if(diffusedTerm1 > 0.0f)
-							{
-								fragments[fragIndex].color = diffusedTerm1 * col * light1.col;
-							}
-							else if(diffusedTerm2 > 0.0f)
-							{
-								fragments[fragIndex].color = diffusedTerm2 * col * light2.col;
-							}
-							else
-							{
-								fragments[fragIndex].color = glm::vec3(0.0f);
-							}
-						}
+						fragments[fragIndex].primitivePos = barycentric.x * t.vOut[0].transformedPos +
+											barycentric.y * t.vOut[1].transformedPos +
+											barycentric.z * t.vOut[2].transformedPos;
+
+						fragments[fragIndex].primitiveCol = barycentric.x * tvIn[0].col +
+											barycentric.y * tvIn[1].col +
+											barycentric.z * tvIn[2].col;
 					}
 				}
+			}
+		}
+	}
+}
+
+
+__global__
+void kernFragmentShader(int w, int h, Fragment * fragment, Light light1, Light light2)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int fragIndex = x + (y * w);
+
+	if (x < w && y < h)
+	{
+		Fragment & f = fragment[fragIndex];
+		if(f.depth != INT_MAX)
+		{
+			glm::vec3 lightVector1 = glm::normalize(light1.pos - f.primitivePos);
+			glm::vec3 lightVector2 = glm::normalize(light2.pos - f.primitivePos);
+
+			float diffusedTerm1 = glm::dot(lightVector1, f.primitiveNor);
+			float diffusedTerm2 = glm::dot(lightVector2, f.primitiveNor);
+
+			if(diffusedTerm1 > 0.0f && diffusedTerm2 > 0.0f)
+			{
+				f.color = diffusedTerm1 * f.primitiveCol * light1.col +
+						diffusedTerm2 * f.primitiveCol * light2.col;
+			}
+
+			else if(diffusedTerm1 > 0.0f)
+			{
+				f.color = diffusedTerm1 * f.primitiveCol * light1.col;
+			}
+			else if(diffusedTerm2 > 0.0f)
+			{
+				f.color = diffusedTerm2 * f.primitiveCol * light2.col;
+			}
+			else
+			{
+				f.color = glm::vec3(0.0f);
 			}
 		}
 	}
@@ -552,16 +566,21 @@ void rasterize(uchar4 *pbo) {
 
 				//Do primitive (triangle) assembly
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
-				kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
+				kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir, scene->backFaceCulling);
 
-				//Back face culling
-				dev_primitivesEnd = dev_primitives + numTriangles;
-				dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
-				numTriangles = dev_primitivesEnd - dev_primitives;
+				if(scene->backFaceCulling)
+				{
+					//Back face culling
+					dev_primitivesEnd = dev_primitives + numTriangles;
+					dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
+					numTriangles = dev_primitivesEnd - dev_primitives;
+				}
 
 				//Rasterization per triangle
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
-				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, light1, light2);
+				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam);
+
+				kernFragmentShader<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, light1, light2);
 
 				if(scene->antiAliasing)
 				{
