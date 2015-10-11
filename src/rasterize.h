@@ -13,6 +13,6 @@
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
-        int vertCount, float *bufPos, float *bufNor, float *bufCol);
+        int vertCount, float *bufPos, float *bufNor, float *bufCol,bool resellation);
 void rasterize(uchar4 *pbo, int s,int d);
 void rasterizeFree();

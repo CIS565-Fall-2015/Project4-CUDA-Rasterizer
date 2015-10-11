@@ -19,6 +19,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #define DEG2RAD  PI/180.f
+#define Tess 1
 struct VertexIn {
 	glm::vec3 pos;
 	glm::vec3 nor;
@@ -128,7 +129,10 @@ void rasterizeInit(int w, int h) {
 
 void rasterizeSetBuffers(
 	int _bufIdxSize, int *bufIdx,
-	int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
+	int _vertCount, float *bufPos, float *bufNor, float *bufCol, bool resselation) {
+	//********************
+	resselation = Tess;
+	//********************
 	bufIdxSize = _bufIdxSize;
 	vertCount = _vertCount;
 
@@ -146,11 +150,10 @@ void rasterizeSetBuffers(
 		bufVertex[i].nor = glm::vec3(bufNor[j + 0], bufNor[j + 1], bufNor[j + 2]);
 		bufVertex[i].col = glm::vec3(bufCol[j + 0], bufCol[j + 1], bufCol[j + 2]);
 		//***********check here....*******//
-		float temp=std::max(bufVertex[i].pos.x, std::max(bufVertex[i].pos.y, bufVertex[i].pos.y));
+		float temp = std::max(bufVertex[i].pos.x, std::max(bufVertex[i].pos.y, bufVertex[i].pos.y));
 		if (temp>maxv){ maxv = temp; }
 	}
-	
-	N =(int)maxv+1;
+	N = (int)maxv + 1;
 	cudaFree(dev_bufVertex);
 	cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
 	cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
@@ -158,21 +161,24 @@ void rasterizeSetBuffers(
 	cudaFree(dev_vsOutput);
 	cudaMalloc(&dev_vsOutput, vertCount * sizeof(VertexOut));
 
-	cudaFree(dev_primitives);
-	cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-	cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+	if (!resselation)
+	{
+		cudaFree(dev_primitives);
+		cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
+		cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+		checkCUDAError("rasterizeSetBuffers");
+	}
+	else
+	{
+		cudaFree(dev_primitives);
+		cudaMalloc(&dev_primitives, vertCount / 3*4 * sizeof(Triangle));
+		cudaMemset(dev_primitives, 0, vertCount / 3*4 * sizeof(Triangle));
+		checkCUDAError("rasterizeSetBuffers");
+	}
 
-	checkCUDAError("rasterizeSetBuffers");
 }
 
-/*__global__ void maxObj(VertexIn *dev_bufVertex,int vertexCount,int N)
-{
-	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (id < vertexCount)
-	{
-		dev_bufVertex[id].pos=
-	}
-}*/
+
 __global__ void vertexShader(VertexIn *dev_bufVertex, VertexOut *dev_vsOutput, int vertexCount, glm::mat4 ViewProj){
 
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -182,13 +188,14 @@ __global__ void vertexShader(VertexIn *dev_bufVertex, VertexOut *dev_vsOutput, i
 		//simple orthordox projection 
 		//dev_vsOutput[id].pos = dev_bufVertex[id].pos;
 		//dev_vsOutput[id].nor = dev_bufVertex[id].nor;
-		
+
 		dev_vsOutput[id].pos = multiplyMV(ViewProj, glm::vec4(dev_bufVertex[id].pos, 1));
 		dev_vsOutput[id].nor = multiplyMV(ViewProj, glm::vec4(dev_bufVertex[id].nor, 0));
 		dev_vsOutput[id].nor = glm::normalize(dev_vsOutput[id].nor);
 		//dev_vsOutput[id].col = dev_bufVertex[id].col;
-		
-		
+		//interpolate the normal:smooth normal color??
+
+
 	}
 
 }
@@ -196,9 +203,13 @@ __global__ void PrimitiveAssembly(VertexOut *dev_vsOutput, Triangle * dev_primit
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (id < verCount / 3){
-		dev_primitives[id].v[0] = dev_vsOutput[3 * id];
-		dev_primitives[id].v[1] = dev_vsOutput[3 * id + 1];
-		dev_primitives[id].v[2] = dev_vsOutput[3 * id + 2];
+		dev_primitives[id].v[0].pos = dev_vsOutput[3 * id].pos;//012,345,678
+		dev_primitives[id].v[1].pos = dev_vsOutput[3 * id + 1].pos;
+		dev_primitives[id].v[2].pos = dev_vsOutput[3 * id + 2].pos;
+
+		dev_primitives[id].v[0].nor = dev_vsOutput[3 * id].nor;//012,345,678
+		dev_primitives[id].v[1].nor = dev_vsOutput[3 * id + 1].nor;
+		dev_primitives[id].v[2].nor = dev_vsOutput[3 * id + 2].nor;
 	}
 }
 
@@ -218,7 +229,7 @@ __device__ int _atomicMin(int *addr, int val)
 	return old;
 }
 
-__global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, int vertexcount, int w, int h,int N)
+__global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, int vertexcount, int w, int h, int N)
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -227,7 +238,7 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 		//potimized boundingbox;
 		glm::vec3 tri[3];
 		for (int i = 0; i < 3; i++){//(-1,1)+1*w/2
-			                        //(-10,10)+10*w/20
+			//(-10,10)+10*w/20
 			tri[i] = dev_primitives[id].v[i].pos;
 			tri[i].x += N;
 			tri[i].y += N;
@@ -245,6 +256,8 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 
 				glm::vec2 point(i, j);
 				glm::vec3 baryc = calculateBarycentricCoordinate(tri, point);
+				//simple clip..
+				if (tri[0].x > w || tri[0].x < 0 || tri[0].y>h || tri[0].x < 0)continue;
 				if (isBarycentricCoordInBounds(baryc)){
 					//these three normal should be the same since they are on the same face (checked)
 					int intdepth = getZAtCoordinate(baryc, tri);
@@ -252,16 +265,66 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 					if (intdepth == dev_fmInput[i*w + j].dis){
 						dev_fmInput[i*w + j].color = dev_primitives[id].v[0].nor;
 						dev_fmInput[i*w + j].normal = dev_primitives[id].v[0].nor;
-						dev_fmInput[i*w + j].pos = (dev_primitives[id].v[0].pos + dev_primitives[id].v[1].pos + dev_primitives[id].v[2].pos)/3.f;
+						dev_fmInput[i*w + j].pos = (dev_primitives[id].v[0].pos + dev_primitives[id].v[1].pos + dev_primitives[id].v[2].pos) / 3.f;
 					}
-
 				}
-
 			}
 		}
 	}
 }
+//#version 450 core
+//layout(vertices = 3) out;
+//layout(triangles, equal_spacing, cw) in;
+__global__ void Tesselation(bool active, VertexOut *dev_vertin, Triangle *dev_triout, int vercount)
+{
 
+	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (active&&id < vercount / 3.f)
+	{
+		int tessel_number = 3;
+		glm::vec3 tri[3];
+		tri[0] = dev_vertin[3 * id].pos;
+		tri[1] = dev_vertin[3 * id + 1].pos;
+		tri[2] = dev_vertin[3 * id + 2].pos;
+		//default tesselation,generate 4 triangles automativaly
+		glm::vec3 vnew[3];
+		vnew[0] = (tri[0] + tri[1]) / 2.f;
+		vnew[1] = (tri[0] + tri[2]) / 2.f;
+		vnew[2] = (tri[2] + tri[1]) / 2.f;
+
+		dev_triout[4 * id].v[0].pos = tri[0];
+		dev_triout[4 * id].v[1].pos = vnew[0];
+		dev_triout[4 * id].v[2].pos = vnew[1];
+
+		dev_triout[4 * id + 1].v[0].pos = vnew[0];
+		dev_triout[4 * id + 1].v[1].pos = tri[1];
+		dev_triout[4 * id + 1].v[2].pos = vnew[2];
+
+		dev_triout[4 * id + 2].v[0].pos = vnew[0];
+		dev_triout[4 * id + 2].v[1].pos = vnew[2];
+		dev_triout[4 * id + 2].v[2].pos = vnew[1];
+
+		dev_triout[4 * id + 3].v[0].pos = vnew[1];
+		dev_triout[4 * id + 3].v[1].pos = vnew[2];
+		dev_triout[4 * id + 3].v[2].pos = tri[2];
+		/*for (int i = 0; i < 4; i++){
+			for (int j = 0; j < 3; j++)
+			{
+				dev_triout[4 * id + i].v[j].nor = dev_vertin[3 * id].nor;
+			}
+		}*/
+		//in order to check :change the normal a little
+		for (int i = 0; i < 3; i++){
+			{
+				dev_triout[4 * id ].v[i].nor = glm::normalize(dev_vertin[3 * id].nor+glm::vec3(0.3,0,0));
+				dev_triout[4 * id + 1].v[i].nor = glm::normalize(dev_vertin[3 * id].nor + glm::vec3(0, 0.3, 0));
+				dev_triout[4 * id + 2].v[i].nor = glm::normalize(dev_vertin[3 * id].nor + glm::vec3(0, 0, 0));
+				dev_triout[4 * id + 3].v[i].nor = glm::normalize(dev_vertin[3 * id].nor + glm::vec3(0, 0, 0.3));
+			}
+		}
+	}
+
+}
 /* scan_line:brute force
 glm::vec3 tri[3];
 for (int i = 0; i < 3; i++){
@@ -284,40 +347,40 @@ glm::vec3 SetLight()
 {
 	glm::vec3 light_pos = glm::vec3(2, 1, 2);
 
-		return light_pos;
+	return light_pos;
 }
 //blin phong
-__global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, int w,int h,glm::vec3 light_pos,glm::vec3 camera_pos)
+__global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, int w, int h, glm::vec3 light_pos, glm::vec3 camera_pos)
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (id < w*h){
 
-			float specular_power = 10;
-			glm::vec3 specular_color = dev_fmInput[id].color;
-			glm::vec3 lightray = light_pos - dev_fmInput[id].pos;
-			glm::vec3 inray = camera_pos - dev_fmInput[id].pos;
-			glm::vec3 H = glm::normalize(inray) + glm::normalize(lightray);
-			H = glm::vec3(H.x / 2.0, H.y / 2.0, H.z / 2.0);
-			float hdot = glm::dot(H, dev_fmInput[id].normal);
-			float x = pow(hdot, specular_power);
-			if (x < 0)x = 0.f;
-			glm::vec3 spec =x*specular_color;
+		float specular_power = 10;
+		glm::vec3 specular_color = dev_fmInput[id].color;
+		glm::vec3 lightray = light_pos - dev_fmInput[id].pos;
+		glm::vec3 inray = camera_pos - dev_fmInput[id].pos;
+		glm::vec3 H = glm::normalize(inray) + glm::normalize(lightray);
+		H = glm::vec3(H.x / 2.0, H.y / 2.0, H.z / 2.0);
+		float hdot = glm::dot(H, dev_fmInput[id].normal);
+		float x = pow(hdot, specular_power);
+		if (x < 0)x = 0.f;
+		glm::vec3 spec = x*specular_color;
 
-			glm::vec3 Lambert = glm::vec3(1, 1, 1);
-			glm::vec3 Ambient = glm::vec3(1, 1, 1);
-			float diffuse = glm::clamp(glm::dot(dev_fmInput[id].normal, glm::normalize(lightray)), 0.0f, 1.0f);
-			Lambert *= diffuse;
+		glm::vec3 Lambert = glm::vec3(1, 1, 1);
+		glm::vec3 Ambient = glm::vec3(1, 1, 1);
+		float diffuse = glm::clamp(glm::dot(dev_fmInput[id].normal, glm::normalize(lightray)), 0.0f, 1.0f);
+		Lambert *= diffuse;
 
-			glm::vec3 phong_color = 0.5f*spec + 0.4f*Lambert + 0.1f*Ambient;//where is ambient light?
-			phong_color = glm::clamp(phong_color, 0.f, 1.f);
+		glm::vec3 phong_color = 0.5f*spec + 0.4f*Lambert + 0.1f*Ambient;//where is ambient light?
+		phong_color = glm::clamp(phong_color, 0.f, 1.f);
 
-			dev_fmOutput[id].color = phong_color;
+		dev_fmOutput[id].color = phong_color;
 	}
 }
 
 __global__ void SetDepth(Fragment*dev_fmOutput, Fragment * dev_depthbuffer, int totalpix)
 {
-	
+
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (id < totalpix){
@@ -343,7 +406,7 @@ void TranslateAlongRight(float amt, glm::vec3 &ref, const glm::vec3 right, glm::
 	eye += translation;
 	ref += translation;
 }
-glm::mat4 camera(int all_mat, int all_dev,glm::vec3 &camerapos)
+glm::mat4 camera(int all_mat, int all_dev, glm::vec3 &camerapos)
 {
 	glm::vec3 eye = glm::vec3(0, 0, 13);
 	glm::vec3 up = glm::vec3(0, 1, 0);
@@ -386,33 +449,41 @@ void rasterize(uchar4 *pbo, int all_mat, int all_dev) {
 
 	int image_blockSize1d = 256;
 	int image_blockCount1d = (width*height + blockSize1d - 1) / image_blockSize1d;
-	glm::vec3 camera_pos=glm::vec3(0);
+	glm::vec3 camera_pos = glm::vec3(0);
 	glm::vec3 light_pos = SetLight();
-	glm::mat4 getViewProj = camera(all_mat, all_dev,camera_pos);
+	glm::mat4 getViewProj = camera(all_mat, all_dev, camera_pos);
 	getViewProj = glm::mat4(1);
 
 	vertexShader << <blockCount1d, blockSize1d >> >(dev_bufVertex, dev_vsOutput, vertCount, getViewProj);
 	checkCUDAError("vertexShader");
 	//step2.primitive assembly
-	int blockCount1d_tri = blockCount1d / 3 + 1;
-	PrimitiveAssembly << < blockCount1d_tri, blockSize1d >> >(dev_vsOutput, dev_primitives, vertCount);
-	checkCUDAError("PrimitiveAssembly");
-	//step3.rasterization
-	rasterization << < blockCount1d_tri, blockSize1d >> >(dev_primitives, dev_fmInput, vertCount, width, height, N);
-	checkCUDAError("rasterization");
-	//step4.fragment shading
-	fragmentShading << <image_blockCount1d, image_blockSize1d >> >(dev_fmInput, dev_depthbuffer, width, height, light_pos, camera_pos);
-	//step5.fragment to depth buffer
-	//SetDepth << <image_blockCount1d, image_blockSize1d >> >(dev_fmInput, dev_depthbuffer, width*height);
-	checkCUDAError("setDepth");
-	//step6.a depth buffer for storing and depth testing fragment
+	int blockCount1d_tri;
+	bool tesselation = Tess;
+	if (!tesselation)
+	{
+		//vertexnumber: vertcount,triangle number:vertcount/3.0
+		blockCount1d_tri = blockCount1d / 3 + 1;
 
-	//step7.fragment buffer writing.
-	// Copy depthbuffer colors into framebuffer
-	render << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
-	// Copy framebuffer into OpenGL buffer for OpenGL previewing
-	sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_framebuffer);
-	checkCUDAError("sendToPBO");
+		PrimitiveAssembly << < blockCount1d_tri, blockSize1d >> >(dev_vsOutput, dev_primitives, vertCount);
+		checkCUDAError("PrimitiveAssembly");
+		rasterization << < blockCount1d_tri, blockSize1d >> >(dev_primitives, dev_fmInput, vertCount, width, height, N);
+		checkCUDAError("rasterization");
+	}
+	else
+	{
+		blockCount1d_tri = blockCount1d / 3 * 4 + 1;
+		//vertexnumber: vertcount*12,triangle number:vertcount*12/3.0
+		Tesselation << <blockCount1d_tri, blockSize1d >> >(1, dev_vsOutput, dev_primitives, vertCount);
+		checkCUDAError("Tesselation");
+		rasterization << < blockCount1d_tri, blockSize1d >> >(dev_primitives, dev_fmInput, vertCount*4, width, height, N);
+		checkCUDAError("rasterization");
+	}
+		
+		fragmentShading << <image_blockCount1d, image_blockSize1d >> >(dev_fmInput, dev_depthbuffer, width, height, light_pos, camera_pos);
+		checkCUDAError("setDepth");
+		render << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+		sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_framebuffer);
+		checkCUDAError("sendToPBO");
 }
 
 /**

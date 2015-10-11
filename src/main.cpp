@@ -168,7 +168,7 @@ bool init(obj *mesh) {
 	};
 	rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
 		mesh->getBufPossize() / 3,
-		mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+		mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol(),1);
 
 	GLuint passthroughProgram;
 	passthroughProgram = initShader();
