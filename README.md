@@ -27,9 +27,11 @@ This is an implementation of a CUDA-based graphics pipeline with the following s
 ## Depth-Testing
 
 Correct:
+
 ![](renders/depth_test_flower.PNG)
 
 Incorrect:
+
 ![](renders/render_gone_wrong.PNG)
 
 ## Color Interpolation
@@ -38,28 +40,20 @@ Incorrect:
 
 ## Instancing
 
-5x cows
+5x cows with translation and rotations
+
 ![](renders/cow_instancing.PNG)
 
 ## Anti-Aliasing
 
 3x super sampling results
+
 ![](renders/anti_aliasing_cow_3_v_1.PNG)
 
 ### Performance Analysis
 
-The performance analysis is where you will investigate how to make your CUDA
-programs more efficient using the skills you've learned in class. You must have
-performed at least one experiment on your code to investigate the positive or
-negative effects on performance. 
+Comparison of size of triangles vs. FPS
 
-We encourage you to get creative with your tweaks. Consider places in your code
-that could be considered bottlenecks and try to improve them. 
+Comparison of pipeline stages
 
-Provide summary of your optimizations (no more than one page), along with
-tables and or graphs to visually explain any performance differences.
 
-* Include a breakdown of time spent in each pipeline stage for a few different
-  models. It is suggested that you use pie charts or 100% stacked bar charts.
-* For optimization steps (like backface culling), include a performance
-  comparison to show the effectiveness.
