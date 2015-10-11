@@ -42,16 +42,14 @@ To render the basic rasterization primitive, the triangle, each GPU thread is re
 #### Normal and Color Interpolation
 ![](renders/cow_interp_comp.png "Cow With and Without Normal Interpolation")
 
-* **Overview**: Implementing normal and color interpolation gives significantly more visually pleasing results, as can be seen above. Without the interpolation, models look obviously contructed of triangles. With interpolation, the models are smooth and provide the realistic effect we'd expect. To achieve these smooth models, the obj file must provide vertex normals. If not, the result will look like interpolation is disabled. The same for color, if not provided in the object file per vertex, the model will be one solid color. To calculate the interpolated results, we first calculate the bary centric coordinate. Once we do that and have determined that the coordinate is in bounds and the z position of our primitive passes the depth test, we interpolate by adding the sum of the product of the x, y, and z components of the bary centric coordiante and each of the three verticies, respectively.
-* **Perfromance Impact**:
-* 
+* **Overview**: Implementing normal and color interpolation gives significantly more visually pleasing results, as can be seen above. Without the interpolation, models look obviously contructed of triangles. With interpolation, the models are smooth and provide the realistic effect we'd expect. To achieve these smooth models, the obj file must provide vertex normals. If not, the result will look like interpolation is disabled. The same for color, if not provided in the object file per vertex, the model will be one solid color. To calculate the interpolated results, we first calculate the barycentric coordinate. Once we do that and have determined that the coordinate is in bounds and the z position of our primitive passes the depth test, we interpolate by adding the sum of the product of the x, y, and z components of the barycentric coordiante and each of the three verticies, respectively.
+* **Perfromance Impact**: Minimal. The majority of the performance overhead for this is in the calculation of the barycentric coordinate and the depth test, components that are required for the rasterization of the triangle primitive with or without interpolated normals and colors. The few multiplications and additions needed to calculate the interpolated values do not include noticible performance impact.
 
 #### Points
 ![](renders/dragon_points.png "Stanford Dragon Rendered Using Point Primitives")
 
 * **Overview**: For this effect, the standard rasterization step of the pipeline is replaced with one to output points. Because we are only rendering a point and not an entire triangle, bary centric coordinates do not need to be calculated, nor do we have to interpolate the normals or colors across each verticy. Instead we just output the values for a single vertex to the depth buffer (I use the middle vertex at index one) and lead the others as zero. This vertex will be the point that is rendered to the screen.
-* **Perfromance Impact**:
-* 
+* **Perfromance Impact**: There is actually a small increase in performance compared to the other two primitive types, as the point requires no additional calculation to be rendered, unlike the triangles and lines.
 
 #### Lines
 ![](renders/dragon_lines.png "Stanford Dragon Rendered Using Line Primitives")
