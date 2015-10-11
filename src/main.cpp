@@ -12,7 +12,7 @@
 //-------------MAIN--------------
 //-------------------------------
 
-float theta = 1.57079632679f;// 0.78539816339f;
+float theta = 0.78539816339f;// 1.57079632679f;
 float phi = 0.0f;//2.35619449019f;
 float zoom = 10.0f;
 glm::mat4 camMatrix;
@@ -140,7 +140,7 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
-    rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
+    minRasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
             mesh->getBufPossize() / 3,
             mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
 
@@ -175,7 +175,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height);
+    minRasterizeInit(width, height);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -269,7 +269,7 @@ void deleteTexture(GLuint *tex) {
 }
 
 void shut_down(int return_code) {
-    rasterizeFree();
+    minRasterizeFree();
     cudaDeviceReset();
 #ifdef __APPLE__
     glfwTerminate();
@@ -301,11 +301,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_RIGHT: 
-			phi += -0.1f;
+			phi += 0.1f;
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_LEFT:
-			phi += 0.1f;
+			phi -= 0.1f;
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_Z:
@@ -336,7 +336,7 @@ void computeCameraMatrix() {
 	cameraPos.x = zoom * sin(phi) * sin(theta);
 	cameraPos.y = zoom * cos(theta);
 	cameraPos.z = zoom * cos(phi) * sin(theta);
-
+	//cout << cameraPos[0] << " " << cameraPos[1] << " " << cameraPos[2] << endl;
     // Camera matrix
     glm::mat4 view = glm::lookAt(
 		cameraPos, // Camera position in World Space

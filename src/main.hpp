@@ -25,6 +25,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
+#include "rasterize_min.h"
 
 using namespace std;
 
