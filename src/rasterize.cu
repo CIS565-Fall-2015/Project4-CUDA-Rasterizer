@@ -161,7 +161,7 @@ void kernDrawAxis(int w, int h, Fragment *fragments)
 	    {
 			fragments[index].color = glm::vec3(0, 1, 0);
 	    }
-		else if((y - h*0.5f) == 0)
+	    else if((y - h*0.5f) == 0)
 		{
 			fragments[index].color = glm::vec3(1, 0, 0);
 		}
@@ -184,7 +184,7 @@ void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
 }
 
 __global__
-void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, Light light1, Light light2)
+void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, Light light1, Light light2)
 {
 	//Rasterization per triangle
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -261,14 +261,36 @@ void kernRasterize(int w, int h, Fragment *fragments, Triangle *triangles, int n
 							{
 								fragments[fragIndex].color = diffusedTerm1 * col * light1.col;
 							}
-							else
+							else if(diffusedTerm2 > 0.0f)
 							{
 								fragments[fragIndex].color = diffusedTerm2 * col * light2.col;
 							}
+							fragments[fragIndex].color += glm::vec3(0.1f);
 						}
 					}
 				}
 			}
+		}
+	}
+}
+
+__global__
+void kernRasterizePoints(int numVertices, int w, int h, Fragment *fragments, VertexOut * vertices, Camera cam, Light light1, Light light2)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numVertices)
+	{
+		glm::ivec2 point(vertices[index].pos.x, vertices[index].pos.y);
+
+		if(point.x > -w*0.5
+				&& point.x < w*0.5f
+				&& point.y > -h*0.5f
+				&& point.y < h*0.5f )
+		{
+
+			int fragIndex = int((point.x + w*0.5f) + (point.y + h*0.5f)*w);
+			fragments[fragIndex].color = glm::vec3(1.0f);
 		}
 	}
 }
@@ -342,44 +364,62 @@ void rasterize(uchar4 *pbo) {
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
-
     if(scene->run)
     {
-        Triangle *dev_primitivesEnd;
+    	int numThreads = 256;
+		int numBlocks;
+		int numTriangles = vertCount/3;
+		scene->run = false;
 
-        int numThreads = 256;
-        int numBlocks;
-        int numTriangles = vertCount/3;
+		Camera &cam = scene->cam;
+		Light &light1 = scene->light1;
+		Light &light2 = scene->light2;
 
-    	Camera &cam = scene->cam;
-    	Light &light1 = scene->light1;
-    	Light &light2 = scene->light2;
+		//Clear the color and depth buffers
+		kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
-    	//Do vertex shading
-    	numBlocks = (vertCount + numThreads -1)/numThreads;
-    	kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
+		//Drawing axis
+//		kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
-    	//Do primitive assembly
-    	numBlocks = (numTriangles + numThreads -1)/numThreads;
-    	kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
+		switch (scene->renderMode)
+    	{
+			case TRIANGLES:
+			{
+				Triangle *dev_primitivesEnd;
 
-    	//Back face culling
-    	dev_primitivesEnd = dev_primitives + numTriangles;
-    	dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
-    	numTriangles = dev_primitivesEnd - dev_primitives;
-////    	std::cout<<numTriangles;
+				//Do vertex shading
+				numBlocks = (vertCount + numThreads -1)/numThreads;
+				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
 
-    	//Clear the color and depth buffers
-    	kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+				//Do primitive assembly
+				numBlocks = (numTriangles + numThreads -1)/numThreads;
+				kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir);
 
-    	//Drawing axis
-//    	kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+				//Back face culling
+				dev_primitivesEnd = dev_primitives + numTriangles;
+				dev_primitivesEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitivesEnd, keep());
+				numTriangles = dev_primitivesEnd - dev_primitives;
+		////    	std::cout<<numTriangles;
 
-    	//Rasterization per triangle
-    	numBlocks = (numTriangles + numThreads -1)/numThreads;
-    	kernRasterize<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, light1, light2);
+				//Rasterization per triangle
+				numBlocks = (numTriangles + numThreads -1)/numThreads;
+				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, light1, light2);
 
-    	scene->run = false;
+				break;
+			}
+
+			case POINTS:
+			{
+//				std::cout<<"HERE";
+				//Do vertex shading
+				numBlocks = (vertCount + numThreads -1)/numThreads;
+				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
+
+				kernRasterizePoints<<<numBlocks, numThreads>>>(vertCount, width, height, dev_depthbuffer, dev_outVertex, cam, light1, light2);
+
+				break;
+			}
+    	}
     }
 
     // Copy depthbuffer colors into framebuffer

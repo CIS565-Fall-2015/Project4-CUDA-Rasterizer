@@ -326,6 +326,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		saveImage();
 	}
 
+	else if(key == GLFW_KEY_M && action == GLFW_PRESS)
+	{
+		scene->updateRenderMode();
+	}
+
 	else
 	{
 		float move = 0.1f;

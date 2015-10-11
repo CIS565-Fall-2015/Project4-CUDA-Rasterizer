@@ -10,6 +10,13 @@
 
 #include "sceneStructs.h"
 
+enum RenderMode{
+	TRIANGLES,
+	POINTS,
+	LINES
+};
+
+
 class Scene {
 
 public:
@@ -18,6 +25,8 @@ public:
 	Scene(int w, int h);
 //	~Scene();
 
+	int renderMode;
+	bool backFaceCulling;
 	bool run;
 	Camera cam;
 	Light light1, light2;
@@ -32,6 +41,7 @@ public:
 	void updateCameraLookAt(glm::vec3);
 	void moveModel(glm::vec3);
 	void rotateModel(glm::vec3);
+	void updateRenderMode();
 };
 
 

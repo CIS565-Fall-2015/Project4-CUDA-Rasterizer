@@ -13,6 +13,8 @@
 
 Scene::Scene(int w, int h)
 {
+	renderMode = TRIANGLES;
+	backFaceCulling = true;
 	run = true;
 	width = w;
 	height = h;
@@ -43,10 +45,10 @@ void Scene::configureCameraMatrix()
 
 void Scene::setLights()
 {
-	light1.pos = glm::vec3(1,1,1);
+	light1.pos = glm::vec3(100,100,100);
 	light1.col = glm::vec3(1,1,1);
 
-	light2.pos = glm::vec3(-1,1,-1);
+	light2.pos = glm::vec3(-100,100,-100);
 	light2.col = glm::vec3(1,1,1);
 }
 
@@ -90,4 +92,20 @@ void Scene::rotateModel(glm::vec3 r)
 	cam.model = utilityCore::buildTransformationMatrix(glm::vec3(0,0,0), r, glm::vec3(1,1,1)) * cam.model;
 	run = true;
 	configureCameraMatrix();
+}
+
+void Scene::updateRenderMode()
+{
+	renderMode = (renderMode + 1) % 2;
+
+//	std::cout<<"Here now";
+	run = true;
+	if(renderMode == TRIANGLES)
+	{
+		backFaceCulling = true;
+	}
+	else
+	{
+		backFaceCulling = false;
+	}
 }
