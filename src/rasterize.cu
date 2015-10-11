@@ -496,7 +496,7 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 								glm::vec3 normal = baryCoord[0] * tris[thrId].v[0].nor + baryCoord[1] * tris[thrId].v[1].nor + baryCoord[2] * tris[thrId].v[2].nor;
 								normal = glm::normalize(normal);
 								//normal = glm::abs(normal);
-								buf[4*x + m + y*4*width].color = glm::vec3(0.0f, 1.0f, 1.0f);
+								buf[4*x + m + y*4*width].color = normal;
 								buf[4*x + m + y*4*width].nor = normal;
 								buf[4*x + m + y*4*width].depth = bbox.min.z;
 					
@@ -568,7 +568,7 @@ void rasterize(uchar4 *pbo) {
 	//camCoords.y = 0.0;
 	glm::vec3 camera(0.0f, 3.0f, 3.0f);
 	glm::mat4 model = utilityCore::buildTransformationMatrix(glm::vec3(0.0f), glm::vec3(-camCoords.y, -camCoords.x, 0.0f), glm::vec3(camCoords.z));
-	glm::mat4 view = glm::lookAt(glm::vec3(0.0, 3, 3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+	glm::mat4 view = glm::lookAt(glm::vec3(0.0, 3, 3), glm::vec3(0, .5, 0), glm::vec3(0, 1, 0));
 	glm::mat4 projection = glm::perspective<float>(50.0, (float)width / (float)height, 0.5f, 1000.0f);
 	//glm::mat4 model = glm::mat4();
 	glm::mat4 matrix = projection * view * model;
