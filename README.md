@@ -93,3 +93,7 @@ I was able to do a significiant amount of optimization work on this project. Bel
 
 ![](data_images/Original Performance Summary.png "Original Performance Summary")
 
+You can see that there is occupancy issues with the vertexShading, assemblePrimitives, and rasterization kernels. Below is the updated NSight data after all of my optimizations.
+
+![](data_images/Final Performance Summary.png "Final Performance Summary")
+
