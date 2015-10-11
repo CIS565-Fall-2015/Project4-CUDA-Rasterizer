@@ -43,16 +43,16 @@ and a framebuffer.
  * 
 
 * Rasterize lines or line strips
- *
+ * In order to rasterize lines, we start with the two end points of the line.  We want to determine whether we need to walk through the x or y coordinates.  This is determined by looking at the values of (p1.x - p0.x) and (p1.y - p0.y).  Whichever has the largest absolute value, is the coordinate that we will step through.  Once we know this, we calculate the closest integer value that coresponds to the new x/y value.  This will tell us which new fragment needs to be colored.  We do this for every x/y value between p0.x/p0.y and p1.x/p1.y.  There are some other parameters that need to be checked, such as whether p0.x > p1.x, in which case we would want to be decreasing each new x value we use rather than increasing it.  Also, if the slope is equal to zero, then we know it will be a straight line, and do not need to do a new calculation for each step.  This added another kernel function. In my implementation, I drew three lines for each triangle.  It did not have enough of an impact on the rasterizer to cause any slow down that showed during the implementation.  When I used cuda event timers, on average this extra function took about .230 milliseconds.  It definitely helps that it is on the GPU and not CPU.  The GPU allows the lines for each triangle to be drawn at the same time, since each triangle is on it's own thread.  This implementation would have been a for loop that took a long time on the CPU.  
 
 * Rasterize points
- *
+ * 
 
 * Anti-aliasing
- *
+ * 
 
 * **Mouse**-based interactive camera support
- *
+ * The mouse-based interactive movements allow the user to change the rotation and scale of the model. By right clicking on the image, if you drag the mouse right or left, it will rotate the model corespondingly arond the y axis.  If you drag the mouse up or down, it will rotate the model corespondingly around the x axis.  Also, if you scroll on the image, it will scale the model up or down.  This implementation changes the model matrix in the rasterize function done on the CPU.  It does not impact the speed of the rasterizer, as it is just changing an input value.  
 
 **IMPORTANT:**
 For each extra feature, please provide the following brief analysis:
@@ -61,177 +61,6 @@ For each extra feature, please provide the following brief analysis:
 * Performance impact of adding the feature (slower or faster).
 * If you did something to accelerate the feature, what did you do and why?
 * How might this feature be optimized beyond your current implementation?
-
-
-## Base Code Tour
-
-You will be working primarily in two files: `rasterize.cu`, and
-`rasterizeTools.h`. Within these files, areas that you need to complete are
-marked with a `TODO` comment. Areas that are useful to and serve as hints for
-optional features are marked with `TODO (Optional)`. Functions that are useful
-for reference are marked with the comment `CHECKITOUT`. **You should look at
-all TODOs and CHECKITOUTs before starting!** There are not many.
-
-* `src/rasterize.cu` contains the core rasterization pipeline. 
-  * A few pre-made structs are included for you to use, but those marked with
-    TODO will also be needed for a simple rasterizer. As with any part of the
-    base code, you may modify or replace these as you see fit.
-
-* `src/rasterizeTools.h` contains various useful tools
-  * Includes a number of barycentric coordinate related functions that you may
-    find useful in implementing scanline based rasterization.
-
-* `util/utilityCore.hpp` serves as a kitchen-sink of useful functions.
-
-
-## Rasterization Pipeline
-
-Possible pipelines are described below. Pseudo-type-signatures are given.
-Not all of the pseudocode arrays will necessarily actually exist in practice.
-
-### First-Try Pipeline
-
-This describes a minimal version of *one possible* graphics pipeline, similar
-to modern hardware (DX/OpenGL). Yours need not match precisely.  To begin, try
-to write a minimal amount of code as described here. Verify some output after
-implementing each pipeline step. This will reduce the necessary time spent
-debugging.
-
-Start out by testing a single triangle (`tri.obj`).
-
-* Clear the depth buffer with some default value.
-* Vertex shading: 
-  * `VertexIn[n] vs_input -> VertexOut[n] vs_output`
-  * A minimal vertex shader will apply no transformations at all - it draws
-    directly in normalized device coordinates (-1 to 1 in each dimension).
-* Primitive assembly.
-  * `VertexOut[n] vs_output -> Triangle[n/3] primitives`
-  * Start by supporting ONLY triangles. For a triangle defined by indices
-    `(a, b, c)` into `VertexOut` array `vo`, simply copy the appropriate values
-    into a `Triangle` object `(vo[a], vo[b], vo[c])`.
-* Rasterization.
-  * `Triangle[n/3] primitives -> FragmentIn[m] fs_input`
-  * A scanline implementation is simpler to start with.
-* Fragment shading.
-  * `FragmentIn[m] fs_input -> FragmentOut[m] fs_output`
-  * A super-simple test fragment shader: output same color for every fragment.
-    * Also try displaying various debug views (normals, etc.)
-* Fragments to depth buffer.
-  * `FragmentOut[m] -> FragmentOut[width][height]`
-  * Results in race conditions - don't bother to fix these until it works!
-  * Can really be done inside the fragment shader, if you call the fragment
-    shader from the rasterization kernel for every fragment (including those
-    which get occluded). **OR,** this can be done before fragment shading, which
-    may be faster but means the fragment shader cannot change the depth.
-* A depth buffer for storing and depth testing fragments.
-  * `FragmentOut[width][height] depthbuffer`
-  * An array of `fragment` objects.
-  * At the end of a frame, it should contain the fragments drawn to the screen.
-* Fragment to framebuffer writing.
-  * `FragmentOut[width][height] depthbuffer -> vec3[width][height] framebuffer`
-  * Simply copies the colors out of the depth buffer into the framebuffer
-    (to be displayed on the screen).
-
-### A Useful Pipeline
-
-* Clear the depth buffer with some default value.
-* Vertex shading: 
-  * `VertexIn[n] vs_input -> VertexOut[n] vs_output`
-  * Apply some vertex transformation (e.g. model-view-projection matrix using
-    `glm::lookAt ` and `glm::perspective `).
-* Primitive assembly.
-  * `VertexOut[n] vs_output -> Triangle[n/3] primitives`
-  * As above.
-  * Other primitive types are optional.
-* Rasterization.
-  * `Triangle[n/3] primitives -> FragmentIn[m] fs_input`
-  * You may choose to do a tiled rasterization method, which should have lower
-    global memory bandwidth.
-  * A scanline optimization: when rasterizing a triangle, only scan over the
-    box around the triangle (`getAABBForTriangle`).
-* Fragment shading.
-  * `FragmentIn[m] fs_input -> FragmentOut[m] fs_output`
-  * Add a shading method, such as Lambert or Blinn-Phong. Lights can be defined
-    by kernel parameters (like GLSL uniforms).
-* Fragments to depth buffer.
-  * `FragmentOut[m] -> FragmentOut[width][height]`
-  * Can really be done inside the fragment shader, if you call the fragment
-    shader from the rasterization kernel for every fragment (including those
-    which get occluded). **OR,** this can be done before fragment shading, which
-    may be faster but means the fragment shader cannot change the depth.
-    * This result in an optimization: it allows you to do depth tests before
-     spending execution time in complex fragment shader code!
-  * Handle race conditions! Since multiple primitives write fragments to the
-    same fragment in the depth buffer, depth buffer locations must be locked
-    while comparing the old and new fragment depths and (possibly) writing into
-    it.
-    * The `flower.obj` test file is good for testing race conditions.
-* A depth buffer for storing and depth testing fragments.
-  * `FragmentOut[width][height] depthbuffer`
-  * An array of `fragment` objects.
-  * At the end of a frame, it should contain the fragments drawn to the screen.
-* Fragment to framebuffer writing.
-  * `FragmentOut[width][height] depthbuffer -> vec3[width][height] framebuffer`
-  * Simply copies the colors out of the depth buffer into the framebuffer
-    (to be displayed on the screen).
-
-This is a suggested sequence of pipeline steps, but you may choose to alter the
-order of this sequence or merge entire kernels as you see fit.  For example, if
-you decide that doing has benefits, you can choose to merge the vertex shader
-and primitive assembly kernels, or merge the perspective transform into another
-kernel. There is not necessarily a right sequence of kernels, and you may
-choose any sequence that works.  Please document in your README what sequence
-you choose and why.
-
-
-## Resources
-
-The following resources may be useful for this project:
-
-* High-Performance Software Rasterization on GPUs:
-  * [Paper (HPG 2011)](http://www.tml.tkk.fi/~samuli/publications/laine2011hpg_paper.pdf)
-  * [Code](http://code.google.com/p/cudaraster/)
-  * Note that looking over this code for reference with regard to the paper is
-    fine, but we most likely will not grant any requests to actually
-    incorporate any of this code into your project.
-  * [Slides](http://bps11.idav.ucdavis.edu/talks/08-gpuSoftwareRasterLaineAndPantaleoni-BPS2011.pdf)
-* The Direct3D 10 System (SIGGRAPH 2006) - for those interested in doing
-  geometry shaders and transform feedback:
-  * [Paper](http://dl.acm.org/citation.cfm?id=1141947)
-  * [Paper, through Penn Libraries proxy](http://proxy.library.upenn.edu:2247/citation.cfm?id=1141947)
-* Multi-Fragment Eﬀects on the GPU using the k-Buﬀer - for those who want to do
-  order-independent transparency using a k-buffer:
-  * [Paper](http://www.inf.ufrgs.br/~comba/papers/2007/kbuffer_preprint.pdf)
-* FreePipe: A Programmable, Parallel Rendering Architecture for Efficient
-  Multi-Fragment Effects (I3D 2010):
-  * [Paper](https://sites.google.com/site/hmcen0921/cudarasterizer)
-* Writing A Software Rasterizer In Javascript:
-  * [Part 1](http://simonstechblog.blogspot.com/2012/04/software-rasterizer-part-1.html)
-  * [Part 2](http://simonstechblog.blogspot.com/2012/04/software-rasterizer-part-2.html)
-
-
-## Third-Party Code Policy
-
-* Use of any third-party code must be approved by asking on our Google Group.
-* If it is approved, all students are welcome to use it. Generally, we approve
-  use of third-party code that is not a core part of the project. For example,
-  for the path tracer, we would approve using a third-party library for loading
-  models, but would not approve copying and pasting a CUDA function for doing
-  refraction.
-* Third-party code **MUST** be credited in README.md.
-* Using third-party code without its approval, including using another
-  student's code, is an academic integrity violation, and will, at minimum,
-  result in you receiving an F for the semester.
-
-
-## README
-
-Replace the contents of this README.md in a clear manner with the following:
-
-* A brief description of the project and the specific features you implemented.
-* At least one screenshot of your project running.
-* A 30 second or longer video of your project running.
-* A performance analysis (described below).
 
 ### Performance Analysis
 
