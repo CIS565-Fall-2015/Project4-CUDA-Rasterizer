@@ -12,6 +12,7 @@ rasterized graphics pipeline, similar to the OpenGL pipeline. I
 implemented vertex shading, primitive assembly, rasterization, fragment shading,
 and a framebuffer. 
 
+![](img/Rasterizer.m3u)
 
 * Final Images
 
