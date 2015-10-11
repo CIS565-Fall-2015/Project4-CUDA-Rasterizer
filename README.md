@@ -97,3 +97,5 @@ You can see that there is occupancy issues with the vertexShading, assemblePrimi
 
 ![](data_images/Final Performance Summary.png "Final Performance Summary")
 
+Note: Ignore the kernel durations, as this data is for two different models. I accidentally took the wrong original data on too simple of a model. The model for the second data set is the much more complicated Smooth Stanford Dragon model.
+
