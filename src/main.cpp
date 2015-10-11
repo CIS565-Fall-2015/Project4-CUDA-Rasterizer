@@ -415,7 +415,7 @@ void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 	{
 		horizontalAngle -= mouseSpeed * deltaTime * float(xpos - x_lsPos);//!!!
 		verticalAngle += mouseSpeed * deltaTime * float(ypos - y_lsPos);
-		printf("h:%2f, v:%2f\n", horizontalAngle, verticalAngle);
+		//printf("h:%2f, v:%2f\n", horizontalAngle, verticalAngle);
 	}
 	else if (isMoving)
 	{
@@ -458,7 +458,7 @@ void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 	{
 		zoom = 0;
 	}
-	printf("zoom: %3f\n", zoom);
+	//printf("zoom: %3f\n", zoom);
 	//float zoom = yoffset*0.1;
 	CalcViewPersMat(0, 0);
 }

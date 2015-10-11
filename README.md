@@ -10,6 +10,7 @@ Overview
 ========================
 
 [Demo Pic]
+[Demo Video]
 
 Description here:...
 
@@ -40,7 +41,20 @@ Features
 
 **Texture Repeat:** 
 
+:--------------:|:--------------:|:--------------:
+![](img/UV0.png)|![](img/UV1.png)|![](img/UV2.png)
+
 #### Displacement Mapping
+
+Tessellation level	|without displacement map	|with displacement map
+:------------------:|:-------------------------:|:-------------------:
+		5			|![](img/tess_5_w.PNG)		|![](img/tess_5_d.png)
+
+Tessellation level	|after displacement map		|normal testing for displacement map
+:------------------:|:-------------------------:|:-------------------:
+		8			|![](img/tess_8_.PNG)		|![](img/tess_8n.png)
+
+![](img/DispGif.gif)
 
 #### Interpolation
 
@@ -74,9 +88,11 @@ Tested plane.obj (2 faces, 4 vertices) with tessellation,texture mapping and dis
 
 ![](img/Plane_tess8.PNG) | ![](img/tess_plane.png)
 
-Both two cases above shows that when tessellation level is low, it actually goes faster by increasing the tessellation level.
+Both two cases above shows that the new pipeline out performs the previouse one when the tessellation level is high.
+
+And another interesting thing is that when tessellation level is low, it actually goes faster by increasing the tessellation level for both two cases.
 My guess is that when tessellation level goes a bit higher, there are more threads dealing with smaller AABBs. 
-Thus the same amount of work is paralled as more smaller tasks. When the triangle counts is below certain amount, it trades off the increment of threads very well.
+Thus the same amount of work is paralled as more smaller tasks. When the triangle counts is below certain amount, it trades off the increment of triangles and threads very well.
 
 #### Obj Analysis
 
