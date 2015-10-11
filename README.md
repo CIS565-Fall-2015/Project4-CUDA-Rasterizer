@@ -35,16 +35,6 @@ Features
 
 #### Tessellation
 
-#### Texture Mapping
-
-**Bilinear Texture Filtering:** 
-
-**Texture Repeat:** 
-
-        2.4     |        5.8     | 15.8
-:--------------:|:--------------:|:--------------:
-![](img/UV0.PNG)|![](img/UV1.PNG)|![](img/UV2.PNG)
-
 #### Displacement Mapping
 
 Tessellation level	|without displacement map	|with displacement map
@@ -57,11 +47,28 @@ Tessellation level	|after displacement map		|normal testing for displacement map
 
 ![](img/DispGif.gif)
 
+#### Texture Mapping
+
+**Bilinear Texture Filtering:** 
+
+without texture filtering	|with bilinear texture filtering
+:--------------------------:|:-------------------------:
+![](img/tex_nobi.PNG)		|![](img/tex_bi.PNG)
+
+**Texture Repeat:** 
+
+        2.4     |        5.8     | 15.8
+:--------------:|:--------------:|:--------------:
+![](img/UV0.PNG)|![](img/UV1.PNG)|![](img/UV2.PNG)
+
+
+
 #### Interpolation
 
-**Normal**
-
-**Color**
+without normal&color interpolation	|with normal&color interpolation
+:----------------------------------:|:-------------------------:
+![](img/Cow_n_noInter.PNG)			|![](img/Cow_n_Inter.PNG)
+![](img/Cow_c_noInter.PNG)			|![](img/Cow_c_Inter.PNG)
 
 Performance Analysis
 ========================

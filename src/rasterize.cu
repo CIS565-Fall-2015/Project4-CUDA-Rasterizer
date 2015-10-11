@@ -392,6 +392,7 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 							glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
 							//texture mapping !!! later : repeat, offset...
 							if (texs != NULL &&tInfo != NULL && sctrl.Texture)
+								//color = ColorInTex(0, texs, tInfo, glm::vec2(uv));
 								color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv), UVrepeat);
 							glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
 							glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
