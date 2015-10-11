@@ -16,7 +16,9 @@
 #include "rasterizeTools.h"
 
 #define ENABLE_ANTI_ALIASING
-#define ENABLE_BLENDING
+//#define ENABLE_BLENDING
+
+#define Alpha 0.5f
 
 struct VertexIn {
     glm::vec3 pos;
@@ -231,7 +233,7 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 							
 #ifdef ENABLE_ANTI_ALIASING
 #ifdef ENABLE_BLENDING
-		dev_depthbuffer[buffer_index].color =0.7f*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f) + 0.3f*dev_depthbuffer[buffer_index].color;
+							dev_depthbuffer[buffer_index].color =Alpha*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f) + (1.f- Alpha)*dev_depthbuffer[buffer_index].color;
 
 #else
 		dev_depthbuffer[buffer_index].color =(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f);
@@ -259,7 +261,7 @@ void kern_rasterization(Triangle* dev_primitives,Fragment *dev_depthbuffer, int 
 							//enter critical area
 							dev_is_writable[buffer_index] =false;
 
-							dev_depthbuffer[buffer_index].color =0.7f*dev_depthbuffer[buffer_index].color + 0.3f*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f);
+							dev_depthbuffer[buffer_index].color = Alpha*dev_depthbuffer[buffer_index].color + (1.f - Alpha)*(m_colors[0]*b_c.x +m_colors[1]*b_c.y+m_colors[2]*b_c.z)*((float)sample_res / 5.f);
 
 							dev_is_writable[buffer_index] = true;
 						}
@@ -290,7 +292,7 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 			//dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
 			
 			//light direction glm::vec3(0,0,-1)
-			/*float dot_prod = glm::dot(glm::normalize(glm::vec3(1.0,0.0,0.0)),glm::normalize(dev_depthbuffer[index].nor));
+			float dot_prod = glm::dot(glm::normalize(glm::vec3(1.0,0.0,0.0)),glm::normalize(dev_depthbuffer[index].nor));
 
 			if(dot_prod>0)
 			{
@@ -299,7 +301,7 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 			else
 			{
 				dev_depthbuffer[index].color = glm::vec3(0.0,0.0,0.0);
-			}*/
+			}
 		}
 		
 
