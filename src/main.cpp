@@ -13,6 +13,9 @@
 //-------------------------------
 
 glm::vec3 eye(0, 0, 0);
+
+shadeControl sCtrl;
+
 int tessLevel = 0;
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -82,7 +85,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-	rasterize(dptr, ViewMatrix, ProjectionMatrix,eye,tessLevel);
+	rasterize(dptr, ViewMatrix, ProjectionMatrix,eye,tessLevel,sCtrl);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -292,6 +295,45 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			tessLevel = 0;
 		printf("tessellation level: %d\n", tessLevel);
 	}
+	if (key == GLFW_KEY_0 && action == GLFW_PRESS)
+	{
+		printf("press '0': wireframe only\n");
+		sCtrl.Wireframe = true;
+		sCtrl.Color = false;
+	}
+	if (key == GLFW_KEY_1 && action == GLFW_PRESS)
+	{
+		printf("press '1': color\n");
+		sCtrl.Color = true;
+		sCtrl.Normal = false;
+	}
+	if (key == GLFW_KEY_W && action == GLFW_PRESS)
+	{	
+		if (sCtrl.Color)
+		{
+			sCtrl.Wireframe = !sCtrl.Wireframe;
+			string t = sCtrl.Wireframe ? "on" : "off";
+			printf("press 'w': wireframe %s\n", t);
+		}
+	}
+	if (key == GLFW_KEY_T && action == GLFW_PRESS)
+	{
+		sCtrl.Texture = !sCtrl.Texture;
+		string t = sCtrl.Texture ? "on" : "off";
+		printf("press 'texture': texture %s\n", t);
+	}
+	if (key == GLFW_KEY_N && action == GLFW_PRESS)
+	{
+		sCtrl.Normal = !sCtrl.Normal;
+		string t = sCtrl.Normal ? "on" : "off";
+		printf("press 'n': normal debugging %s\n", t);
+	}
+	if (key == GLFW_KEY_D && action == GLFW_PRESS)
+	{
+		sCtrl.DispMap = !sCtrl.DispMap;
+		string t = sCtrl.DispMap ? "on" : "off";
+		printf("press 'd': displacement mapping %s\n", t);
+	}
 
 }
 
@@ -357,13 +399,11 @@ void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos)
 	float yMove = 0;
 	if (isRotating)
 	{
-		//printf("isRotating\n");
 		horizontalAngle -= mouseSpeed * deltaTime * float(xpos - x_lsPos);//!!!
 		verticalAngle += mouseSpeed * deltaTime * float(ypos - y_lsPos);
 	}
 	else if (isMoving)
 	{
-		//printf("isMoving\n");
 		xMove = mouseSpeed * deltaTime * float(xpos - x_lsPos);
 		yMove = mouseSpeed * deltaTime * float(ypos - y_lsPos);
 	}
@@ -378,21 +418,18 @@ void mouseDownCallback(GLFWwindow *window, int button, int action, int mods)
 {
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
-		printf("RightDown\n");
 		//right down : move center
 		isMoving = true;
 		isRotating = false;
 	}
 	else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
-		printf("LeftDown\n");
 		//left down : rotate
 		isRotating = true;
 		isMoving = false;
 	}
 	else if (action == GLFW_RELEASE)
 	{
-		printf("Release\n");
 		isRotating = false;
 		isMoving = false;
 	}

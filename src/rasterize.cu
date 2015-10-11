@@ -187,43 +187,6 @@ __global__ void kernPrimUpdate(Triangle* primitives, int primSize, glm::mat4 M_m
 	}
 }
 
-/*
-__global__ void kernVS_tessellator(VertexIn * in_Vtx, VertexIn *out_Vtx,int crntSize, int * in_Idx, int * out_Idx,int crntIncre)
-{
-	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (index < crntSize)
-	{
-		int i = 3 * index;
-
-		VertexIn v0 = in_Vtx[in_Idx[i + 0]];
-		VertexIn v1 = in_Vtx[in_Idx[i + 1]];
-		VertexIn v2 = in_Vtx[in_Idx[i + 2]];
-
-		VertexIn m0 = EdgeMidP(v0, v1);
-		VertexIn m1 = EdgeMidP(v0, v2);
-		VertexIn m2 = EdgeMidP(v1, v2);
-
-		int deltC = crntIncre/4;
-
-		out_Vtx[(index + 0) * crntIncre + 0 * deltC] = v0;
-		out_Vtx[(index + 0) * crntIncre + 1 * deltC] = m0;
-		out_Vtx[(index + 0) * crntIncre + 2 * deltC] = m1;
-
-		out_Vtx[(index + 1) * crntIncre + 0 * deltC] = v1;
-		out_Vtx[(index + 1) * crntIncre + 1 * deltC] = m0;
-		out_Vtx[(index + 1) * crntIncre + 2 * deltC] = m2;
-
-		out_Vtx[(index + 2) * crntIncre + 0 * deltC] = v2;
-		out_Vtx[(index + 2) * crntIncre + 1 * deltC] = m1;
-		out_Vtx[(index + 2) * crntIncre + 2 * deltC] = m2;
-
-		out_Vtx[(index + 3) * crntIncre + 0 * deltC] = m0;
-		out_Vtx[(index + 3) * crntIncre + 1 * deltC] = m1;
-		out_Vtx[(index + 3) * crntIncre + 2 * deltC] = m2;
-
-	}
-}
-*/
 __global__ void kernTessellation_aftPri(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
 {
 	
@@ -363,8 +326,7 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 	return result;
 }
 
-__global__ 
-void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo)
+__global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (texs == NULL || tInfo == NULL) return;
@@ -376,7 +338,7 @@ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::
 			{
 				float disp = 0.1*glm::length( ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex)) );
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
-				//!!! later normal
+				//!!! later !!! normal
 				primitives[index].v[i].DispAdded = true;
 
 			}
@@ -385,8 +347,7 @@ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::
 	}
 }
 
-__global__
-void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
+__global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depthbuffer, Triangle*primitives, int bufIdxSize, glm::vec3 lightWorld,glm::vec3 eyeWorld, glm::mat4 allMat, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < bufIdxSize / 3)
@@ -405,18 +366,6 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 		glm::vec3 normal = glm::normalize(primitives[index].v[0].nor + primitives[index].v[1].nor + primitives[index].v[2].nor);
 		glm::vec3 color = glm::normalize(primitives[index].v[0].col + primitives[index].v[1].col + primitives[index].v[2].col);
 
-		/*
-		//http://keisan.casio.com/exec/system/1223596129
-		glm::vec3 A = primitives[index].v[0].ndc;
-		glm::vec3 B = primitives[index].v[1].ndc;
-		glm::vec3 C = primitives[index].v[2].ndc;
-
-		float a = (B.y - A.y)*(C.z - A.z) - (C.y - A.y)*(B.z - A.z);
-		float b = (B.z - A.z)*(C.x - A.x) - (C.z - A.z)*(B.x - A.x);
-		float c = (B.x - A.x)*(C.y - A.y) - (C.x - A.x)*(B.y - A.y);
-		float d = -(a*A.x + b*A.y + c*A.x);
-		//ax+by+cz+d = 0;
-		*/
 		AABB triBox = getAABBForTriangle(tri);
 		for (int x = triBox.min.x; x <= triBox.max.x; x++)
 		{
@@ -424,9 +373,16 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 			{
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
-				
-				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
-				//if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
+				//!!! later color interpolation
+				bool shade = false;
+				bool OnEdge = isBarycentricCoordOnBounds(bPoint);
+				bool InTri = isBarycentricCoordInBounds(bPoint);
+				if (sctrl.Wireframe&&!sctrl.Color)
+					shade = OnEdge;
+				else
+					shade = InTri;
+				//if () //On triangle edges : Frame shading
+				if (shade) // Inside triangle
 				{
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
@@ -436,17 +392,22 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 					if (orig >= crntDepth)
 					//if (depthbuffer[x + y*w].depth==crntDepth)
 					{
-						glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
-						glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
-						//texture mapping !!! later : repeat, offset...
-						if (texs != NULL &&tInfo != NULL)
-							color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv));
-						glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
-						glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
-						float ambient = 0.2;
-						float diffuse = max(dot(lightDir, normal), 0.0);
-						depthbuffer[x + y*w].color =  color*(ambient+(1.f-ambient)*diffuse);
-						//depthbuffer[x + y*w].color = normal;
+						if (sctrl.Normal)		
+							depthbuffer[x + y*w].color = normal;
+						else{
+							glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
+							glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
+							//texture mapping !!! later : repeat, offset...
+							if (texs != NULL &&tInfo != NULL && sctrl.Texture)
+								color = ColorInTexBilinear(0, texs, tInfo, glm::vec2(uv));
+							glm::vec4 PosWorld = glm::inverse(allMat)* glm::vec4(Pos, 1);
+							glm::vec3 lightDir = glm::normalize(lightWorld - glm::vec3(PosWorld));
+							float ambient = 0.2;
+							float diffuse = max(dot(lightDir, normal), 0.0);
+							if (sctrl.Wireframe && sctrl.Color && OnEdge)
+								color = glm::vec3(0,0,0.7);
+							depthbuffer[x + y*w].color = color*(ambient + (1.f - ambient)*diffuse);
+						}
 					}
 				}
 			}
@@ -604,8 +565,8 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 /**
  * Perform rasterization.
  */
-
-void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel) {
+bool lastDisp = true;
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel,shadeControl sCtrl) {
     int sideLength2d = 8;
 
 	glm::vec3 light(0.3, 0.4, 0.5);
@@ -629,8 +590,9 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 
 	//kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
-	if (TessLevel != lastLevel)
+	if (TessLevel != lastLevel || lastDisp!=sCtrl.DispMap)
 	{
+		lastDisp = sCtrl.DispMap;
 		if (TessLevel > lastLevel)
 		{
 			cudaMalloc(&dev_primitives, priSize * tessIncre * sizeof(Triangle));
@@ -650,11 +612,12 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 			gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
 		}
 		//priSize /= 4;
-		kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, dev_textures, dev_texInfo);
+		if (dev_textures != NULL && dev_texInfo != NULL && sCtrl.DispMap)
+			kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, dev_textures, dev_texInfo);
 	}
 	gSize_pri = dim3((bufIdxSize*tessIncre/3+ bSize_pri - 1) / bSize_pri);
 	kernPrimUpdate << <gSize_pri, bSize_pri >> >(dev_primitives, priSize, glm::mat4(), M_view, projMat, M_win);
-	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
+	kernRasterizer << <gSize_pri, bSize_pri >> >(sCtrl, width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
