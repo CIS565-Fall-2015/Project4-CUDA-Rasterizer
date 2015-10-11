@@ -22,7 +22,7 @@ Description here:...
 |Right Mouse	| Move								|  [pic]					|
 |Key '0'		| Wireframe only					|  [pic]					|
 |Key '1'		|     Color							|  [pic]					|
-|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =80x83)	|
+|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =80x)	|
 |Key 't'		| turn texture on/off			    |  [pic]					|
 |Key 'n'		|  normal testing					|  [pic]					|
 |Key 'd'		| turn displacement mapping on/off  |  [pic]					|
@@ -59,7 +59,7 @@ Considering that after loading the geometry, there's no need to redo primitive a
 
  The pipeline workflow is shown below.
 
-![](img/Pipeline.png)
+![](img/Pipeline.png =80x)
 
 
 * New pipeline for tessellation analysis
