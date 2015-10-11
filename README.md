@@ -31,16 +31,14 @@ and a framebuffer.
 
 ![](img/cow_frag_shader.png "Cow with fragment shader")
 
-* A depth buffer for storing and depth testing fragments (**with** atomics for race avoidance)
- * the depth buffer was part of the Fragment struct.  There were two values, a float depth and an int depth value.  This is because the AtomicMin function only allowed for ints.  
-* Fragment to depth buffer writing
+* A depth buffer for storing and depth testing fragments / Fragment to depth buffer writing (**with** atomics for race avoidance)
+ * The depth buffer is part of the Fragment struct that is created during rasterization.  There are two values, a float depth and an int depth value.  This is because the AtomicMin function only allows for ints.  Thus, in order to compare the fragment depth's, avoiding race conditions, the floats must be turned into ints.  The value INT_MAX was used to do this.  This allowed me to convert the floats into ints with the highest possible accuracy.  The depth values were stored, and if two triangles were in the same fragment, the one with the smallest depth would be drawn.  When the fragments were passed into the fragment shader, the depth value was checked before applying any color to the fragment.  If the depth value was still equal to INT_MAX, that meant no triangle was in the fragment, and no color would be applied.  However, if the depth was less than that, it would draw the triangle that was in the fragment.  
+ 
 * (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong
  * A Phong shader was applied to the models.  The phong shader takes into account ambient, diffuse, and specular shading.  In this shader, the ambient term is .2, while the diffuse and specular term are determined by the lighting location and normal of the surface.  The image below shows the phong lighting with a red light.  
 
 ![](img/cow_red_light.png "Cow with a red light source and phong shading")
 
-You are also required to implement at least "3.0" points in extra features.
-(the parenthesized numbers must add to 3.0 or more):
 
 * (1.0) Tile-based pipeline.
 * Additional pipeline stages.
@@ -65,8 +63,6 @@ You are also required to implement at least "3.0" points in extra features.
 * (1.0) Order-independent translucency using a k-buffer.
 * (0.5) **Mouse**-based interactive camera support.
 
-This extra feature list is not comprehensive. If you have a particular idea
-you would like to implement, please **contact us first**.
 
 **IMPORTANT:**
 For each extra feature, please provide the following brief analysis:
