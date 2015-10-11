@@ -76,7 +76,7 @@ void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
 	if (x < w && y < h) 
 	{
 		depthbuffer[index].depth =2* MAX_DEPTH; //INFINITY;//!!!
-		depthbuffer[index].color = glm::vec3(0.2, 0, 0);
+		depthbuffer[index].color = glm::vec3(0.1, 0.1, 0.1);
 	}
 }
 

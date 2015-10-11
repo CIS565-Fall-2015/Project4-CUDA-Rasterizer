@@ -15,19 +15,19 @@ Description here:...
 
 #### Controls
 
-|  KEY/Mouse	|   Function						| Demo Image|
-|---------------|-----------------------------------|-----------|
-|Left Mouse		| Rotate							|  [pic]    |
-|Middle Mouse	| Zoom								|  [pic]    |
-|Right Mouse	| Move								|  [pic]    |
-|Key '0'		| Wireframe only					|  [pic]    |
-|Key '1'		|     Color							|  [pic]    |
-|Key 'w'		| turn wireframe on/off				|  [pic]    |
-|Key 't'		| turn texture on/off			    |  [pic]    |
-|Key 'n'		|  normal testing					|  [pic]    |
-|Key 'd'		| turn displacement mapping on/off  |  [pic]    |
-|Key Up/Down	|increase/reduce tessellation level |  [pic]    |
-|Key Left/Right	|increase/reduce texture repeat		|  [pic]    |
+|  KEY/Mouse	|   Function						| Demo Image				|
+|---------------|-----------------------------------|---------------------------|
+|Left Mouse		| Rotate							|  [pic]					|
+|Middle Mouse	| Zoom								|  [pic]					|
+|Right Mouse	| Move								|  [pic]					|
+|Key '0'		| Wireframe only					|  [pic]					|
+|Key '1'		|     Color							|  [pic]					|
+|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif) = 100x	|
+|Key 't'		| turn texture on/off			    |  [pic]					|
+|Key 'n'		|  normal testing					|  [pic]					|
+|Key 'd'		| turn displacement mapping on/off  |  [pic]					|
+|Key Up/Down	|increase/reduce tessellation level |  [pic]					|
+|Key Left/Right	|increase/reduce texture repeat		|  [pic]					|
 
 Features
 ========================
@@ -57,7 +57,11 @@ Performance Analysis
 
 description here...
 
-time spent analysis here...
+* New pipeline for tessellation analysis
+![](img/tess_suzanne.png)
+
+* New pipeline for tessellation and displacement mapping analysis
+![](img/tess_plane.png)
 
 #### Obj Analysis
 
