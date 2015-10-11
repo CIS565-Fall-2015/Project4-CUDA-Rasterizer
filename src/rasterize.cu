@@ -552,6 +552,9 @@ __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int h
  * Perform rasterization.
  */
 void rasterize(uchar4 *pbo) {
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -578,22 +581,37 @@ void rasterize(uchar4 *pbo) {
 	setDepth<<<blockCountAnti, blockSize2d>>>(dev_depthbuffer, width);
 	setDepth<<<blockCount2d, blockSize2d>>>(dev_fragbuffer, width);
 	//Transfer from VertexIn to VertexOut (vertex shading)
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
 	vertexShader<<<blockCount1d, blockSize1d>>>(dev_bufVertex, dev_bufTransformedVertex, vertCount, matrix, model);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("vertex shader: %f \n", milliseconds);
 	checkCUDAError("rasterize");
 	int k;
 	//std::cin >> k;
 	//Transfer from VertexOut to Triangles (primitive assembly)
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
 	primitiveAssemble<<<blockCount1d, blockSize1d>>>(dev_bufTransformedVertex, dev_primitives, vertCount);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("primitive Assembly: %f \n", milliseconds);
 	checkCUDAError("rasterize");
 	
 
 	//Scanline each triangle to get fragment color (rasterize)
 	int triCount = vertCount / 3;
 	blockCount1d = ((triCount + 64 - 1) / 64);
-	printf("old triangle count: %i \n", triCount);
+	//printf("old triangle count: %i \n", triCount);
 	//checkCUDAError("rasterize");
 	//THRUST REMOVE IF
-	
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
 	if (backface) {
 		backWard<<<blockCount1d, blockSize1d>>>(dev_primitives, triCount);
 		Triangle* triEnd = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + triCount, removeTriangles());
@@ -601,20 +619,22 @@ void rasterize(uchar4 *pbo) {
 		triCount = triEnd - dev_primitives;
 		blockCount1d = ((triCount + 64 - 1) / 64);
 	}
-	
-	printf("new triangle count: %i \n", triCount);
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("backface culling: %f \n", milliseconds);
+	//printf("new triangle count: %i \n", triCount);
 	//printf("tri count: %i, block count: %i \n", triCount, (triCount + 64 - 1) / 64);
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
+	
 	cudaEventRecord(start);
 	cudaEventSynchronize(start);	
 	kernRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
-	float milliseconds = 0;
+	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("time per iteration: %f \n", milliseconds);
+	printf("rasterize: %f \n", milliseconds);
 	checkCUDAError("Fragment Shader");
 	if (lines) {
 		lineRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount, matrix);
@@ -627,8 +647,14 @@ void rasterize(uchar4 *pbo) {
 	//checkCUDAError("rasterize");
     
     //Fragment shader
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
 	fragmentShader<<<blockCount2d, blockSize2d>>>(dev_depthbuffer, dev_fragbuffer, width, height);
-	
+	cudaEventRecord(stop);
+	cudaEventSynchronize(stop);
+	milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("fragment shader: %f \n", milliseconds);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_fragbuffer, dev_framebuffer);
