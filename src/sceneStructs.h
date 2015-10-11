@@ -38,10 +38,17 @@ struct Triangle {
 //One fragment, saves color and depth
 struct Fragment {
     glm::vec3 color;
-    int depth;
-    glm::vec3 primitiveCol;
-    glm::vec3 primitiveNor;
-    glm::vec3 primitivePos;
+//    glm::vec3 c;
+//    int depth;
+//    glm::vec3 primitiveCol;
+//    glm::vec3 primitiveNor;
+//    glm::vec3 primitivePos;
+
+    glm::vec3 c[4];	//for antialiasing
+       int depth[4];
+       glm::vec3 primitiveCol[4];
+       glm::vec3 primitiveNor[4];
+       glm::vec3 primitivePos[4];
 };
 
 //Light struct

@@ -11,6 +11,7 @@
 #include <cmath>
 #include <glm/glm.hpp>
 #include <util/utilityCore.hpp>
+#include "sceneStructs.h"
 
 struct AABB {
     glm::vec3 min;
@@ -98,4 +99,35 @@ float getZAtCoordinate(const glm::vec3 barycentricCoord, const glm::vec3 tri[3])
     return -(barycentricCoord.x * tri[0].z
            + barycentricCoord.y * tri[1].z
            + barycentricCoord.z * tri[2].z);
+}
+
+
+//Returns fragment shading color
+__host__ __device__ static
+glm::vec3 calculateFragColor(glm::vec3 nor, glm::vec3 pos, glm::vec3 col, Light light1, Light light2)
+{
+	glm::vec3 lightVector1 = glm::normalize(light1.pos - pos);
+	glm::vec3 lightVector2 = glm::normalize(light2.pos - pos);
+
+	float diffusedTerm1 = glm::dot(lightVector1, nor);
+	float diffusedTerm2 = glm::dot(lightVector2, nor);
+
+	if(diffusedTerm1 > 0.0f && diffusedTerm2 > 0.0f)
+	{
+		return (diffusedTerm1 * col * light1.col +
+				diffusedTerm2 * col * light2.col);
+	}
+
+	else if(diffusedTerm1 > 0.0f)
+	{
+		return (diffusedTerm1 * col * light1.col);
+	}
+	else if(diffusedTerm2 > 0.0f)
+	{
+		return (diffusedTerm2 * col * light2.col);
+	}
+	else
+	{
+		return (glm::vec3(0.0f));
+	}
 }

@@ -217,14 +217,41 @@ void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
     {
 		int index = x + (y * w);
 
-		fragments[index].color = glm::vec3(0, 0, 0);
-		fragments[index].depth = INT_MAX;
+		Fragment &f = fragments[index];
+		glm::vec3  ZERO(0.0f);
+
+		f.color = ZERO;
+
+		f.depth[0] = INT_MAX;
+		f.depth[1] = INT_MAX;
+		f.depth[2] = INT_MAX;
+		f.depth[3] = INT_MAX;
+
+		f.c[0] = ZERO;
+		f.c[1] = ZERO;
+		f.c[2] = ZERO;
+		f.c[3] = ZERO;
+
+		f.primitiveCol[0] = ZERO;
+		f.primitiveCol[1] = ZERO;
+		f.primitiveCol[2] = ZERO;
+		f.primitiveCol[3] = ZERO;
+
+		f.primitiveNor[0] = ZERO;
+		f.primitiveNor[1] = ZERO;
+		f.primitiveNor[2] = ZERO;
+		f.primitiveNor[3] = ZERO;
+
+		f.primitivePos[0] = ZERO;
+		f.primitivePos[1] = ZERO;
+		f.primitivePos[2] = ZERO;
+		f.primitivePos[3] = ZERO;
     }
 }
 
 //Kernel function to rasterize the triangle
 __global__
-void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam)
+void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, bool antiAliasing)
 {
 	//Rasterization per triangle
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -251,38 +278,57 @@ void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangl
 		{
 			for(int j=min.y-1; j<=max.y+1; ++j)
 			{
-				glm::ivec2 point(i,j);
-				glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point);
-
-				if(isBarycentricCoordInBounds(barycentric))
+				glm::vec2 point[4];
+				int iterCount;
+				if(antiAliasing)
 				{
-					glm::vec3 triIn[3];
-					VertexIn tvIn[3] = {t.vIn[0], t.vIn[1], t.vIn[2]};
+					point[0] = glm::vec2(float(i) - 0.25f, float(j) - 0.25f);
+					point[1] = glm::vec2(float(i) - 0.25f, float(j) + 0.25f);
+					point[2] = glm::vec2(float(i) + 0.25f, float(j) - 0.25f);
+					point[3] = glm::vec2(float(i) + 0.25f, float(j) + 0.25f);
+					iterCount = 4;
+				}
+				else
+				{
+					point[0] = glm::ivec2(i,j);
+					iterCount = 1;
+				}
 
-					triIn[0] = t.vOut[0].transformedPos;
-					triIn[1] = t.vOut[1].transformedPos;
-					triIn[2] = t.vOut[2].transformedPos;
+				for(int k=0; k<iterCount; ++k)
+				{
+					glm::vec3 barycentric = calculateBarycentricCoordinate(tri, point[k]);
 
-					int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
-					int depth = getZAtCoordinate(barycentric, triIn) * 10000;
-
-					//Depth testing
-					if(depth < fragments[fragIndex].depth)
+					if(isBarycentricCoordInBounds(barycentric))
 					{
-						atomicMin(&fragments[fragIndex].depth, depth);
+						glm::vec3 triIn[3];
+						VertexIn tvIn[3] = {t.vIn[0], t.vIn[1], t.vIn[2]};
 
-						//Fragment shading data
-						fragments[fragIndex].primitiveNor = barycentric.x * t.vOut[0].nor +
-											barycentric.y * t.vOut[1].nor +
-											barycentric.z * t.vOut[2].nor;
+						triIn[0] = t.vOut[0].transformedPos;
+						triIn[1] = t.vOut[1].transformedPos;
+						triIn[2] = t.vOut[2].transformedPos;
 
-						fragments[fragIndex].primitivePos = barycentric.x * t.vOut[0].transformedPos +
-											barycentric.y * t.vOut[1].transformedPos +
-											barycentric.z * t.vOut[2].transformedPos;
+						int fragIndex = int((i+w*0.5) + (j + h*0.5)*w);
+						int depth = getZAtCoordinate(barycentric, triIn) * 10000;
 
-						fragments[fragIndex].primitiveCol = barycentric.x * tvIn[0].col +
-											barycentric.y * tvIn[1].col +
-											barycentric.z * tvIn[2].col;
+						//Depth testing
+						if(depth < fragments[fragIndex].depth[k])
+						{
+							atomicMin(&fragments[fragIndex].depth[k], depth);
+
+							Fragment &f = fragments[fragIndex];
+							//Fragment shading data
+							f.primitiveNor[k] = barycentric.x * t.vOut[0].nor +
+												barycentric.y * t.vOut[1].nor +
+												barycentric.z * t.vOut[2].nor;
+
+							f.primitivePos[k] = barycentric.x * t.vOut[0].transformedPos +
+												barycentric.y * t.vOut[1].transformedPos +
+												barycentric.z * t.vOut[2].transformedPos;
+
+							f.primitiveCol[k] = barycentric.x * tvIn[0].col +
+												barycentric.y * tvIn[1].col +
+												barycentric.z * tvIn[2].col;
+						}
 					}
 				}
 			}
@@ -292,7 +338,7 @@ void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangl
 
 
 __global__
-void kernFragmentShader(int w, int h, Fragment * fragment, Light light1, Light light2)
+void kernFragmentShader(int w, int h, Fragment * fragment, Light light1, Light light2, bool antiAliasing)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -301,31 +347,21 @@ void kernFragmentShader(int w, int h, Fragment * fragment, Light light1, Light l
 	if (x < w && y < h)
 	{
 		Fragment & f = fragment[fragIndex];
-		if(f.depth != INT_MAX)
+
+		if((f.depth[0] < INT_MAX) || (f.depth[1] < INT_MAX) || (f.depth[2] < INT_MAX) || (f.depth[3] < INT_MAX))
 		{
-			glm::vec3 lightVector1 = glm::normalize(light1.pos - f.primitivePos);
-			glm::vec3 lightVector2 = glm::normalize(light2.pos - f.primitivePos);
-
-			float diffusedTerm1 = glm::dot(lightVector1, f.primitiveNor);
-			float diffusedTerm2 = glm::dot(lightVector2, f.primitiveNor);
-
-			if(diffusedTerm1 > 0.0f && diffusedTerm2 > 0.0f)
+			if(!antiAliasing)
 			{
-				f.color = diffusedTerm1 * f.primitiveCol * light1.col +
-						diffusedTerm2 * f.primitiveCol * light2.col;
+				f.color = calculateFragColor(f.primitiveNor[0], f.primitivePos[0], f.primitiveCol[0], light1, light2);
 			}
 
-			else if(diffusedTerm1 > 0.0f)
-			{
-				f.color = diffusedTerm1 * f.primitiveCol * light1.col;
-			}
-			else if(diffusedTerm2 > 0.0f)
-			{
-				f.color = diffusedTerm2 * f.primitiveCol * light2.col;
-			}
 			else
 			{
-				f.color = glm::vec3(0.0f);
+				f.color = 0.25f * (calculateFragColor(f.primitiveNor[0], f.primitivePos[0], f.primitiveCol[0], light1, light2) +
+									calculateFragColor(f.primitiveNor[1], f.primitivePos[1], f.primitiveCol[1], light1, light2) +
+									calculateFragColor(f.primitiveNor[2], f.primitivePos[2], f.primitiveCol[2], light1, light2) +
+									calculateFragColor(f.primitiveNor[3], f.primitivePos[3], f.primitiveCol[3], light1, light2)
+									);
 			}
 		}
 	}
@@ -578,14 +614,14 @@ void rasterize(uchar4 *pbo) {
 
 				//Rasterization per triangle
 				numBlocks = (numTriangles + numThreads -1)/numThreads;
-				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam);
+				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, scene->antiAliasing);
 
-				kernFragmentShader<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, light1, light2);
+				kernFragmentShader<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, light1, light2, scene->antiAliasing);
 
-				if(scene->antiAliasing)
-				{
-					kernAntiAliasing<<<numBlocks, numThreads>>>(numTriangles, width, height, dev_depthbuffer, dev_primitives);
-				}
+//				if(scene->antiAliasing)
+//				{
+//					kernAntiAliasing<<<numBlocks, numThreads>>>(numTriangles, width, height, dev_depthbuffer, dev_primitives);
+//				}
 
 				break;
 			}
