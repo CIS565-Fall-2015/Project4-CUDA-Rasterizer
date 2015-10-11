@@ -283,7 +283,9 @@ __global__ void fragmentShader(int width, int height,
         Fragment &frag = fragments[index];
         if (frag.valid) {
             glm::vec3 norm = barycentricInterpolate(frag.tri.worldNor, frag.baryCoords);
-            frag.color = glm::abs(norm);
+            glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
+            glm::vec3 lightdir = glm::normalize(light - pos);
+            frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
         } else {
         }
     }
@@ -309,7 +311,7 @@ void rasterize(uchar4 *pbo) {
     c.position = glm::vec3(0, 3, -10);
     c.view = glm::vec3(0, 0, 1);
     c.up = glm::vec3(0, -1, 0);
-    c.light = glm::vec3(0, 4, 0);
+    c.light = glm::vec3(5, 4, 0);
     c.fovy = 45.f;
 
     glm::mat4 model = glm::mat4(1.f);
