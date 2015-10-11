@@ -22,7 +22,7 @@ Description here:...
 |Right Mouse	| Move								|  [pic]			|
 |Key '0'		| Wireframe only					|  [pic]			|
 |Key '1'		|     Color							|  [pic]			|
-|Key 'w'		| turn wireframe on/off				|![](img/keyW.gif)	|
+|Key 'w'		| turn wireframe on/off				|  [pic]			|
 |Key 't'		| turn texture on/off			    |  [pic]			|
 |Key 'n'		|  normal testing					|  [pic]			|
 |Key 'd'		| turn displacement mapping on/off  |  [pic]			|
@@ -59,16 +59,18 @@ Considering that after loading the geometry, there's no need to redo primitive a
 
  The pipeline workflow is shown below.
 
-![]/img/Pipeline.png)
+![](img/Pipeline.png)
 
 
-* New pipeline for tessellation analysis
-![](img/tess_suzanne.png)
+* **Analysis for Tessellation**
+![](img/Suzzane_tess2.PNG) ![](img/tess_suzanne.png)
 
-* New pipeline for tessellation and displacement mapping analysis
-![](img/tess_plane.png)
+* **Analysis for Tessellation and Displacement Map**
+![](img/Plane_tess8.PNG) ![](img/tess_plane.png)
 
 #### Obj Analysis
+
+![](img/Objs.png)
 
 References
 ========================
