@@ -8,8 +8,13 @@ CUDA Rasterizer
 
 ## Description
 
-An interactive GPU accelerated rasterizer (Add here)
+An interactive GPU accelerated rasterizer. The program uses the scanline rasterization technique and can render obj models using triangle, line, or point primitives. Additional features include interactive mouse controls, backface culling, scissor test culling, and color and normal interpolation to support smooth models.
+
+### Stanford Dragon
 ![](renders/dragon.png "Stanford Dragon")
+
+### Video Demo
+
 
 ## Pipeline
 
