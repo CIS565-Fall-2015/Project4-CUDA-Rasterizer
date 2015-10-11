@@ -41,12 +41,12 @@ Camera::~Camera(void)
 void Camera::Reset(int width, int height)
 {
     // setup default camera parameters
-    m_eye_distance = 15.0;
+    m_eye_distance = 5.0;
     m_head = 30.0;
     m_pitch = 45.0;
-    m_lookat = glm::vec3(0.0, 4.5, 0.0);
+    m_lookat = glm::vec3(0.0, 0.0, -1.0);
     m_up = glm::vec3(0.0, 1.0, 0.0);
-    m_fovy = 60.0;
+    m_fovy = 75.0;
     m_width = width;
     m_height = height;
     m_znear = 0.1;
@@ -56,54 +56,54 @@ void Camera::Reset(int width, int height)
     updateProjectionMatrix();
 }
 
-void Camera::Lookat(Mesh* mesh)
-{
-    unsigned int mid_index = mesh->m_vertices_number/2;
+//void Camera::Lookat(Mesh* mesh)
+//{
+//    unsigned int mid_index = mesh->m_vertices_number/2;
+//
+//    EigenVector3 lookat = mesh->m_current_positions.block_vector(mid_index);
+//    m_lookat = glm::vec3(lookat[0], lookat[1], lookat[2]);
+//    updateViewMatrix();
+//}
 
-    EigenVector3 lookat = mesh->m_current_positions.block_vector(mid_index);
-    m_lookat = glm::vec3(lookat[0], lookat[1], lookat[2]);
-    updateViewMatrix();
-}
-
-void Camera::DrawAxis()
-{
-    glPushAttrib(GL_LIGHTING_BIT | GL_LINE_BIT);
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH);
-
-    // store previous states
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-
-    // change view matrix.
-    glm::vec3 axis_cam_pos = float(2.0) * glm::normalize(m_position - m_lookat);
-    glLoadMatrixf(&(glm::lookAt(axis_cam_pos, glm::vec3(0.0, 0.0, 0.0), m_up)[0][0]));
-
-    // change viewport
-    glViewport(m_width * 15 / 16, 0, m_width / 16, m_height / 16);
-
-    //Draw axis.
-    glBegin(GL_LINES);
-    glColor3d(1.0, 0.0, 0.0);
-    glVertex3d(0.0, 0.0, 0.0);
-    glVertex3d(1.0, 0.0, 0.0);
-
-    glColor3d(0.0, 1.0, 0.0);
-    glVertex3d(0.0, 0.0, 0.0);
-    glVertex3d(0.0, 1.0, 0.0);
-
-    glColor3d(0.0, 0.0, 1.0);
-    glVertex3d(0.0, 0.0, 0.0);
-    glVertex3d(0.0, 0.0, 1.0);
-    glEnd();
-
-    // restore everything
-    glViewport(0, 0, m_width, m_height);
-    glPopMatrix();
-    glPopAttrib();
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH);
-}
+//void Camera::DrawAxis()
+//{
+//    glPushAttrib(GL_LIGHTING_BIT | GL_LINE_BIT);
+//    glDisable(GL_LIGHTING);
+//    glDisable(GL_DEPTH);
+//
+//    // store previous states
+//    glMatrixMode(GL_MODELVIEW);
+//    glPushMatrix();
+//
+//    // change view matrix.
+//    glm::vec3 axis_cam_pos = float(2.0) * glm::normalize(m_position - m_lookat);
+//    glLoadMatrixf(&(glm::lookAt(axis_cam_pos, glm::vec3(0.0, 0.0, 0.0), m_up)[0][0]));
+//
+//    // change viewport
+//    glViewport(m_width * 15 / 16, 0, m_width / 16, m_height / 16);
+//
+//    //Draw axis.
+//    glBegin(GL_LINES);
+//    glColor3d(1.0, 0.0, 0.0);
+//    glVertex3d(0.0, 0.0, 0.0);
+//    glVertex3d(1.0, 0.0, 0.0);
+//
+//    glColor3d(0.0, 1.0, 0.0);
+//    glVertex3d(0.0, 0.0, 0.0);
+//    glVertex3d(0.0, 1.0, 0.0);
+//
+//    glColor3d(0.0, 0.0, 1.0);
+//    glVertex3d(0.0, 0.0, 0.0);
+//    glVertex3d(0.0, 0.0, 1.0);
+//    glEnd();
+//
+//    // restore everything
+//    glViewport(0, 0, m_width, m_height);
+//    glPopMatrix();
+//    glPopAttrib();
+//    glEnable(GL_LIGHTING);
+//    glEnable(GL_DEPTH);
+//}
 
 // mouse interactions
 void Camera::MouseChangeDistance(float coe, float dx, float dy)
@@ -199,7 +199,8 @@ void Camera::updateViewMatrix()
     m_position.z = m_lookat.z + m_eye_distance * glm::cos(r_head) * glm::sin(r_pitch);
 
     m_up = glm::vec3(0.0, (glm::cos(r_head) > 0.0) ? 1.0 : -1.0, 0.0);
-    m_view = glm::lookAt(m_position, m_lookat, m_up);
+    //m_position = glm::vec3(0.0,0.0,1.0);
+	m_view = glm::lookAt(m_position, m_lookat, m_up);
 }
 void Camera::updateProjectionMatrix()
 {

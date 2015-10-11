@@ -8,6 +8,8 @@ set(SOURCE_FILES
     "obj.cpp"
     "objloader.hpp"
     "objloader.cpp"
+	"camera.h"
+	"camera.cpp"
    )
 
 cuda_add_library(util

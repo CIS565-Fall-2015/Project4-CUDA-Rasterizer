@@ -24,7 +24,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
-#include "camera.h"
+#include <util/camera.h>
 
 using namespace std;
 
@@ -94,6 +94,9 @@ void deleteTexture(GLuint *tex);
 void mainLoop();
 void errorCallback(int error, const char *description);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void mouseCallback(GLFWwindow *window, int button, int action, int mods);
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void cursorPosCallback(GLFWwindow *window, double xpos, double ypos);
 
 
 //------------------------------

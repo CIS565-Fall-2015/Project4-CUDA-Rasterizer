@@ -9,6 +9,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <util/camera.h>
 
 #define THREADS_PER_BLOCK 256
 
@@ -18,5 +19,5 @@ void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol);
-void rasterize(uchar4 *pbo);
+void rasterize(uchar4 *pbo, Camera *m_camera);
 void rasterizeFree();

@@ -307,7 +307,8 @@ void rasterizeSetBuffers(
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo) {
+void rasterize(uchar4 *pbo, Camera *m_camera) 
+{
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -320,7 +321,12 @@ void rasterize(uchar4 *pbo) {
 	dim3 blockSize1d (THREADS_PER_BLOCK);
 	dim3 blockCount1d (vertCount/THREADS_PER_BLOCK+1);
 
-	kern_vertex_shader<<<blockCount1d,blockSize1d>>>(dev_bufVertex, dev_bufVertex_out, vertCount, glm::mat4(1.f), glm::mat4(1.f));
+	glm::mat4 m_view = glm::transpose(m_camera->GetViewMatrix());
+	glm::mat4 m_proj = glm::transpose(m_camera->GetProjectionMatrix());
+	
+	glm::mat4 MVP = m_proj * m_view;
+	glm::mat4 MVP_inv_T = glm::transpose(glm::inverse(MVP));
+	kern_vertex_shader<<<blockCount1d,blockSize1d>>>(dev_bufVertex, dev_bufVertex_out, vertCount, MVP, MVP_inv_T);
 
 	//primitive assembler
 	int num_of_primitives = bufIdxSize/3;

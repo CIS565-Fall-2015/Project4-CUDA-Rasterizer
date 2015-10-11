@@ -30,13 +30,8 @@
 #ifndef _CAMERA_H_
 #define _CAMERA_H_
 
-#include "openGL_headers.h"
-#include "global_headers.h"
-#include "math_headers.h"
-#include "mesh.h"
-
-//forward declaration
-class Mesh;
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 class Camera
 {
@@ -47,7 +42,7 @@ public:
 
     // reset
     void Reset(int width, int height);
-    void Lookat(Mesh* mesh);
+    //void Lookat(Mesh* mesh);
     
     // get camera matrices:
     inline glm::mat4 GetViewMatrix() {return m_view;}
@@ -65,7 +60,7 @@ public:
     void MouseChangeHeadPitch(float coe, float dx, float dy);
 
     // Draw axis
-    void DrawAxis();
+   // void DrawAxis();
 
     // resize
     void ResizeWindow(int w, int h);

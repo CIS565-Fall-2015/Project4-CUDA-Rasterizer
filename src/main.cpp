@@ -78,7 +78,7 @@ void runCuda() {
     dptr = NULL;
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+    rasterize(dptr,g_camera);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -92,6 +92,7 @@ void runCuda() {
 
 bool init(obj *mesh) {
     glfwSetErrorCallback(errorCallback);
+	
 
     if (!glfwInit()) {
         return false;
@@ -106,6 +107,9 @@ bool init(obj *mesh) {
     }
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
+	glfwSetMouseButtonCallback(window,mouseCallback);
+	glfwSetCursorPosCallback(window,cursorPosCallback);
+	glfwSetScrollCallback(window,scrollCallback);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -283,11 +287,11 @@ void mouseCallback(GLFWwindow *window, int button, int action, int mods)
 {
 	if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
-		glfwGetCursorPos(window,g_mouse_old_x,g_mouse_old_y);		 
+		glfwGetCursorPos(window,&g_mouse_old_x,&g_mouse_old_y);		 
 	}
-	else if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
+	else if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
-
+		glfwGetCursorPos(window,&g_mouse_old_x,&g_mouse_old_y);	
 	}
 }
 
