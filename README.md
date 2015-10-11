@@ -22,7 +22,7 @@ Description here:...
 |Right Mouse	| Move								|  [pic]					|
 |Key '0'		| Wireframe only					|  [pic]					|
 |Key '1'		|     Color							|  [pic]					|
-|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =100*)	|
+|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =80x83)	|
 |Key 't'		| turn texture on/off			    |  [pic]					|
 |Key 'n'		|  normal testing					|  [pic]					|
 |Key 'd'		| turn displacement mapping on/off  |  [pic]					|
@@ -54,8 +54,10 @@ Performance Analysis
 #### Pipeline Optimization
 
 Considering that after loading the geometry, there's no need to redo primitive assembly and tessellation within each frame when
- the tessellation level dosn't change. Therefore, I only vertex shader and primitive assembly once and take them out of the main loop.
- Instead, all vertices' ndc value and windows position is updated based on transformation matrices (view, projection, window...) in each frame.
+ the tessellation level dosn't change. Therefore, I only do vertex shader and primitive assembly once and take them out of the main loop.
+ Instead, all vertices' ndc value and window positions are updated based on current transformation matrices (view, projection, window...) in each frame.
+
+ The pipeline workflow is shown below.
 
 ![](img/Pipeline.png)
 
