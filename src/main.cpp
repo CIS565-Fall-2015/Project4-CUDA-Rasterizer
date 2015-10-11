@@ -14,6 +14,7 @@
 glm::vec3 camCoords(0.0, 0.0,  1.0);
 bool lines = false;
 bool points = false;
+bool backface = true;
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -299,8 +300,15 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 				points = true;
 			}
 			break;
+		case GLFW_KEY_B:
+			if (backface) {
+				backface = false;
+			}
+			else {
+				backface = true;
+			}
+			break;
 		}
-
 	}
 }
 double xStartpos, yStartpos;
@@ -330,12 +338,12 @@ void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos) {
 		
 		angleX += (xpos - xStartpos) / 4.0;
 		angleY += (ypos - yStartpos) / 4.0;
-		camCoords.x = -angleX * (3.14 / 180.0); //sin(angleX * (3.14 / 180.0)) * -3.0;
+		camCoords.x = angleX * (3.14 / 180.0); //sin(angleX * (3.14 / 180.0)) * -3.0;
 		//camCoords.z = //cos((angleX + angleY) * (3.14 / 180.0)) * 3.0;
 
 		//printf("end: (%f, %f) \n", angleX, angleY);
 		//camCoords.z += cos(angleY * (3.14 / 180.0)) * 3.0;
-		camCoords.y = -angleY * (3.14 / 180.0); //sin(angleY * (3.14 / 180.0)) * 3.0;
+		camCoords.y = angleY * (3.14 / 180.0); //sin(angleY * (3.14 / 180.0)) * 3.0;
 		//printf("coords: (%f, %f, %f)", camCoords.x, camCoords.y, camCoords.z);
 		//printf("inhereeee");
 
