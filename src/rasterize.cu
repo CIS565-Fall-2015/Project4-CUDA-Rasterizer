@@ -16,31 +16,39 @@
 #include "rasterizeTools.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/constants.hpp>
 
 #define MAX_THREADS 128
 
 #define AA 1
+
+//TODO: Make this into a parameter of some kind, allow setting of scale/rot/trans
+#define NUM_INSTANCES 5
 
 static int iter;
 
 static int width = 0;
 static int height = 0;
 static int *dev_bufIdx = NULL;
-static int *dev_bufIdx2 = NULL;
+static int *dev_bufIdxOut = NULL;
 static VertexIn *dev_bufVertex = NULL;
 static VertexOut *dev_bufVertexOut = NULL;
-static VertexOut *dev_bufVertexOut2 = NULL;
 static Triangle *dev_primitives = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int* dev_locks = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static int vertInCount = 0;
+static int vertOutCount = 0;
 static Light light;
 
 static int fragCount;
 static int primCount;
 static int numVertBlocks;
+static int numVertInBlocks;
+static int numVertOutBlocks;
 static int numPrimBlocks;
 static int numFragBlocks;
 
@@ -114,10 +122,6 @@ __global__ void initDepths(int n, Fragment* depthbuffer){
 void rasterizeInit(int w, int h) {
     width = w;
     height = h;
-    
-	//cudaFree(dev_depthbuffer);
-    //cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
-    //cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
@@ -138,9 +142,13 @@ void rasterizeSetBuffers(
     vertCount = _vertCount;
 
 	// Vertex shading
+	vertInCount = _vertCount;
+	vertOutCount = vertInCount * NUM_INSTANCES;
 	fragCount = width * height * AA * AA;
-	primCount = vertCount / 3;
+	primCount = vertOutCount / 3;
 	numVertBlocks = (vertCount - 1) / MAX_THREADS + 1;
+	numVertInBlocks = (vertInCount - 1) / MAX_THREADS + 1;
+	numVertOutBlocks = (vertOutCount - 1) / MAX_THREADS + 1;
 	numPrimBlocks = (primCount - 1) / MAX_THREADS + 1;
 	numFragBlocks = (fragCount - 1) / MAX_THREADS + 1;
 
@@ -176,7 +184,35 @@ void rasterizeSetBuffers(
     checkCUDAError("rasterizeSetBuffers");
 }
 
-__global__ void kernShadeVertices(int n, VertexOut* vs_output, VertexIn* vs_input, glm::mat4 Mpvm){
+__global__ void kernShadeVerticesInstances(int n, int num_instances, VertexOut* vs_output, int* vs_output_idx, VertexIn* vs_input, int* vs_input_idx, glm::mat4* Mpvms, glm::mat3* Mms){
+	// n is the number of in vertices
+	// TODO: Can parallelize this if we do thread per output index instead of thread per input index
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (index < n){
+		glm::mat4 Mpvm;
+		//glm::mat3 Mpvmn;
+		glm::vec4 new_pos;
+		for (int i = 0; i < num_instances; i++){
+			// Model-view-perspective transform for positions
+			Mpvm = Mpvms[i];
+
+			// Todo: do this in CPU
+			//Mpvmn = glm::mat3(Mpvm);
+			//Mpvmn = glm::inverseTranspose(Mms[i]);
+
+			new_pos = Mpvm * glm::vec4(vs_input[index].pos, 1.0f);
+			vs_output[index + i*n].ndc_pos = glm::vec3(new_pos / new_pos.w);
+			vs_output[index + i*n].nor = glm::normalize(vs_input[index].nor * Mms[i]);
+			//vs_output[index + i*n].nor = vs_input[index].nor;
+			vs_output[index + i*n].col = vs_input[index].col;
+			vs_output_idx[index + i*n] = vs_input_idx[index] + i*n;
+		}
+	}
+}
+
+__global__ void kernShadeVertices(int n, VertexOut* vs_output, VertexIn* vs_input, glm::mat4 Mpvm, glm::mat3 Mm){
+	// Mm is the 3x3 rotation matrix computed with intervse transpose of the Mmodel matrix, for use to rotate normal vectors
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
@@ -184,7 +220,7 @@ __global__ void kernShadeVertices(int n, VertexOut* vs_output, VertexIn* vs_inpu
 		
 		glm::vec4 new_pos = Mpvm * glm::vec4(vs_input[index].pos, 1.0f);
 		vs_output[index].ndc_pos = glm::vec3(new_pos / new_pos.w);
-		vs_output[index].nor = vs_input[index].nor;
+		vs_output[index].nor = vs_input[index].nor * Mm;
 		vs_output[index].col = vs_input[index].col;
 	}
 }
@@ -269,8 +305,8 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 				ind = i + j * frag_width;
 				
 				// Get the NDC coordinate
-				x = dx*i - dx*frag_width/2.0f;
-				y = dy*j - dy*frag_height/2.0f;
+				x = dx*i - dx*frag_width/2.0f + dx/2.0f;
+				y = dy*j - dy*frag_height/2.0f + dx/2.0f;
 
 				point[0] = x;
 				point[1] = y;
@@ -311,7 +347,10 @@ __global__ void kernShadeFragments(int n, Fragment* fs_input, Light light){
 
 void resetRasterize(){
 	cudaFree(dev_bufVertexOut);
-	cudaMalloc(&dev_bufVertexOut, vertCount * sizeof(VertexOut));
+	cudaMalloc(&dev_bufVertexOut, vertOutCount * sizeof(VertexOut));
+
+	cudaFree(dev_bufIdxOut);
+	cudaMalloc((void**)&dev_bufIdxOut, vertOutCount * sizeof(int));
 
 	cudaFree(dev_primitives);
 	cudaMalloc(&dev_primitives, primCount * sizeof(Triangle));
@@ -339,21 +378,44 @@ void rasterize(uchar4 *pbo, Cam cam) {
 
 	resetRasterize();
 
-	Mmod = glm::mat4(1.0f)*1.0f;
-	Mmod[3][3] = 1.0f;
-
+	//Mmod = glm::mat4(1.0f);
 	Mview = glm::lookAt(cam.pos, cam.focus, cam.up);
 	Mproj = glm::perspective(cam.fovy, cam.aspect, cam.zNear, cam.zFar);
 
-	glm::mat4 Mvm = Mview * Mmod;
-	glm::mat4 Mpvm = Mproj * Mview * Mmod;
+	glm::mat4 Mpvms[NUM_INSTANCES];
+	glm::mat3 Mms[NUM_INSTANCES];
 
-	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);
+	for (int i = 0; i < NUM_INSTANCES; i++){
+		Mmod = glm::mat4(1.0);
+		Mmod = glm::translate(Mmod, glm::vec3(i*0.5f,0.0f,i*-1.0f));
+		Mmod = glm::rotate(Mmod, i*3.14f/8.0f, glm::vec3(0.0,1.0,0.0));
+		Mms[i] = glm::inverseTranspose(glm::mat3(Mmod));
+		Mpvms[i] = Mproj * Mview * Mmod;
+	}
+
+	glm::mat4* dev_Mpvms;
+	glm::mat3* dev_Mms;
+	cudaMalloc((void**)&dev_Mpvms, NUM_INSTANCES*sizeof(glm::mat4));
+	cudaMemcpy(dev_Mpvms, Mpvms, NUM_INSTANCES*sizeof(glm::mat4), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&dev_Mms, NUM_INSTANCES*sizeof(glm::mat3));
+	cudaMemcpy(dev_Mms, Mms, NUM_INSTANCES*sizeof(glm::mat3), cudaMemcpyHostToDevice);
+
+	// Vertex Shading
+	kernShadeVerticesInstances<<<numVertBlocks, MAX_THREADS>>>(vertCount, NUM_INSTANCES, dev_bufVertexOut, dev_bufIdxOut, dev_bufVertex, dev_bufIdx, dev_Mpvms, dev_Mms);
+	//kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);
 	checkCUDAError("shadeVertices");
+	cudaFree(dev_Mpvms);
+	cudaFree(dev_Mms);
 
 	// Primitive Assembly
-	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdx);
+	kernAssemblePrimitives<<<numPrimBlocks, MAX_THREADS>>>(primCount, dev_primitives, dev_bufVertexOut, dev_bufIdxOut);
 	checkCUDAError("assemblePrimitives");
+
+	/*int* hst_idxout = (int*)malloc(sizeof(int)*vertOutCount);
+	cudaMemcpy(hst_idxout, dev_bufIdxOut, sizeof(int)*vertOutCount, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < vertOutCount; i++){
+		printf("%d ",hst_idxout[i]);
+	}*/
 
 	// Rasterization
 	kernRasterize<<<numPrimBlocks, MAX_THREADS>>>(primCount, cam, dev_depthbuffer, dev_primitives);
@@ -365,6 +427,7 @@ void rasterize(uchar4 *pbo, Cam cam) {
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
+
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
     sendImageToPBO<<<blockCount2d, blockSize2d>>>(pbo, width, height, dev_framebuffer);
     checkCUDAError("rasterize");
