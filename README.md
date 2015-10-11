@@ -59,7 +59,7 @@ Considering that after loading the geometry, there's no need to redo primitive a
 
  The pipeline workflow is shown below.
 
-![](img/Pipeline.png =80x)
+![](./img/Pipeline.png =80x)
 
 
 * New pipeline for tessellation analysis
