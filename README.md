@@ -63,10 +63,20 @@ Considering that after loading the geometry, there's no need to redo primitive a
 
 
 * **Analysis for Tessellation**
-![](img/Suzzane_tess2.PNG) ![](img/tess_suzanne.png)
+
+Tested suzzane.obj (968 faces, 2904 vertices) with only tessellation.
+
+![](img/Suzzane_tess2.PNG) | ![](img/tess_suzanne.png)
 
 * **Analysis for Tessellation and Displacement Map**
-![](img/Plane_tess8.PNG) ![](img/tess_plane.png)
+
+Tested plane.obj (2 faces, 4 vertices) with tessellation,texture mapping and displacement mapping.
+
+![](img/Plane_tess8.PNG) | ![](img/tess_plane.png)
+
+Both two cases above shows that when tessellation level is low, it actually goes faster by increasing the tessellation level.
+My guess is that when tessellation level goes a bit higher, there are more threads dealing with smaller AABBs. 
+Thus the same amount of work is paralled as more smaller tasks. When the triangle counts is below certain amount, it trades off the increment of threads very well.
 
 #### Obj Analysis
 
