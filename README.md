@@ -6,7 +6,7 @@ CUDA Rasterizer
 * Levi Cai
 * Tested on: Windows 8, i7-5500U @ 2.4GHz, 12GB, NVidia GeForce 940M 2GB
 
-![](cow_instancing.PNG)
+![](renders/cow_instancing.PNG)
 Attack of the cowwwssss!
 
 ### Graphics Pipeline
@@ -22,6 +22,29 @@ This is an implementation of a CUDA-based graphics pipeline with the following s
 * Mouse control
 * Color interpolation on primitive surfaces
 
+### Feature Demos
+
+## Depth-Testing
+
+Correct:
+![](renders/depth_test_flower.PNG)
+
+Incorrect:
+![](renders/render_gone_wrong.PNG)
+
+## Color Interpolation
+
+![](renders/cow_color_interpolation.PNG)
+
+## Instancing
+
+5x cows
+![](renders/cow_instancing.PNG)
+
+## Anti-Aliasing
+
+3x super sampling results
+![](renders/anti_aliasing_cow_3_v_1.PNG)
 
 ### Performance Analysis
 
