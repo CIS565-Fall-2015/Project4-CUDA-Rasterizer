@@ -12,8 +12,8 @@
 //-------------MAIN--------------
 //-------------------------------
 
-float theta = 1.57079632679f;
-float phi = 0.0f;
+float theta = 1.57079632679f;// 0.78539816339f;
+float phi = 0.0f;//2.35619449019f;
 float zoom = 10.0f;
 glm::mat4 camMatrix;
 
@@ -86,9 +86,15 @@ void runCuda() {
 	// set up soooooome matrices!
 	glm::mat4 ID = glm::mat4();
 
-	//glm::mat4 tf;
-	//tf = glm::translate(tf, glm::vec3(0.0f, 0.0f, 0.0f));
-	firstTryRasterize(dptr, ID, camMatrix);
+	//glm::mat4 cam = glm::mat4();
+	//cam[0] = glm::vec4(-1.26755321f, 0.896295428f, -0.501001000f, -0.500000000);
+	//cam[1] = glm::vec4(0.000000000f, 1.26755321f, 0.708522379f, 0.707106769f);
+	//cam[2] = glm::vec4(-1.26755321f, -0.896295428f, 0.501001000f, 0.500000000f);
+	//cam[3] = glm::vec4(0.000000000f, 0.0000f, 9.81981945f, 10.0f);
+
+	glm::mat4 tf;
+	tf = glm::translate(tf, glm::vec3(0.0f, 0.0f, 0.0f));
+	firstTryRasterize(dptr, tf, camMatrix);//cam);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -287,11 +293,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			glfwSetWindowShouldClose(window, GL_TRUE);
 			break;
 		case GLFW_KEY_DOWN:  
-			theta += -0.1f;
+			theta += 0.1f;
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_UP:    
-			theta += 0.1f;
+			theta -= 0.1f;
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_RIGHT: 
@@ -309,6 +315,12 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			zoom -= 1.0f;
 			computeCameraMatrix();
 			break;
+		case GLFW_KEY_C:
+			glm::vec3 cameraPos;
+			cameraPos.x = zoom * sin(phi) * sin(theta);
+			cameraPos.y = zoom * cos(theta);
+			cameraPos.z = zoom * cos(phi) * sin(theta);
+			cout << cameraPos.x << " " << cameraPos.y << " " << cameraPos.z << endl;
 		}
 	}
 }
