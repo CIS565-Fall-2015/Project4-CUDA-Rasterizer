@@ -39,30 +39,20 @@ and a framebuffer.
 
 ![](img/cow_red_light.png "Cow with a red light source and phong shading")
 
+* Backface culling, optimized using stream compaction (thrust)
+ * 
 
-* (1.0) Tile-based pipeline.
-* Additional pipeline stages.
-   * (1.0) Tessellation shader.
-   * (1.0) Geometry shader, able to output a variable number of primitives per
-     input primitive, optimized using stream compaction (thrust allowed).
-   * (0.5 **if not doing geometry shader**) Backface culling, optimized using
-     stream compaction (thrust allowed).
-   * (1.0) Transform feedback.
-   * (0.5) Scissor test.
-   * (0.5) Blending (when writing into framebuffer).
-* (1.0) Instancing: draw one set of vertex data multiple times, each run
-  through the vertex shader with a different ID.
-* (0.5) Correct color interpolation between points on a primitive.
-* (1.0) UV texture mapping with bilinear texture filtering and perspective
-  correct texture coordinates.
-* Support for rasterizing additional primitives:
-   * (0.5) Lines or line strips.
-   * (0.5) Points.
-* (1.0) Anti-aliasing.
-* (1.0) Occlusion queries.
-* (1.0) Order-independent translucency using a k-buffer.
-* (0.5) **Mouse**-based interactive camera support.
+* Rasterize lines or line strips
+ *
 
+* Rasterize points
+ *
+
+* Anti-aliasing
+ *
+
+* **Mouse**-based interactive camera support
+ *
 
 **IMPORTANT:**
 For each extra feature, please provide the following brief analysis:
