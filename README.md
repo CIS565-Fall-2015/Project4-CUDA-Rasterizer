@@ -85,10 +85,13 @@ These fragments are finally output to the framebuffer, and from there displayed 
 
 Below you can see performance breakdowns for three different models, a smooth cow model, a smooth Stanford dragon model, and a complex "flower" model. The breakdown shows the percentage of team each main kernel stage of the rasterization pipeline takes relative to the others. In all three examples, you can see that by far the largest portion of the pipeline is the rasterization stage. Which stage comes in second varies dramatically. Between the cow and the dragon model, we see both the vertex shader and the primitive assembly stages increase, the primitive assembly especially so. This is because of the additional complexity of the dragon model, it contains many more polygons than the cow model. When we look at the chart for the "flower" model, the duration of the rasterization step is so significant that it essentially erases every other step in the pipeline. This model presents a very complicated depth problem for the depth test component of the rasterization stage, and the results here show how significant that portion of the pipeline is to performance.
 
+![](renders/cow.png "Smooth Cow")
 ![](data_images/Cow Pie Chart.png "Cow Rasterization Pipeline Breakdown")
 
+![](renders/Dragon_norm.png "Smooth Dragon.png")
 ![](data_images/Dragon Pie Chart.png "Dragon Rasterization Pipeline Breakdown")
 
+![](renders/flower.png "Flower.png")
 ![](data_images/Flower Pie Chart.png "Flower Rasterization Pipeline Breakdown")
 
 ### Optimizations
