@@ -40,7 +40,6 @@ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
     return glm::vec3(m * v);
 }
 
-// CHECKITOUT
 /**
  * Finds the axis aligned bounding box for a given triangle.
  */
@@ -58,7 +57,6 @@ AABB getAABBForTriangle(const glm::vec3 tri[3]) {
     return aabb;
 }
 
-// CHECKITOUT
 /**
  * Calculate the signed area of a given triangle.
  */
@@ -67,7 +65,6 @@ float calculateSignedArea(const glm::vec3 tri[3]) {
     return 0.5 * ((tri[2].x - tri[0].x) * (tri[1].y - tri[0].y) - (tri[1].x - tri[0].x) * (tri[2].y - tri[0].y));
 }
 
-// CHECKITOUT
 /**
  * Helper function for calculating barycentric coordinates.
  */
@@ -80,7 +77,6 @@ float calculateBarycentricCoordinateValue(glm::vec2 a, glm::vec2 b, glm::vec2 c,
     return calculateSignedArea(baryTri) / calculateSignedArea(tri);
 }
 
-// CHECKITOUT
 /**
  * Calculate barycentric coordinates.
  */
@@ -92,7 +88,6 @@ glm::vec3 calculateBarycentricCoordinate(const glm::vec3 tri[3], glm::vec2 point
     return glm::vec3(alpha, beta, gamma);
 }
 
-// CHECKITOUT
 /**
  * Check if a barycentric coordinate is within the boundaries of a triangle.
  */
@@ -103,7 +98,16 @@ bool isBarycentricCoordInBounds(const glm::vec3 barycentricCoord) {
            barycentricCoord.z >= 0.0 && barycentricCoord.z <= 1.0;
 }
 
-// CHECKITOUT
+/**
+ * Check if a barycentric coordinate is within the boundaries of a triangle.
+ */
+__host__ __device__ static
+glm::vec3 barycentricInterpolate(const glm::vec3 tri[3], const glm::vec3 barycentricCoord) {
+    return barycentricCoord.x * tri[0] +
+        barycentricCoord.y * tri[1] +
+        barycentricCoord.z * tri[2];
+}
+
 /**
  * For a given barycentric coordinate, compute the corresponding z position
  * (i.e. depth) on the triangle.

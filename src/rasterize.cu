@@ -32,7 +32,9 @@ struct VertexOut {
     glm::vec3 col;
 };
 struct Triangle {
-    VertexOut v[3];
+    glm::vec3 pos[3];
+    glm::vec3 nor[3];
+    glm::vec3 col[3];
 };
 struct Fragment {
     glm::vec3 color;
@@ -180,40 +182,60 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < primitivecount) {
+        VertexOut v[3];
+        v[0] = vertices[indices[k*3  ]];
+        v[1] = vertices[indices[k*3+1]];
+        v[2] = vertices[indices[k*3+2]];
+
         Triangle tri;
-        tri.v[0] = vertices[indices[k*3  ]];
-        tri.v[1] = vertices[indices[k*3+1]];
-        tri.v[2] = vertices[indices[k*3+2]];
+        tri.pos[0] = v[0].pos;
+        tri.pos[1] = v[1].pos;
+        tri.pos[2] = v[2].pos;
+
+        tri.nor[0] = v[0].nor;
+        tri.nor[1] = v[1].nor;
+        tri.nor[2] = v[2].nor;
+
+        tri.col[0] = v[0].col;
+        tri.col[1] = v[1].col;
+        tri.col[2] = v[2].col;
         primitives[k] = tri;
     }
 }
 
+__device__ void shadeFragment(float x, float y, float width, float height,
+        Triangle tri, glm::vec3 light,
+        Fragment *fragments) {
+
+    glm::vec3 bary = calculateBarycentricCoordinate(tri.pos, glm::vec2(x, y));
+
+    if (isBarycentricCoordInBounds(bary)) {
+        glm::vec3 pos = glm::vec3(fromNDC(x, y, width, height), getZAtCoordinate(bary, tri.pos));
+        int pixelIndex = pos.x + (pos.y * width);
+
+        glm::vec3 norm = barycentricInterpolate(tri.nor, bary);
+        fragments[pixelIndex] = (Fragment) { norm };
+    }
+}
+
+// Scans across triangles to generate primitives (pixels).
 __global__ void scanline(int width, int height, int tricount,
         Triangle *primitives, Fragment *fragments, glm::vec3 light) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < tricount) {
         Triangle tri = primitives[k];
-        glm::vec3 tripos[3] = { tri.v[0].pos, tri.v[1].pos, tri.v[2].pos };
 
         float ystep = 2.f / height;
         float xstep = 2.f / width;
 
-        AABB bb = getAABBForTriangle(tripos);
+        AABB bb = getAABBForTriangle(tri.pos);
 
         float ymin = (int) (bb.min.y / ystep) * ystep;
         float xmin = (int) (bb.min.x / xstep) * xstep;
         for (float y = ymin; y < bb.max.y; y += ystep) {
             for (float x = xmin; x < bb.max.x; x += xstep) {
-                glm::vec3 bary = calculateBarycentricCoordinate(tripos, glm::vec2(x, y));
-
-                if (isBarycentricCoordInBounds(bary)) {
-                    glm::vec2 pix = fromNDC(x, y, width, height);
-                    int pixelIndex = pix.x + (pix.y * width);
-
-                    glm::vec3 norm = tri.v[0].nor;
-                    fragments[pixelIndex] = (Fragment) { norm };
-                }
+                shadeFragment(x, y, width, height, tri, light, fragments);
             }
         }
     }
@@ -240,6 +262,7 @@ void rasterize(uchar4 *pbo) {
     c.view = glm::vec3(0, 0, 1);
     c.up = glm::vec3(0, -1, 0);
     c.light = glm::vec3(0, 4, 0);
+    c.fovy = glm::radians(45);
 
     glm::mat4 model = glm::mat4(1.f);
     glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
