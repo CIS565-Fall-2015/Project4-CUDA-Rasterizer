@@ -15,7 +15,9 @@
 #include <thrust/random.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
+#include <util/utilityCore.hpp>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 #include "sceneStructs.h"
@@ -33,7 +35,6 @@ struct VertexOut {
     glm::vec3 col;
 
     glm::vec3 worldPos;
-    glm::vec3 worldNor;
 };
 struct Triangle {
     glm::vec3 pos[3];
@@ -41,7 +42,6 @@ struct Triangle {
     glm::vec3 col[3];
 
     glm::vec3 worldPos[3];
-    glm::vec3 worldNor[3];
 };
 struct Fragment {
     glm::vec3 color;
@@ -65,6 +65,13 @@ static glm::vec3 *dev_framebuffer  = NULL;
 
 __device__ void printVec3(glm::vec3 v) {
     printf("(%f, %f, %f)\n", v.x, v.y, v.z);
+}
+
+__device__ void printMat4(const glm::mat4 &m) {
+    printf("%f, %f, %f, %f\n", m[0][0], m[1][0], m[2][0], m[3][0]);
+    printf("%f, %f, %f, %f\n", m[0][1], m[1][1], m[2][1], m[3][1]);
+    printf("%f, %f, %f, %f\n", m[0][2], m[1][2], m[2][2], m[3][2]);
+    printf("%f, %f, %f, %f\n", m[0][3], m[1][3], m[2][3], m[3][3]);
 }
 
 /************************* Output to Screen ***********************************/
@@ -175,19 +182,18 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
 
 // Applies vertex transformations (from given model-view-projection matrix)
 __global__ void vertexShader(int vertcount, VertexIn *verticesIn,
-        VertexOut *verticesOut, glm::mat4 mvp) {
+        VertexOut *verticesOut, glm::mat4 model, glm::mat4 invModel,
+        glm::mat4 mvp) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < vertcount) {
         VertexIn vin = verticesIn[k];
 
         VertexOut vo;
+        vo.worldPos = multiplyMV(model, glm::vec4(vin.pos, 1));
         vo.pos = multiplyMV(mvp, glm::vec4(vin.pos, 1));
-        vo.nor = multiplyMV(mvp, glm::vec4(vin.nor, 1));
+        vo.nor = glm::vec3(invModel * glm::vec4(vin.nor, 0));
         vo.col = vin.col;
-
-        vo.worldPos = vin.pos;
-        vo.worldNor = vin.nor;
         verticesOut[k] = vo;
     }
 }
@@ -219,10 +225,6 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
         tri.worldPos[0] = v[0].worldPos;
         tri.worldPos[1] = v[1].worldPos;
         tri.worldPos[2] = v[2].worldPos;
-
-        tri.worldNor[0] = v[0].worldNor;
-        tri.worldNor[1] = v[1].worldNor;
-        tri.worldNor[2] = v[2].worldNor;
         primitives[k] = tri;
     }
 }
@@ -282,7 +284,7 @@ __global__ void fragmentShader(int width, int height,
     if (x < width && y < height) {
         Fragment &frag = fragments[index];
         if (frag.valid) {
-            glm::vec3 norm = barycentricInterpolate(frag.tri.worldNor, frag.baryCoords);
+            glm::vec3 norm = barycentricInterpolate(frag.tri.nor, frag.baryCoords);
             glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
             glm::vec3 lightdir = glm::normalize(light - pos);
             frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
@@ -308,22 +310,35 @@ void rasterize(uchar4 *pbo) {
     dim3 triBlockCount((tricount + sideLength1d - 1) / sideLength1d);
 
     Camera c;
-    c.position = glm::vec3(0, 3, -10);
-    c.view = glm::vec3(0, 0, 1);
-    c.up = glm::vec3(0, -1, 0);
-    c.light = glm::vec3(5, 4, 0);
-    c.fovy = 45.f;
+//    c.position = glm::vec3(0, 3, -10);
+//    c.view = glm::vec3(0, 0, 1);
+//    c.up = glm::vec3(0, -1, 0);
+//    c.light = glm::vec3(5, 4, 0);
+//    c.fovy = 45.f;
+
+//    c.position = glm::vec3(0, 6, -90);
+//    c.view = glm::vec3(0, 0, 15);
+//    c.up = glm::vec3(0, 1, 0);
+//    c.light = glm::vec3(0, 4, 5);
+//    c.fovy = 17.f;
+
+    c.position = glm::vec3(0, 1, 1);
+    c.view = glm::vec3(0, 0, 0);
+    c.up = glm::vec3(0, 1, 0);
+    c.light = glm::vec3(0, 4, 5);
+    c.fovy = glm::radians(40.f);
 
     glm::mat4 model = glm::mat4(1.f);
+    glm::mat4 invModel = glm::inverseTranspose(model);
     glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
-    glm::mat4 persp = glm::perspective(c.fovy, 1.f, 1.f, 100.f);
+    glm::mat4 persp = glm::perspective(c.fovy, 1.f, 1.f, 10.f);
     glm::mat4 mvp = persp * view * model;
 
     clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
     checkCUDAError("scan");
 
     vertexShader<<<vertBlockCount, blockSize1d>>>( vertCount,
-            dev_bufVertexIn, dev_bufVertexOut, mvp);
+            dev_bufVertexIn, dev_bufVertexOut, model, invModel, mvp);
     checkCUDAError("scan");
 
     // VertexOut -> Triangle

@@ -37,7 +37,8 @@ glm::vec2 fromNDC(float ndc_x, float ndc_y, int width, int height) {
  */
 __host__ __device__ static
 glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
-    return glm::vec3(m * v);
+    glm::vec4 prod = m * v;
+    return glm::vec3(prod) / prod.w;
 }
 
 /**
