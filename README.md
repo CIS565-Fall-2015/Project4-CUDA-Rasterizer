@@ -41,7 +41,10 @@ and a framebuffer.
 
 * Backface culling, optimized using stream compaction (thrust)
  * Backface culling checks whether a triangle is facing the camera.  If it is not facing the camera, then it is ignored, and not drawn by the fragment shader.  In order to determine whether a triangle was facing the camera or not, I used the signed area test.  The signed area test tells me whether the triangle's vertices are in clockwise or counter-clockwise order.  If they are in counter-clockwise order, then the triangle is backfacing and should be ignored.  This allowed me to mark each triangle as forward facing or back facing.  Then, I used thrust to stream compact the array of triangles, getting rid of any that had been marked as back facing triangles.  This allowed the rasterization step to take less time, as less triangles are being drawn.  
- * This graph shows the speed up times for the amount of triangles that got deleted.  While, the backface culling does always give a speed up, the amount of speed up varies greatly between models.  I believe that the amount of speed up that occured, relied greatly on the size of the triangles.  The bigger the triangles were, the more of a speed up occured.  The flower was scaled larger, and hence had a larger speed up.
+ * The image below shows an image of the cow with correct backface culling (the previous cow images have incorrect backface culling)
+ * The graph below shows the speed up times for the amount of triangles that got deleted.  While, the backface culling does always give a speed up, the amount of speed up varies greatly between models.  I believe that the amount of speed up that occured, relied greatly on the size of the triangles.  The bigger the triangles were, the more of a speed up occured.  The flower was scaled larger, and hence had a larger speed up.
+
+![](img/cow_backface.png)
 
 ![](img/graph1.png)
 
