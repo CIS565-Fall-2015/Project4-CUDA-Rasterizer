@@ -15,19 +15,19 @@ Description here:...
 
 #### Controls
 
-|  KEY/Mouse	|   Function						| Demo Image				|
-|---------------|-----------------------------------|---------------------------|
-|Left Mouse		| Rotate							|  [pic]					|
-|Middle Mouse	| Zoom								|  [pic]					|
-|Right Mouse	| Move								|  [pic]					|
-|Key '0'		| Wireframe only					|  [pic]					|
-|Key '1'		|     Color							|  [pic]					|
-|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =80x)	|
-|Key 't'		| turn texture on/off			    |  [pic]					|
-|Key 'n'		|  normal testing					|  [pic]					|
-|Key 'd'		| turn displacement mapping on/off  |  [pic]					|
-|Key Up/Down	|increase/reduce tessellation level |  [pic]					|
-|Key Left/Right	|increase/reduce texture repeat		|  [pic]					|
+|  KEY/Mouse	|   Function						| Demo Image		|
+|---------------|-----------------------------------|-------------------|
+|Left Mouse		| Rotate							|  [pic]			|
+|Middle Mouse	| Zoom								|  [pic]			|
+|Right Mouse	| Move								|  [pic]			|
+|Key '0'		| Wireframe only					|  [pic]			|
+|Key '1'		|     Color							|  [pic]			|
+|Key 'w'		| turn wireframe on/off				|![](img/keyW.gif)	|
+|Key 't'		| turn texture on/off			    |  [pic]			|
+|Key 'n'		|  normal testing					|  [pic]			|
+|Key 'd'		| turn displacement mapping on/off  |  [pic]			|
+|Key Up/Down	|increase/reduce tessellation level |  [pic]			|
+|Key Left/Right	|increase/reduce texture repeat		|  [pic]			|
 
 Features
 ========================
@@ -59,7 +59,7 @@ Considering that after loading the geometry, there's no need to redo primitive a
 
  The pipeline workflow is shown below.
 
-![](./img/Pipeline.png =80x)
+![]/img/Pipeline.png)
 
 
 * New pipeline for tessellation analysis
