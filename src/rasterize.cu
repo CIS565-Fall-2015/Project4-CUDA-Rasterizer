@@ -101,8 +101,6 @@ void kernVertexShader(int vtxCount,glm::mat4 M_model, glm::mat4 M_view, glm::mat
 	}
 }
 
-
-
 __device__ VertexOut EdgeTessellator_MipP(VertexOut vtxA, VertexOut vtxB, glm::mat4 Mats, glm::mat4 M_win)
 {
 	//now, all linear. (mid point)
@@ -119,8 +117,7 @@ __device__ VertexOut EdgeTessellator_MipP(VertexOut vtxA, VertexOut vtxB, glm::m
 	return vtxC;
 }
 
-__global__
-void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut,int tessLevel,int tessIncre,glm::mat4 Mats,glm::mat4 M_win)
+__global__ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut,int tessLevel,int tessIncre)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//bufIdxSize *= tessIncre;
@@ -165,8 +162,69 @@ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, Vert
 	}
 }
 
-__global__
-void kernTessellation(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
+__device__ VertexOut VtxUpdate(VertexOut v,glm::mat4 M_model,glm::mat4 M_view,glm::mat4 M_Proj,glm::mat4 M_win)
+{
+	VertexOut outV = v;
+	glm::vec4 P_clip = M_Proj * M_view * M_model * glm::vec4(v.pos, 1);	//clip coords
+	glm::vec4 P_NDC = P_clip*(1 / P_clip.w);//!!!w-divide for NDC	: P_clip/w
+
+	outV.ndc = glm::vec3(P_NDC);
+	P_NDC = M_win*P_NDC;
+	outV.winPos = glm::vec3(P_NDC);
+
+	return outV;
+}
+
+__global__ void kernPrimUpdate(Triangle* primitives, int primSize, glm::mat4 M_model, glm::mat4 M_view, glm::mat4 M_Proj, glm::mat4 M_win)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//bufIdxSize *= tessIncre;
+	if (primSize)
+	{
+		primitives[index].v[0] = VtxUpdate(primitives[index].v[0], M_model, M_view, M_Proj, M_win);
+		primitives[index].v[1] = VtxUpdate(primitives[index].v[1], M_model, M_view, M_Proj, M_win);
+		primitives[index].v[2] = VtxUpdate(primitives[index].v[2], M_model, M_view, M_Proj, M_win);
+	}
+}
+
+/*
+__global__ void kernVS_tessellator(VertexIn * in_Vtx, VertexIn *out_Vtx,int crntSize, int * in_Idx, int * out_Idx,int crntIncre)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < crntSize)
+	{
+		int i = 3 * index;
+
+		VertexIn v0 = in_Vtx[in_Idx[i + 0]];
+		VertexIn v1 = in_Vtx[in_Idx[i + 1]];
+		VertexIn v2 = in_Vtx[in_Idx[i + 2]];
+
+		VertexIn m0 = EdgeMidP(v0, v1);
+		VertexIn m1 = EdgeMidP(v0, v2);
+		VertexIn m2 = EdgeMidP(v1, v2);
+
+		int deltC = crntIncre/4;
+
+		out_Vtx[(index + 0) * crntIncre + 0 * deltC] = v0;
+		out_Vtx[(index + 0) * crntIncre + 1 * deltC] = m0;
+		out_Vtx[(index + 0) * crntIncre + 2 * deltC] = m1;
+
+		out_Vtx[(index + 1) * crntIncre + 0 * deltC] = v1;
+		out_Vtx[(index + 1) * crntIncre + 1 * deltC] = m0;
+		out_Vtx[(index + 1) * crntIncre + 2 * deltC] = m2;
+
+		out_Vtx[(index + 2) * crntIncre + 0 * deltC] = v2;
+		out_Vtx[(index + 2) * crntIncre + 1 * deltC] = m1;
+		out_Vtx[(index + 2) * crntIncre + 2 * deltC] = m2;
+
+		out_Vtx[(index + 3) * crntIncre + 0 * deltC] = m0;
+		out_Vtx[(index + 3) * crntIncre + 1 * deltC] = m1;
+		out_Vtx[(index + 3) * crntIncre + 2 * deltC] = m2;
+
+	}
+}
+*/
+__global__ void kernTessellation_aftPri(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
 {
 	
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -306,7 +364,7 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 }
 
 __global__ 
-void kernDispMapping(Triangle* primitives, int crntSize, glm::mat4 Mats, glm::mat4 M_win, glm::vec3** texs, glm::vec2* tInfo)
+void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** texs, glm::vec2* tInfo)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (texs == NULL || tInfo == NULL) return;
@@ -318,16 +376,9 @@ void kernDispMapping(Triangle* primitives, int crntSize, glm::mat4 Mats, glm::ma
 			{
 				float disp = 0.1*glm::length( ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex)) );
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
-				printf("disp:%2f\n",disp);
-				//vtxC.pos = (vtxA.pos + vtxB.pos)*0.5f;
-				//vtxC.nor = glm::normalize(vtxA.nor + vtxB.nor);
-				glm::vec4 clip = Mats*glm::vec4(primitives[index].v[i].pos, 1);
-				primitives[index].v[i].ndc = glm::vec3(clip*(1 / clip.w));
-				primitives[index].v[i].winPos = glm::vec3(M_win*glm::vec4(primitives[index].v[i].ndc, 1));// (vtxA.winPos + vtxB.winPos)*0.5f;
-				//vtxC.tex = (vtxA.tex + vtxB.tex)*0.5f;
-				//vtxC.col = (vtxA.col + vtxB.col)*0.5f;
+				//!!! later normal
 				primitives[index].v[i].DispAdded = true;
-				//primitives[index].v[i].col = glm::vec3(disp,0,0);
+
 			}
 		}
 
@@ -374,8 +425,8 @@ void kernRasterizer(int w, int h, Fragment * depthbuffer, Triangle*primitives, i
 				glm::vec3 bPoint = calculateBarycentricCoordinate(tri, glm::vec2(x, y));
 				//!!! later line segment
 				
-				//if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
-				if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
+				if (isBarycentricCoordOnBounds(bPoint)) //On triangle edges : Frame shading
+				//if (isBarycentricCoordInBounds(bPoint)) // Inside triangle
 				{
 					if (x<0 || x>w || y<0 || y>h)
 						continue;
@@ -537,6 +588,17 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 	cudaMemset(dev_primitives, 0, priCount * sizeof(Triangle));
 
 	checkCUDAError("rasterizeSetBuffers");
+
+	int bSize_vtx = 128;
+	int bSize_pri = 128;
+	dim3 gSize_vtx((vertCount + bSize_vtx - 1) / bSize_vtx);
+	int priSize = bufIdxSize / 3;
+	dim3 gSize_pri((priSize + bSize_pri - 1) / bSize_pri);
+	
+	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, glm::mat4(), dev_bufVertex, dev_bufVtxOut, M_win );
+
+	kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre);
+
 }
 
 /**
@@ -546,14 +608,14 @@ void rasterizeSetBuffers(obj * mesh, int TessLevel) {
 void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel) {
     int sideLength2d = 8;
 
+	glm::vec3 light(0.3, 0.4, 0.5);
 
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
-	M_view = viewMat;//glm::lookAt(eye, center, up);
-    // TODO: Execute your rasterization pipeline here
-    // (See README for rasterization pipeline outline.)
+	M_view = viewMat;
+	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();
 
 	int bSize_vtx = 128;
 	int bSize_pri = 128;
@@ -563,50 +625,37 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 
 	tessLevel = TessLevel;
 	tessIncre = pow(4, tessLevel);
-	if (TessLevel > lastLevel)
-		cudaMalloc(&dev_primitives, priSize * tessIncre * sizeof(Triangle));
-	lastLevel = tessLevel;
 
-	glm::vec3 light(0.3, 0.4, 0.5);
-	//glm::vec4 lightWin = M_win*projMat * M_view * glm::mat4() *light;
-	//glm::vec4 lightW = light;// projMat * M_view * glm::mat4() *light;
-	glm::mat4 M_all = M_win*projMat * M_view * glm::mat4();
-	//****** 1. Clear depth buffer
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
-	//****** 2. Vertex Shading
-	//	VertexIn[n] vs_input -> VertexOut[n] vs_output
 
-	kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
-
-
-	//****** 3. Primitive Assembly
-	//  VertexOut[n] vs_output -> Triangle[n/3] primitives
-	kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre, projMat * M_view * glm::mat4(), M_win);
-	
-	//priSize *= tessIncre;
-	//gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
-
-	int tempSize = bufIdxSize / 3;
-	int tempIncre = tessIncre;
-	for (int i = 0; i < tessLevel; i++)
+	//kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
+	if (TessLevel != lastLevel)
 	{
-		kernTessellation << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
-		tempSize *= 4;
-		tempIncre /= 4;
-		int priSize = tempSize;
-		gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
-	}
+		if (TessLevel > lastLevel)
+		{
+			cudaMalloc(&dev_primitives, priSize * tessIncre * sizeof(Triangle));
+			//kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre, projMat * M_view * glm::mat4(), M_win);
+		}
+		kernPrimitiveAssembly << <gSize_pri, bSize_pri >> >(dev_primitives, dev_bufIdx, bufIdxSize, dev_bufVtxOut, tessLevel, tessIncre);
+		lastLevel = tessLevel;
 
-	checkCUDAError("rasterize----");
-	kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, projMat * M_view * glm::mat4(), M_win, dev_textures, dev_texInfo);
-	//****** 4. Rasterization
-	//  Triangle[n/3] primitives -> FragmentIn[m] fs_input
+		int tempSize = bufIdxSize / 3;
+		int tempIncre = tessIncre;
+		for (int i = 0; i < tessLevel; i++)
+		{
+			kernTessellation_aftPri << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
+			tempSize *= 4;
+			tempIncre /= 4;
+			priSize = tempSize;
+			gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
+		}
+		//priSize /= 4;
+		kernDispMapping << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, dev_textures, dev_texInfo);
+	}
+	gSize_pri = dim3((bufIdxSize*tessIncre/3+ bSize_pri - 1) / bSize_pri);
+	kernPrimUpdate << <gSize_pri, bSize_pri >> >(dev_primitives, priSize, glm::mat4(), M_view, projMat, M_win);
 	kernRasterizer << <gSize_pri, bSize_pri >> >(width, height, dev_depthbuffer, dev_primitives, bufIdxSize*tessIncre, light, eye, M_all, dev_textures, dev_texInfo);
-	//****** 5. Fragment shading
-	//****** 6. Fragments to depth buffer
-	//****** 7. Depth buffer for storing & testing fragments
-	//****** 8. Fragment to framebuffer writing
-	checkCUDAError("rasterizeAAAA");
+
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
