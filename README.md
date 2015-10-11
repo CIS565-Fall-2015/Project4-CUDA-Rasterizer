@@ -6,8 +6,9 @@ CUDA Rasterizer
 * Levi Cai
 * Tested on: Windows 8, i7-5500U @ 2.4GHz, 12GB, NVidia GeForce 940M 2GB
 
-![](renders/cow_instancing.PNG)
 Attack of the cowwwssss!
+
+![](renders/cow_instancing.PNG)
 
 ### Graphics Pipeline
 
