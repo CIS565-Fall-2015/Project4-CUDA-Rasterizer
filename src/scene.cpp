@@ -20,31 +20,7 @@ Scene::Scene() {
 
 	mouseState.initialPositionsSet = false;
 
-	// Then have to calculate hte model view matrix
-	updateModelView();
-}
-
-Scene::Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, glm::vec3 cameraLookAt, 
-	glm::vec3 cameraRight, glm::vec3 lightPosition, glm::vec3 lightColor, bool culling) {
-	this->nearPlane = nearPlane;
-	this->farPlane = farPlane;
-	camera.fieldOfView = fieldOfView;
-	camera.position = cameraPosition;
-	camera.lookAt = cameraLookAt;
-	camera.right = cameraRight;
-
-	light.position = lightPosition;
-	light.color = lightColor;
-
-	this->culling = culling;
-	scissor = false;
-	this->pointRasterization = false;
-	this->lineRasterization = false;
-	mouseState.initialPositionsSet = false;
-	mouseState.leftPressed = false;
-	mouseState.middlePressed = false;
-
-	// Then have to calculate hte model view matrix
+	// Then have to calculate the model view matrix
 	updateModelView();
 }
 

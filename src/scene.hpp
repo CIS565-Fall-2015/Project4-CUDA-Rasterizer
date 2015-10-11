@@ -39,7 +39,6 @@ public:
 	float farPlane;
 	glm::mat4 modelView;
 
-	//TODO: This should be an array of lights?
 	Light light;
 
 	bool culling;
@@ -51,8 +50,6 @@ public:
 	glm::vec2 scissorMax;
 
 	Scene();
-	Scene(float fieldOfView, int nearPlane, int farPlane, glm::vec3 cameraPosition, 
-		glm::vec3 cameraLookAt, glm::vec3 cameraRight, glm::vec3 lightPosition, glm::vec3 lightColor, bool culling);
 	~Scene();
 
 	void updateModelView();

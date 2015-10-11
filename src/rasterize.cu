@@ -24,7 +24,7 @@ static int width = 0;
 static int height = 0;
 static Scene *scene = NULL;
 static int *dev_bufIdx = NULL;
-static VertexIn *dev_bufVertex = NULL; //TODO Shouldn't this really be changed to indicate that it is in?
+static VertexIn *dev_bufVertex = NULL;
 static VertexOut *dev_bufVertexOut = NULL;
 static Triangle *dev_primitives = NULL;
 static int *dev_depth = NULL;
@@ -115,6 +115,10 @@ void assemblePrimitives(int primitiveCount, const VertexOut *vertexBufferOut, Tr
 	}
 }
 
+
+/**
+* Perform scanline rasterization on a triangle
+*/
 __global__
 void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
@@ -148,6 +152,9 @@ void rasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragm
 	}
 }
 
+/**
+* Rasterize point primitives.
+*/
 __global__
 void pointRasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
@@ -170,6 +177,10 @@ void pointRasterization(int w, int h, int primitiveCount, Triangle *primitives, 
 	}
 }
 
+
+/**
+* Rasterize line primitives.
+*/
 __global__
 void lineRasterization(int w, int h, int primitiveCount, Triangle *primitives, Fragment *depthbuffer, int *depth) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
@@ -234,11 +245,10 @@ void lineRasterization(int w, int h, int primitiveCount, Triangle *primitives, F
 }
 
 /**
-* Fragment shader
+* Fragment shader. Use light argument to color the fragment in the depth buffer.
 */
 __global__
 void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light) {
-	// TODO: Handle an array of lights
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < (w * h)) {
@@ -248,6 +258,9 @@ void fragmentShading(int w, int h, Fragment *depthBuffer, const Light light) {
 	}
 }
 
+/**
+* Perform backface culling optimization, removing unscene fragments.
+*/
 __global__
 void backFaceCulling(int w, int primitiveCount, Triangle *primitives, glm::vec3 cameraPosition) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);
@@ -259,6 +272,9 @@ void backFaceCulling(int w, int primitiveCount, Triangle *primitives, glm::vec3 
 	}
 }
 
+/**
+* Perform scissor test culling, removing fragments outside of the scissor area.
+*/
 __global__
 void scissorTest(int w, int primitiveCount, Triangle *primitives, const glm::vec2 scissorMax, const glm::vec2 scissorMin) {
 	int index = ((blockIdx.x * blockDim.x) + threadIdx.x) + (((blockIdx.y * blockDim.y) + threadIdx.y) * w);

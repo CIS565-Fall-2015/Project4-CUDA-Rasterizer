@@ -21,13 +21,11 @@ struct VertexIn {
 	glm::vec3 pos;
 	glm::vec3 nor;
 	glm::vec3 col;
-	// TODO (optional) add other vertex attributes (e.g. texture coordinates)
 };
 
 struct VertexOut {
-	// TODO: Mirrors VertexIn?
 	glm::vec3 pos;
-	glm::vec3 model_pos; // Believe I will need this if I want to do culling or geom shading?
+	glm::vec3 model_pos; // Used for culling
 	glm::vec3 nor;
 	glm::vec3 col;
 };
@@ -42,7 +40,6 @@ struct Fragment {
 	glm::vec3 position;
 	glm::vec3 normal;
 	glm::vec3 color;
-	// will probably need to add more here? Will require updating my clear method
 };
 
 /**
