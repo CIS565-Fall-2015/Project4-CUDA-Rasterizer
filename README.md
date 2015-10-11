@@ -12,7 +12,7 @@ rasterized graphics pipeline, similar to the OpenGL pipeline. I
 implemented vertex shading, primitive assembly, rasterization, fragment shading,
 and a framebuffer. 
 
-![](img/Rasterizer.MOV)
+[![Video Demo](https://vimeo.com/142082419)](https://vimeo.com/142082419)
 
 * Final Images
 
