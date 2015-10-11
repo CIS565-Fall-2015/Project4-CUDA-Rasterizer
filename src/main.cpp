@@ -7,6 +7,7 @@
  */
 
 #include "main.hpp"
+#define RUN_MIN true
 
 //-------------------------------
 //-------------MAIN--------------
@@ -94,7 +95,8 @@ void runCuda() {
 
 	glm::mat4 tf;
 	tf = glm::translate(tf, glm::vec3(0.0f, 0.0f, 0.0f));
-	firstTryRasterize(dptr, tf, camMatrix);//cam);
+	if (RUN_MIN) minRasterizeFirstTry(dptr, tf, camMatrix);//cam);
+	else rasterize(dptr, tf, camMatrix);
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -140,9 +142,16 @@ bool init(obj *mesh) {
         0.0, 0.0, 1.0,
         1.0, 0.0, 0.0
     };
-    minRasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
-            mesh->getBufPossize() / 3,
-            mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+	if (RUN_MIN) {
+		minRasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
+			mesh->getBufPossize() / 3,
+			mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+	}
+	else {
+		rasterizeSetBuffers(mesh->getBufIdxsize(), mesh->getBufIdx(),
+			mesh->getBufPossize() / 3,
+			mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
+	}
 
     GLuint passthroughProgram;
     passthroughProgram = initShader();
@@ -175,7 +184,8 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    minRasterizeInit(width, height);
+    if (RUN_MIN) minRasterizeInit(width, height);
+	else rasterizeInit(width, height);
 
     // Clean up on program exit
     atexit(cleanupCuda);
@@ -269,7 +279,8 @@ void deleteTexture(GLuint *tex) {
 }
 
 void shut_down(int return_code) {
-    minRasterizeFree();
+	if (RUN_MIN) minRasterizeFree();
+	else rasterizeFree();
     cudaDeviceReset();
 #ifdef __APPLE__
     glfwTerminate();

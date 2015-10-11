@@ -15,6 +15,7 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 
+
 struct VertexIn {
 	glm::vec3 pos;
 	glm::vec3 nor;
@@ -124,16 +125,20 @@ void rasterizeSetBuffers(
 /**
 * Perform rasterization.
 */
-void rasterize(uchar4 *pbo) {
+void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
 	int sideLength2d = 8;
 	dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockCount2d((width - 1) / blockSize2d.x + 1,
 		(height - 1) / blockSize2d.y + 1);
 
-	// TODO: Execute your rasterization pipeline here
-	// (See README for rasterization pipeline outline.)
+	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
+	// 2) vertex shading - pass in vertex tf
+	// 3) primitive assembly
+	// 4) rasterize
+	// 5) frags to depth buffer - don't run in rasterization b/c slow
+	// 6) fragment shade
 
-	// Copy depthbuffer colors into framebuffer
+	// 7) Copy depthbuffer colors into framebuffer
 	render << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	// Copy framebuffer into OpenGL buffer for OpenGL previewing
 	sendImageToPBO << <blockCount2d, blockSize2d >> >(pbo, width, height, dev_framebuffer);

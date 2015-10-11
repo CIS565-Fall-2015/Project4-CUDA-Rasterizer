@@ -6,7 +6,7 @@
  * @copyright University of Pennsylvania & STUDENT
  */
 
-#include "rasterize.h"
+#include "rasterize_min.h"
 
 #include <cmath>
 #include <cstdio>
@@ -14,6 +14,7 @@
 #include <thrust/random.h>
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
+
 
 struct VertexIn {
     glm::vec3 pos;
@@ -54,7 +55,7 @@ static int vertCount = 0;
 /**
  * Kernel that clears frags in
  */
-__global__ void clearFragsIn(int w, int h, FragmentIn *dev_fragsIn) {
+__global__ void minClearFragsIn(int w, int h, FragmentIn *dev_fragsIn) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (x < w && y < h) {
@@ -67,7 +68,7 @@ __global__ void clearFragsIn(int w, int h, FragmentIn *dev_fragsIn) {
 /**
 * Kernel that clears frags out
 */
-__global__ void clearFragsOut(int w, int h, FragmentOut *dev_fragsOut) {
+__global__ void minClearFragsOut(int w, int h, FragmentOut *dev_fragsOut) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (x < w && y < h) {
@@ -78,7 +79,7 @@ __global__ void clearFragsOut(int w, int h, FragmentOut *dev_fragsOut) {
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
  */
-__global__ void sendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
+__global__ void minSendImageToPBO(uchar4 *pbo, int w, int h, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
     int index = x + (y * w);
@@ -292,7 +293,7 @@ __global__ void minFragmentShading(int numFrags, FragmentIn *dev_fragsIn, Fragme
 /**
  * Perform rasterization.
  */
-void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
+void minRasterizeFirstTry(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockSize1d(sideLength2d * sideLength2d);
@@ -305,8 +306,8 @@ void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cam
 
 	// 1) clear frame buffer with some default value.
 	cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
-	clearFragsIn <<<blockCount2d_display, blockSize2d >>>(width, height, dev_fragsIn);
-	clearFragsOut << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut);
+	minClearFragsIn <<<blockCount2d_display, blockSize2d >>>(width, height, dev_fragsIn);
+	minClearFragsOut << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut);
 
 	// 2) vertex shade
 	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
@@ -339,7 +340,7 @@ void firstTryRasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cam
     // Copy depthbuffer colors into framebuffer
 	render << <blockCount2d_display, blockSize2d >> >(width, height, dev_fragsOut, dev_framebuffer);
     // Copy framebuffer into OpenGL buffer for OpenGL previewing
-	sendImageToPBO << <blockCount2d_display, blockSize2d >> >(pbo, width, height, dev_framebuffer);
+	minSendImageToPBO << <blockCount2d_display, blockSize2d >> >(pbo, width, height, dev_framebuffer);
     checkCUDAError("rasterize");
 }
 
