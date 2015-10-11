@@ -22,8 +22,9 @@ struct VertexIn {
 	glm::vec3 col;
 };
 struct VertexOut {
-	glm::vec3 pos;
-	glm::vec3 nor;
+	glm::vec3 screenPos;
+	glm::vec3 worldPos; // needed for computing lighting
+	glm::vec3 worldNor; // needed for computing lighting
 	glm::vec3 col;
 };
 struct Triangle {
@@ -32,7 +33,15 @@ struct Triangle {
 
 struct Fragment {
 	glm::vec3 color;
-	glm::vec3 norm;
+	glm::vec3 worldNorm; // needed for computing lighting
+	glm::vec3 worldPos; // needed for computing lighting
+};
+
+struct Light {
+	glm::vec3 position;
+	glm::vec3 ambient;
+	glm::vec3 diffuse;
+	glm::vec3 specular;
 };
 
 static int width = 0;
@@ -48,6 +57,29 @@ static Fragment *dev_depthbuffer = NULL; // stores visible fragments
 static glm::vec3 *dev_framebuffer = NULL; // framebuffer of colors
 static int bufIdxSize = 0;
 static int vertCount = 0;
+
+static Light *dev_lights = NULL; // buffer of lights
+static int numLights = 0;
+
+/**
+* Add Lights
+*/
+void addLights(std::vector<glm::vec3> &positions, std::vector<glm::vec3> &ambient, 
+	std::vector<glm::vec3> &diffuse, std::vector<glm::vec3> &specular) {
+	numLights = positions.size();
+	cudaFree(dev_lights);
+	cudaMalloc(&dev_lights, numLights * sizeof(Light));
+	Light *hst_lights = new Light[numLights];
+	for (int i = 0; i < numLights; i++) {
+		hst_lights[i].position = positions.at(i);
+		hst_lights[i].ambient = ambient.at(i);
+		hst_lights[i].diffuse = diffuse.at(i);
+		hst_lights[i].specular = specular.at(i);
+	}
+	cudaMemcpy(dev_lights, hst_lights, numLights * sizeof(Light), cudaMemcpyHostToDevice);
+
+	delete hst_lights;
+}
 
 /**
 * Kernel that writes the image to the OpenGL PBO directly.
@@ -160,7 +192,7 @@ void clearDepthBuffer(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < bufSize) {
 		dev_depthbuffer[i].color = bgColor;
-		dev_depthbuffer[i].norm = defaultNorm;
+		dev_depthbuffer[i].worldNorm = defaultNorm;
 	}
 }
 
@@ -172,8 +204,8 @@ __global__ void vertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_bufVerti
 	VertexOut *dev_tfVertices) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < vertCount) {
-		dev_tfVertices[i].pos = tfPoint(tf, dev_bufVertices[i].pos);
-		dev_tfVertices[i].nor = dev_bufVertices[i].nor;
+		dev_tfVertices[i].screenPos = tfPoint(tf, dev_bufVertices[i].pos);
+		dev_tfVertices[i].worldNor = dev_bufVertices[i].nor;
 		dev_tfVertices[i].col = dev_bufVertices[i].col;
 	}
 }
@@ -198,9 +230,9 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
 		glm::vec3 v[3];
-		v[0] = dev_primitives[i].v[0].pos;
-		v[1] = dev_primitives[i].v[1].pos;
-		v[2] = dev_primitives[i].v[2].pos;
+		v[0] = dev_primitives[i].v[0].screenPos;
+		v[1] = dev_primitives[i].v[1].screenPos;
+		v[2] = dev_primitives[i].v[2].screenPos;
 
 		AABB triangleBB = getAABBForTriangle(v);
 
@@ -243,29 +275,69 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 				atomicMin(&dev_intDepths[fragIndex], zDepth);
 
 				if (zDepth == dev_intDepths[fragIndex]) {
-					// interpolate color
+					// interpolate color from bary
 					glm::vec3 interpColor = dev_primitives[i].v[0].col * baryCoordinate[0];
 					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
 					interpColor += dev_primitives[i].v[2].col * baryCoordinate[2];
 					dev_fragsDepths[fragIndex].color = interpColor;
 
-					// interpolate normal
-					glm::vec3 interpNorm = dev_primitives[i].v[0].nor * baryCoordinate[0];
-					interpNorm += dev_primitives[i].v[1].nor * baryCoordinate[1];
-					interpNorm += dev_primitives[i].v[2].nor * baryCoordinate[2];
-					dev_fragsDepths[fragIndex].norm = interpNorm;
+					// interpolate normal from bary
+					glm::vec3 interpNorm = dev_primitives[i].v[0].worldNor * baryCoordinate[0];
+					interpNorm += dev_primitives[i].v[1].worldNor * baryCoordinate[1];
+					interpNorm += dev_primitives[i].v[2].worldNor * baryCoordinate[2];
+					dev_fragsDepths[fragIndex].worldNorm = interpNorm;
+
+					// interpoalte world position from bary
+					glm::vec3 interpWorld = dev_primitives[i].v[0].worldPos * baryCoordinate[0];
+					interpWorld += dev_primitives[i].v[1].worldPos * baryCoordinate[1];
+					interpWorld += dev_primitives[i].v[2].worldPos * baryCoordinate[2];
+					dev_fragsDepths[fragIndex].worldPos = interpWorld;
 				}
 			}
 		}
 	}
 }
 
-__global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths) {
+__global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numLights, Light *dev_lights) {
+	// https://www.opengl.org/sdk/docs/tutorials/ClockworkCoders/lighting.php
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
-		dev_fragsDepths[i].color[0] = dev_fragsDepths[i].norm[0];
-		dev_fragsDepths[i].color[1] = dev_fragsDepths[i].norm[1];
-		dev_fragsDepths[i].color[2] = dev_fragsDepths[i].norm[2];
+		glm::vec3 N = dev_fragsDepths[i].worldNorm;
+		if (glm::abs(N.x) < 0.1f && glm::abs(N.y) < 0.1f && glm::abs(N.z) < 0.1f) {
+			return;
+		}
+
+		glm::vec3 V = dev_fragsDepths[i].worldPos;
+		glm::vec3 finalColor = glm::vec3(0.0f, 0.0f, 0.0f);
+		glm::vec3 tmp;
+		for (int j = 0; j < numLights; j++) {
+			glm::vec3 light = normalize(dev_lights[j].position - V);
+			glm::vec3 eye = normalize(-V);
+			glm::vec3 refl = normalize(-glm::reflect(light, N));
+
+			//glm::vec3 amb = dev_lights[j].ambient; // debug
+			//glm::vec3 diff = dev_lights[j].diffuse; // debug
+			//glm::vec3 spec = dev_lights[j].specular; // debug
+
+			// calculate ambient term
+			finalColor += dev_lights[j].ambient;
+
+			// calculate diffuse term
+			tmp = dev_lights[j].diffuse * glm::max(dot(N, light), 0.0f);
+			finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
+			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
+			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
+
+			// calculate specular term
+			tmp = dev_lights[j].specular * powf(glm::max(glm::dot(refl, eye), 0.0f), 0.3);
+			finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
+			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
+			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
+		}
+		dev_fragsDepths[i].color *= finalColor;
+		//dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
+		//dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
+		//dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
 	}
 }
 
@@ -287,8 +359,9 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
 	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
-	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor,
-		bgColor, dev_depthbuffer);
+	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
+	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor, defaultNorm,
+		dev_depthbuffer);
 	int depth = UINT16_MAX; // really should get this from cam params somehow
 	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
 
@@ -305,7 +378,7 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 		dev_primitives, dev_depthbuffer, dev_intDepths);
 
 	// 5) fragment shade
-	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer);
+	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer, numLights, dev_lights);
 
 	// 6) Copy depthbuffer colors into framebuffer
 	render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
@@ -341,6 +414,10 @@ void rasterizeFree() {
 
 	cudaFree(dev_primitives); // primitives of transformed verts
 	dev_primitives = NULL;
+
+	cudaFree(dev_lights);
+	dev_lights = NULL;
+	numLights = 0;
 
 	checkCUDAError("rasterizeFree");
 }

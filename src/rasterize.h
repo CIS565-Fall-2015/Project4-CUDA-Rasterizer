@@ -7,7 +7,9 @@
 
 #pragma once
 #include <glm/glm.hpp>
-
+#include <vector>
+void addLights(std::vector<glm::vec3> &positions, std::vector<glm::vec3> &ambient,
+	std::vector<glm::vec3> &diffuse, std::vector<glm::vec3> &specular);
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
 	int bufIdxSize, int *bufIdx,

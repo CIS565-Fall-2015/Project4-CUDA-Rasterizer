@@ -153,6 +153,24 @@ bool init(obj *mesh) {
 			mesh->getBufPos(), mesh->getBufNor(), mesh->getBufCol());
 		rasterizeSetVariableBuffers();
 
+		// add lights
+		std::vector<glm::vec3> positions;
+		positions.push_back(glm::vec3(0.0f, 10.0f, 0.0f));
+		positions.push_back(glm::vec3(0.0f, -10.0f, 0.0f));
+
+		std::vector<glm::vec3> ambient;
+		ambient.push_back(glm::vec3(0.0f, 0.0f, 0.1f));
+		ambient.push_back(glm::vec3(0.0f, 0.1f, 0.0f));
+
+		std::vector<glm::vec3> diffuse;
+		diffuse.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+		diffuse.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
+
+		std::vector<glm::vec3> specular;
+		specular.push_back(glm::vec3(0.0f, 1.0f, 1.0f));
+		specular.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
+
+		addLights(positions, ambient, diffuse, specular);
 	}
 
     GLuint passthroughProgram;
