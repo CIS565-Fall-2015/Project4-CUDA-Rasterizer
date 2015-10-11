@@ -19,7 +19,7 @@
 
 #define MAX_THREADS 128
 
-#define PARTICLE_MODE
+#define AA 1
 
 static int iter;
 
@@ -79,7 +79,24 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
     int index = x + (y * w);
 
     if (x < w && y < h) {
-        framebuffer[index] = depthbuffer[index].color;
+
+		int tlx = x*AA;
+		int tly = y*AA;
+
+		glm::vec3 color(0.0);
+
+		int sx, sy;
+		for (int i = 0; i < AA; i++){
+			for (int j = 0; j < AA; j++){
+				sx = tlx + i;
+				sy = tly + j;
+				color += depthbuffer[sx+sy*w*AA].color;
+			}
+		}
+
+		color /= AA*AA;
+
+        framebuffer[index] = color;
     }
 }
 
@@ -97,9 +114,10 @@ __global__ void initDepths(int n, Fragment* depthbuffer){
 void rasterizeInit(int w, int h) {
     width = w;
     height = h;
-    cudaFree(dev_depthbuffer);
-    cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
-    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+    
+	//cudaFree(dev_depthbuffer);
+    //cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
+    //cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
 
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
@@ -120,7 +138,7 @@ void rasterizeSetBuffers(
     vertCount = _vertCount;
 
 	// Vertex shading
-	fragCount = width * height;
+	fragCount = width * height * AA * AA;
 	primCount = vertCount / 3;
 	numVertBlocks = (vertCount - 1) / MAX_THREADS + 1;
 	numPrimBlocks = (primCount - 1) / MAX_THREADS + 1;
@@ -130,8 +148,8 @@ void rasterizeSetBuffers(
 	printf("vertex count: %d\n", vertCount);
 	printf("primitive count: %d\n", primCount);
 
-	int numBlocks = (width*height - 1) / MAX_THREADS + 1;
-	initDepths<<<numBlocks, MAX_THREADS>>>(width*height, dev_depthbuffer);
+	//int numBlocks = (width*height - 1) / MAX_THREADS + 1;
+	//initDepths<<<numBlocks, MAX_THREADS>>>(width*height, dev_depthbuffer);
 
     cudaFree(dev_bufIdx);
     cudaMalloc(&dev_bufIdx, bufIdxSize * sizeof(int));
@@ -227,30 +245,32 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 		glm::vec3 points;
 
 		// Snap i,j to nearest fragment coordinate
-		float dx = 2.0f / (float)cam.width;
-		float dy = 2.0f / (float)cam.height;
+		int frag_width = cam.width * AA;
+		int frag_height = cam.height * AA;
+		float dx = 2.0f / (float)frag_width;
+		float dy = 2.0f / (float)frag_height;
 
 		float x;
 		float y;
 
-		int mini = max((int)(aabb.min.x / dx) + cam.width / 2 - 2, 0);
-		int minj = max((int)(aabb.min.y / dy) + cam.height / 2 - 2, 0);
-		int maxi = min((int)(aabb.max.x / dx) + cam.width / 2 + 2, cam.width-1);
-		int maxj = min((int)(aabb.max.y / dy) + cam.height / 2 + 2, cam.height-1);
+		int mini = max((int)(aabb.min.x / dx) + frag_width / 2 - 2, 0);
+		int minj = max((int)(aabb.min.y / dy) + frag_height / 2 - 2, 0);
+		int maxi = min((int)(aabb.max.x / dx) + frag_width / 2 + 2, frag_width-1);
+		int maxj = min((int)(aabb.max.y / dy) + frag_height / 2 + 2, frag_height-1);
 
 		float depth;
 		int fixed_depth;
 		int ind;
 
-		// Iterate through pixel coordinates
+		// Iterate through fragment coordinates
 		for (int j = minj; j < maxj; j++){
 			for (int i = mini; i < maxi; i++){
 
-				ind = i + j * cam.width;
+				ind = i + j * frag_width;
 				
 				// Get the NDC coordinate
-				x = dx*i - dx*cam.width/2.0f;
-				y = dy*j - dy*cam.height/2.0f;
+				x = dx*i - dx*frag_width/2.0f;
+				y = dy*j - dy*frag_height/2.0f;
 
 				point[0] = x;
 				point[1] = y;
@@ -269,7 +289,6 @@ __global__ void kernRasterize(int n, Cam cam, Fragment* fs_input, Triangle* prim
 						fs_input[ind].norm = bary.x * prim.v[0].nor + bary.y * prim.v[1].nor + bary.z * prim.v[2].nor;
 						fs_input[ind].pos = bary.x * prim.v[0].pos + bary.y * prim.v[1].pos + bary.z * prim.v[2].pos;
 						fs_input[ind].ndc_pos = bary.x * prim.v[0].ndc_pos + bary.y * prim.v[1].ndc_pos + bary.z * prim.v[2].ndc_pos;
-						fs_input[ind].prim_ind = index;
 						//fs_input[ind].color = fs_input[ind].norm;
 					}
 				}
@@ -295,13 +314,13 @@ void resetRasterize(){
 	cudaMalloc(&dev_bufVertexOut, vertCount * sizeof(VertexOut));
 
 	cudaFree(dev_primitives);
-	cudaMalloc(&dev_primitives, vertCount/3 * sizeof(Triangle));
-	cudaMemset(dev_primitives, 0, vertCount/3 * sizeof(Triangle));
+	cudaMalloc(&dev_primitives, primCount * sizeof(Triangle));
+	cudaMemset(dev_primitives, 0, primCount * sizeof(Triangle));
 
 	cudaFree(dev_depthbuffer);
 	cudaMalloc(&dev_depthbuffer, fragCount * sizeof(Fragment));
 	cudaMemset(dev_depthbuffer, 0, fragCount * sizeof(Fragment));
-	initDepths<<<numFragBlocks, MAX_THREADS >> >(width*height, dev_depthbuffer);
+	initDepths<<<numFragBlocks, MAX_THREADS>>>(fragCount, dev_depthbuffer);
 
 	cudaFree(dev_framebuffer);
 	cudaMalloc(&dev_framebuffer, width * height * sizeof(glm::vec3));
@@ -327,7 +346,6 @@ void rasterize(uchar4 *pbo, Cam cam) {
 	Mproj = glm::perspective(cam.fovy, cam.aspect, cam.zNear, cam.zFar);
 
 	glm::mat4 Mvm = Mview * Mmod;
-	//glm::mat4 Mpvm = Mproj * Mvm;
 	glm::mat4 Mpvm = Mproj * Mview * Mmod;
 
 	kernShadeVertices<<<numVertBlocks, MAX_THREADS>>>(vertCount, dev_bufVertexOut, dev_bufVertex, Mpvm);

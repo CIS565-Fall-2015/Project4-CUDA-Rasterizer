@@ -49,7 +49,6 @@ struct Fragment {
 	glm::vec3 norm;
 	glm::vec3 pos;
 	glm::vec3 ndc_pos;
-	int prim_ind;
 	float depth;
 	int fixed_depth;
 	VertexOut v;
