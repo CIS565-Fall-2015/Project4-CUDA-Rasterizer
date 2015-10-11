@@ -12,6 +12,8 @@
 //-------------MAIN--------------
 //-------------------------------
 glm::vec3 camCoords(0.0, 0.0,  1.0);
+bool lines = false;
+bool points = false;
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -281,7 +283,24 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 
 			glfwSetWindowShouldClose(window, GL_TRUE);
 			break;
+		case GLFW_KEY_L:
+			if (lines) {
+				lines = false;
+			}
+			else {
+				lines = true;
+			}
+			break;
+		case GLFW_KEY_P:
+			if (points) {
+				points = false;
+			}
+			else {
+				points = true;
+			}
+			break;
 		}
+
 	}
 }
 double xStartpos, yStartpos;

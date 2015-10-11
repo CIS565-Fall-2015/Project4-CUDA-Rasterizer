@@ -21,6 +21,9 @@
 #include <thrust/execution_policy.h>
 #include "rasterizeTools.h"
 extern glm::vec3 camCoords;
+extern bool lines;
+extern bool points;
+
 glm::vec3 cam(0.0f, 3.0f, 3.0f);
 #define MAX_DEPTH INT_MAX
 struct VertexIn {
@@ -179,8 +182,9 @@ __global__ void vertexShader(VertexIn* inVerts, VertexOut* outVerts, int vertCou
 		//newVert[3] = (matrix[3][2] * inVerts[thrId].pos[2]) + matrix[3][3];
 		glm::vec4 oldVert(inVerts[thrId].pos, 1.0f);
 		glm::vec4 newVert = mul(matrix, oldVert);
-
+		//glm::vec3 newNorm = inVerts[thrId].nor;
 		glm::vec4 newNorm = mul(glm::inverseTranspose(model), glm::vec4(inVerts[thrId].nor, 0.0f));
+		newNorm = glm::normalize(newNorm);
 		//printf("newVert 2: %f, new vert 3: %f \n", newVert[2], newVert[3]);
 		if (newVert[3] != 0) {
 			outVerts[thrId].pos = glm::vec3(newVert[0] / newVert[3], newVert[1] / newVert[3], newVert[2] / newVert[3]);
@@ -220,11 +224,11 @@ __global__ void backWard(Triangle* tris, int triCount) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < triCount) {
 		glm::vec3 camera(0.0f, 3.0f, 3.0f);
-		glm::vec3 normal = tris[thrId].v[0].nor; //glm::cross((tris[thrId].v[1].pos - tris[thrId].v[0].pos), (tris[thrId].v[2].pos - tris[thrId].v[0].pos));
-		glm::vec3 newVec = tris[thrId].v[0].pos; //(tris[thrId].v[0].pos + tris[thrId].v[1].pos + tris[thrId].v[2].pos) / 3.0f;
+		glm::vec3 normal = tris[thrId].v[0].nor; //(tris[thrId].v[0].nor + tris[thrId].v[1].nor + tris[thrId].v[2].nor) / 3.0f; //glm::cross((tris[thrId].v[1].pos - tris[thrId].v[0].pos), (tris[thrId].v[2].pos - tris[thrId].v[0].pos));
+		glm::vec3 newVec = tris[thrId].v[0].pos;//(tris[thrId].v[0].pos + tris[thrId].v[1].pos + tris[thrId].v[2].pos) / 3.0f; //(tris[thrId].v[0].pos + tris[thrId].v[1].pos + tris[thrId].v[2].pos) / 3.0f;
 		newVec = (newVec - camera);
 		//printf("normal: (%f, %f, %f) \n", normal[0], normal[1], normal[2]);
-		float NdotC = glm::dot(normal, newVec); 
+		float NdotC = glm::dot(newVec, normal); 
 		//printf("NdotC: %f \n", NdotC);
 		if ( NdotC >= 0.0f) {
 			tris[thrId].erase = true;
@@ -236,7 +240,28 @@ __global__ void backWard(Triangle* tris, int triCount) {
 		}
 	}
 }
+__global__ void pointRasterize(Triangle* tris, Fragment* buf, int width, int height, int triCount) {
+	int thrId = (blockIdx.x * blockDim.x)+ threadIdx.x;
+	if (thrId < triCount) {
+		float x1 = (tris[thrId].v[0].pos[0] + 1) * (width / 2.0f);
+		float x2 = (tris[thrId].v[1].pos[0] + 1) * (width / 2.0f);
+		float x3 = (tris[thrId].v[2].pos[0] + 1) * (width / 2.0f);
+		float centerX = (x1 + x2 + x3) / 3.0f;
+		float y1 = (tris[thrId].v[0].pos[1] + 1) * (height / 2.0f);
+		float y2 = (tris[thrId].v[1].pos[1] + 1) * (height / 2.0f);
+		float y3 = (tris[thrId].v[2].pos[1] + 1) * (height / 2.0f);
+		float centerY = (y1 + y2 + y3) / 3.0f;
 
+		int x = ceil(centerX);
+		int y = ceil(centerY);
+		buf[x*4 + y*4*width].color = glm::vec3(0.0f);
+		buf[x*4 + 1 + y*4*width].color = glm::vec3(0.0f);
+		buf[x*4 + 2 + y*4*width].color = glm::vec3(0.0f);
+		buf[x*4 + 3 + y*4*width].color = glm::vec3(0.0f);
+
+	}
+
+}
 __global__ void lineRasterize(Triangle* tris, Fragment* buf, int width, int height, int triCount, glm::mat4 matrix) {
 	int thrId = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (thrId < triCount) {
@@ -519,7 +544,7 @@ __global__ void fragmentShader(Fragment* depth, Fragment* frag, int width, int h
 			if (spec < 0.0f) spec = 0.0f;
 			if (spec < 1.0f) spec = 1.0f;
 	
-			frag[index].color = finalColor; //ambientTerm*Ia + Ii*diffuseTerm;
+			frag[index].color = ambientTerm*Ia + Ii*diffuseTerm;
 
 
 		}
@@ -580,8 +605,12 @@ void rasterize(uchar4 *pbo) {
 	//printf("new triangle count: %i \n", triCount);
 	//printf("tri count: %i, block count: %i \n", triCount, (triCount + 64 - 1) / 64);
 	kernRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
-
-	lineRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount, matrix);
+	if (lines) {
+		lineRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount, matrix);
+	}
+	if (points) {
+		pointRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount);
+	}
 	checkCUDAError("rasterize");
     
     //Fragment shader
