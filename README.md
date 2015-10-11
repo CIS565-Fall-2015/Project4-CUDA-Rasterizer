@@ -22,7 +22,7 @@ Description here:...
 |Right Mouse	| Move								|  [pic]					|
 |Key '0'		| Wireframe only					|  [pic]					|
 |Key '1'		|     Color							|  [pic]					|
-|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif = 100x)	|
+|Key 'w'		| turn wireframe on/off				|![](img/key_w.gif =100x)	|
 |Key 't'		| turn texture on/off			    |  [pic]					|
 |Key 'n'		|  normal testing					|  [pic]					|
 |Key 'd'		| turn displacement mapping on/off  |  [pic]					|
