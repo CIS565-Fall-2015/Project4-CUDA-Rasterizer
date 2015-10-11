@@ -123,7 +123,7 @@ void obj::buildBufPoss() {
     for (int i = 0; i < (int) BufIdxvec.size(); i++) {
         ibo[i] = BufIdxvec[i];
     }
-    setColor(glm::vec3(0.235f, 0.701f, 0.443f));
+    setColor(glm::vec3(1.0f));
 
     printf("Mesh built: buffers contain %d faces & %d vertices\n",
             getBufIdxsize() / 3,
