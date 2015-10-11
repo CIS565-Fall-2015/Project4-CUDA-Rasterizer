@@ -44,10 +44,15 @@ and a framebuffer.
 
 * Rasterize lines or line strips
  * In order to rasterize lines, we start with the two end points of the line.  We want to determine whether we need to walk through the x or y coordinates.  This is determined by looking at the values of (p1.x - p0.x) and (p1.y - p0.y).  Whichever has the largest absolute value, is the coordinate that we will step through.  Once we know this, we calculate the closest integer value that coresponds to the new x/y value.  This will tell us which new fragment needs to be colored.  We do this for every x/y value between p0.x/p0.y and p1.x/p1.y.  There are some other parameters that need to be checked, such as whether p0.x > p1.x, in which case we would want to be decreasing each new x value we use rather than increasing it.  Also, if the slope is equal to zero, then we know it will be a straight line, and do not need to do a new calculation for each step.  This added another kernel function. In my implementation, I drew three lines for each triangle.  It did not have enough of an impact on the rasterizer to cause any slow down that showed during the implementation.  When I used cuda event timers, on average this extra function took about .230 milliseconds.  It definitely helps that it is on the GPU and not CPU.  The GPU allows the lines for each triangle to be drawn at the same time, since each triangle is on it's own thread.  This implementation would have been a for loop that took a long time on the CPU.  
-
-
+ * In order to show this, when running the program, press 'l' on the keyboard. This will turn on/off the lines.  The image below shows suzanne with and without the lines.
+ 
+ ![](img/suzanne.png "Suzanne, no lines") ![](img/suzanne_lines.png "Suzanne with lines")
+ 
 * Rasterize points
- * 
+ * In order to rasterize points, I found the center of each triangle by averaging the x and y values of the three vertices.  Then, after transforming the points into screen coordinates, I colored that fragment black.  This implementation also did not add enough time to cause any slow down to be seen during the implementation.  On average, this implementation took about .090 milliseconds. Implementing this on the GPU also saved much time, compared to a CPU implementation.  Again, this is because each triangle's center was able to be calculated simultaneously on different threads.  The CPU implementation would have required a for loop that went through each triangle and would have added much more time to the implementation.
+ * The image below shows the cow with the point rasterizing running.  In order to run the point rasterizer, press 'p' on the keyboard to turn it on/off.  
+ 
+ ![](img/cow_points.png "Cow with points in the center of each triangle")
 
 * Anti-aliasing
  * 
