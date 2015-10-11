@@ -3,87 +3,30 @@ CUDA Rasterizer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
-
-### (TODO: Your README)
-
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
-
-
-Instructions (delete me)
-========================
-
-This is due Sunday, October 11, evening at midnight.
+* Megan Moore
+* Tested on:  Windows 7, i7-4770 @ 3.10GHz 32GB (Sig Lab)
 
 **Summary:** 
-In this project, you will use CUDA to implement a simplified
-rasterized graphics pipeline, similar to the OpenGL pipeline. You will
-implement vertex shading, primitive assembly, rasterization, fragment shading,
-and a framebuffer. More information about the rasterized graphics pipeline can
-be found in the class slides and in the CIS 560 lecture notes.
+In this project, I used CUDA to implement a simplified
+rasterized graphics pipeline, similar to the OpenGL pipeline. I
+implemented vertex shading, primitive assembly, rasterization, fragment shading,
+and a framebuffer. 
 
-The base code provided includes an OBJ loader and much of the I/O and
-bookkeeping code. It also includes some functions that you may find useful,
-described below. The core rasterization pipeline is left for you to implement.
-
-You are not required to use this base code if you don't want
-to. You may also change any part of the base code as you please.
-**This is YOUR project.**
-
-**Recommendation:**
-Every image you save should automatically get a different
-filename. Don't delete all of them! For the benefit of your README, keep a
-bunch of them around so you can pick a few to document your progress.
-
-
-### Contents
-
-* `src/` C++/CUDA source files.
-* `util/` C++ utility files.
-* `objs/` Example OBJ test files:
-  * `tri.obj` (3 verts, 1 tri): The simplest possible geometric object.
-  * `cube.obj` (8 verts, 12 tris): A small model with low depth-complexity.
-  * `suzanne.obj` (507 verts, 968 tris): A medium model with low depth-complexity.
-  * `cow.obj` (4583 verts, 5804 tris): A large model with low depth-complexity.
-  * `flower.obj` (640 verts, 640 tris): A medium model with very high depth-complexity.
-  * `sponza.obj` (153,635 verts, 279,163 tris): A huge model with very high depth-complexity.
-* `renders/` Debug render of an example OBJ.
-* `external/` Includes and static libraries for 3rd party libraries.
-
-### Running the code
-
-The main function requires a scene description file. Call the program with
-one as an argument: `cis565_rasterizer objs/cow.obj`.
-(In Visual Studio, `../objs/cow.obj`.)
-
-If you are using Visual Studio, you can set this in the Debugging > Command
-Arguments section in the Project properties. Note that this value is different
-for every different configuration type. Make sure you get the path right; read
-the console for errors.
-
-## Requirements
-
-**Ask on the mailing list for any clarifications.**
-
-In this project, you are given the following code:
-
-* A library for loading standard Alias/Wavefront `.obj` format mesh
-  files and converting them to OpenGL-style buffers of index and vertex data.
-  * This library does NOT read materials, and provides all colors as white by
-    default. You can use another library if you wish.
-* Simple structs for some parts of the pipeline.
-* Depth buffer to framebuffer copy.
-* CUDA-GL interop.
-
-You will need to implement the following features/pipeline stages:
-
-* Vertex shading.
-* (Vertex shader) perspective transformation.
+* Vertex Shader
+ * In the vertex shader, I took the local coordinates of each triangle and converted them into world coordinates.  To do this, I multiplied the local coordinates by the model, view, and projection matrix.  OpenGl is used to create the view and projection matrices, inputing the camera's location, where it is looking, along with the near and far clippinig planes.  Along with transforming the vertices, the normals were also transformed.  However, the normals were multiplied by the inverse transpose of the model matrix.  This is because the normals are vectors, not points like the vertices.  Thus, we have to transform them differently.
+ 
 * Primitive assembly with support for triangles read from buffers of index and
-  vertex data.
-* Rasterization.
+  vertex data
+ * The newly transformed vertices are passed into the primitive assembler.  The output of this function are all the triangles that are in the model.  Each vertex is passed into the primitve assembler, and based on it's index, it is placed into a new triangle.  The triangle struct holds three VertexOuts and a boolean that says whether it is backfacing or not.  
+ 
+* Rasterization
+ * The rasterizer does most of the work.  Here, each triangle is passed into the function, and it loops through every fragment to determine if the triangle is in that fragment.  The depth test is done here, along with antialiasing.  With each fragment, we calculate the barycentric coordinates with respect to the given triangle.  These coordinates tell us whether the fragment is in the triangle.  Then, the depth test is done.  If the depth of the triangle at that fragment is lower than any other triangle at that fragment, then the fragment should show that particular triangle.  AtomicMin is used to check the depth.  This function is needed when using the GPU because all threads are being run at once, we need an uninterupted function, since multiple threads could be trying to access the fragment's depth value.  Including the depth test allowed for a much better output.  It changed the image below on the left to the image on the right.
+
+![](img/cow_normals3.png "Cow no depth test") ![](img/cow_normals_depth.png "Cow with depth test")
+
+
+
+
 * Fragment shading.
 * A depth buffer for storing and depth testing fragments.
 * Fragment to depth buffer writing (**with** atomics for race avoidance).
