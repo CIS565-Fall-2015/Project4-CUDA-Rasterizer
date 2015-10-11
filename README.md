@@ -58,7 +58,10 @@ and a framebuffer.
  ![](img/cow_points.png "Cow with points in the center of each triangle")
 
 * Anti-aliasing
- * 
+ * Anti-aliasing was done within the rasterization step.  In the rasterize, there was a thread for each triangle.  Then each thread looped through all fragments to determine if the fragment was in the triangle.  In order to add anti-aliasing, I added a for loop so that each fragment was looped through 4 times.  I uniformly chose the sampled points within each fragment.  When it was not done uniformly, there were artifacts around the edges of all triangles.  After this was done, there were four different colors for each fragment.  In the fragment shader, these four colors were averaged together to get the final color.  This implementation required more memory and a longer rasterization step for each triangle.  It may have increased the running time slightly, but not enough to cause any noticable change.  The GPU implementation of this is much faster than the CPU implementation.  Adding an extra for loop to the CPU implementation slows it down greatly, becuase all other loops are put on hold.  The GPU implementation does not have this issue, so while each thread may take a little longer, they are still occurring at the same time, and therefore, this implementation does not cause such a dramatic slow down.  
+ * The below images show the difference between non-uniform anti-aliasing and uniform anti-aliasing.
+
+ ![](img/box_antialiasing.png "Box with non-uniform anti-aliasing") ![](img/box_anti2.png "Box with uniform anti-aliasing") 
 
 * **Mouse**-based interactive camera support
  * The mouse-based interactive movements allow the user to change the rotation and scale of the model. By right clicking on the image, if you drag the mouse right or left, it will rotate the model corespondingly arond the y axis.  If you drag the mouse up or down, it will rotate the model corespondingly around the x axis.  Also, if you scroll on the image, it will scale the model up or down.  This implementation changes the model matrix in the rasterize function done on the CPU.  It does not impact the speed of the rasterizer, as it is just changing an input value.  
