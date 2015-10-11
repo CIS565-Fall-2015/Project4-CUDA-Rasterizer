@@ -57,8 +57,7 @@ To render the basic rasterization primitive, the triangle, each GPU thread is re
 ![](renders/dragon_lines.png "Stanford Dragon Rendered Using Line Primitives")
 
 * **Overview**: The implementation for lines is more complicated than the other two primitives. For ease of implementation, I render the line between the first and second verticies of a the triangle primitives. There are two situations that need to be handled when rendering these. The first is the simplest case, when the line to render is a straight vertical line. Here we loop between the min and end values in the y direction and render as we travel along. For all other lines we must calculate a Bresenham line, is a method of approximating the rasterization of a line. Otherwise it works just like rendering the vertical line, with the main difference being a loop along the x direction while using the slope of the line to calculate a y value in the correct position at each iteration of the loop, and z is determined using the depth test.
-* **Perfromance Impact**:
-* 
+* **Perfromance Impact**: Minimal. Having to loop through and generate the line and do the Bresenham calculating requires extra computation, but is similar in execution time to the triangle primitive implementation.
 
 ### Fragment Shading
 
