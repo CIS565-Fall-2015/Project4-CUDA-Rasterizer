@@ -95,8 +95,8 @@ You will need to implement the following features/pipeline stages:
 
 See below for more guidance.
 
-You are also required to implement at least "3.0" points in extra features.
-(the parenthesized numbers must add to 3.0 or more):
+You are also required to implement at least 3.0 "points" worth in extra features.
+(point values are given in parentheses):
 
 * (1.0) Tile-based pipeline.
 * Additional pipeline stages.
@@ -180,31 +180,36 @@ Start out by testing a single triangle (`tri.obj`).
     `(a, b, c)` into `VertexOut` array `vo`, simply copy the appropriate values
     into a `Triangle` object `(vo[a], vo[b], vo[c])`.
 * Rasterization.
-  * `Triangle[n/3] primitives -> FragmentIn[m] fs_input`
-  * A scanline implementation is simpler to start with.
-* Fragment shading.
-  * `FragmentIn[m] fs_input -> FragmentOut[m] fs_output`
-  * A super-simple test fragment shader: output same color for every fragment.
-    * Also try displaying various debug views (normals, etc.)
+  * `Triangle[n/3] primitives -> Fragment[m] rasterized`
+  * A scanline implementation is simple to start with.
+  * Parallelize over triangles, but for now, loop over every pixel in each
+    thread.
+  * Note that you won't have any real allocated array of size `m`.
 * Fragments to depth buffer.
-  * `FragmentOut[m] -> FragmentOut[width][height]`
+  * `Fragment[m] rasterized -> Fragment[width][height] depthbuffer`
+    * `depthbuffer` is for storing and depth testing fragments.
   * Results in race conditions - don't bother to fix these until it works!
   * Can really be done inside the fragment shader, if you call the fragment
     shader from the rasterization kernel for every fragment (including those
-    which get occluded). **OR,** this can be done before fragment shading, which
-    may be faster but means the fragment shader cannot change the depth.
-* A depth buffer for storing and depth testing fragments.
-  * `FragmentOut[width][height] depthbuffer`
-  * An array of `fragment` objects.
-  * At the end of a frame, it should contain the fragments drawn to the screen.
+    which get occluded). **OR,** this can be done before fragment shading,
+    which may be faster but means the fragment shader cannot change the depth.
+* Fragment shading.
+  * `Fragment[width][height] depthbuffer ->`
+  * A super-simple test fragment shader: output same color for every fragment.
+    * Also try displaying various debug views (normals, etc.)
 * Fragment to framebuffer writing.
-  * `FragmentOut[width][height] depthbuffer -> vec3[width][height] framebuffer`
-  * Simply copies the colors out of the depth buffer into the framebuffer
+  * `-> vec3[width][height] framebuffer`
+  * Simply saves the fragment shader results into the framebuffer
     (to be displayed on the screen).
+
+Where you have the following data structure:
+
 
 ### A Useful Pipeline
 
 * Clear the depth buffer with some default value.
+  * You should be able to pass a default value to the clear function, so that
+    you can set the clear color (background), clear depth, etc.
 * Vertex shading: 
   * `VertexIn[n] vs_input -> VertexOut[n] vs_output`
   * Apply some vertex transformation (e.g. model-view-projection matrix using
@@ -214,41 +219,44 @@ Start out by testing a single triangle (`tri.obj`).
   * As above.
   * Other primitive types are optional.
 * Rasterization.
-  * `Triangle[n/3] primitives -> FragmentIn[m] fs_input`
+  * `Triangle[n/3] primitives -> Fragment[m] rasterized`
   * You may choose to do a tiled rasterization method, which should have lower
-    global memory bandwidth.
-  * A scanline optimization: when rasterizing a triangle, only scan over the
-    box around the triangle (`getAABBForTriangle`).
-* Fragment shading.
-  * `FragmentIn[m] fs_input -> FragmentOut[m] fs_output`
-  * Add a shading method, such as Lambert or Blinn-Phong. Lights can be defined
-    by kernel parameters (like GLSL uniforms).
+    global memory bandwidth. It will also change other parts of the pipeline.
+  * Parallelize over triangles, but now avoid looping over all pixels:
+    * When rasterizing a triangle, only scan over the box around the triangle
+      (`getAABBForTriangle`).
 * Fragments to depth buffer.
-  * `FragmentOut[m] -> FragmentOut[width][height]`
-  * Can really be done inside the fragment shader, if you call the fragment
-    shader from the rasterization kernel for every fragment (including those
-    which get occluded). **OR,** this can be done before fragment shading, which
-    may be faster but means the fragment shader cannot change the depth.
-    * This result in an optimization: it allows you to do depth tests before
-     spending execution time in complex fragment shader code!
+  * `Fragment[m] rasterized -> Fragment[width][height] depthbuffer`
+    * `depthbuffer` is for storing and depth testing fragments.
+  * This can be done before fragment shading, which prevents the fragment
+    shader from changing the depth of a fragment.
+    * This order results in an optimization: it allows you to do depth tests
+      before spending execution time in complex fragment shader code!
+    * If you want to be able to change the depth of a fragment, you'll have to
+      make an adaptation. For example, you can add a separate shader stage
+      which occurs during rasterization, which can change the depth.
+      Or, you can call the fragment shader from the rasterization step - but
+      be aware that the performance will be much worse - occupancy will be low
+      due to the variable run length of each thread.
   * Handle race conditions! Since multiple primitives write fragments to the
     same fragment in the depth buffer, races must be avoided by using CUDA
     atomics.
     * *Approach 1:* Lock the location in the depth buffer during the time that
       a thread is comparing old and new fragment depths (and possibly writing
       a new fragment). This should work in all cases, but be slower.
+      See the section below on implementing this.
     * *Approach 2:* Convert your depth value to a fixed-point `int`, and use
       `atomicMin` to store it into an `int`-typed depth buffer `intdepth`. After
       that, the value which is stored at `intdepth[i]` is (usually) that of the
       fragment which should be stored into the `fragment` depth buffer.
       * This may result in some rare race conditions (e.g. across blocks).
     * The `flower.obj` test file is good for testing race conditions.
-* A depth buffer for storing and depth testing fragments.
-  * `FragmentOut[width][height] depthbuffer`
-  * An array of `fragment` objects.
-  * At the end of a frame, it should contain the fragments drawn to the screen.
+* Fragment shading.
+  * `Fragment[width][height] depthbuffer ->`
+  * Add a shading method, such as Lambert or Blinn-Phong. Lights can be defined
+    by kernel parameters (like GLSL uniforms).
 * Fragment to framebuffer writing.
-  * `FragmentOut[width][height] depthbuffer -> vec3[width][height] framebuffer`
+  * `-> vec3[width][height] framebuffer`
   * Simply copies the colors out of the depth buffer into the framebuffer
     (to be displayed on the screen).
 
@@ -263,9 +271,39 @@ you choose and why.
 
 ## Resources
 
-The following resources may be useful for this project:
+### CUDA Mutexes
 
-* High-Performance Software Rasterization on GPUs:
+Adapted from
+[this StackOverflow question](http://stackoverflow.com/questions/21341495/cuda-mutex-and-atomiccas).
+
+```
+__global__ void kernelFunction(...) {
+    // Get a pointer to the mutex, which should be 0 right now.
+    unsigned int *mutex = ...;
+
+    // Loop-wait until this thread is able to execute its critical section.
+    bool isSet;
+    do {
+        isSet = (atomicCAS(mutex, 0, 1) == 0);
+        if (isSet) {
+            // Critical section goes here.
+            // The critical section MUST be inside the wait loop;
+            // if it is afterward, a deadlock will occur.
+        }
+        if (isSet) {
+            mutex = 0;
+        }
+    } while (!isSet);
+}
+```
+
+### Links
+
+The following resources may be useful for this project.
+
+* Line Rasterization slides, MIT EECS 6.837, Teller and Durand
+  * [Slides](http://groups.csail.mit.edu/graphics/classes/6.837/F02/lectures/6.837-7_Line.pdf)
+* High-Performance Software Rasterization on GPUs
   * [Paper (HPG 2011)](http://www.tml.tkk.fi/~samuli/publications/laine2011hpg_paper.pdf)
   * [Code](http://code.google.com/p/cudaraster/)
   * Note that looking over this code for reference with regard to the paper is
@@ -273,16 +311,16 @@ The following resources may be useful for this project:
     incorporate any of this code into your project.
   * [Slides](http://bps11.idav.ucdavis.edu/talks/08-gpuSoftwareRasterLaineAndPantaleoni-BPS2011.pdf)
 * The Direct3D 10 System (SIGGRAPH 2006) - for those interested in doing
-  geometry shaders and transform feedback:
+  geometry shaders and transform feedback
   * [Paper](http://dl.acm.org/citation.cfm?id=1141947)
   * [Paper, through Penn Libraries proxy](http://proxy.library.upenn.edu:2247/citation.cfm?id=1141947)
 * Multi-Fragment Eﬀects on the GPU using the k-Buﬀer - for those who want to do
-  order-independent transparency using a k-buffer:
+  order-independent transparency using a k-buffer
   * [Paper](http://www.inf.ufrgs.br/~comba/papers/2007/kbuffer_preprint.pdf)
 * FreePipe: A Programmable, Parallel Rendering Architecture for Efficient
-  Multi-Fragment Effects (I3D 2010):
+  Multi-Fragment Effects (I3D 2010)
   * [Paper](https://sites.google.com/site/hmcen0921/cudarasterizer)
-* Writing A Software Rasterizer In Javascript:
+* Writing A Software Rasterizer In Javascript
   * [Part 1](http://simonstechblog.blogspot.com/2012/04/software-rasterizer-part-1.html)
   * [Part 2](http://simonstechblog.blogspot.com/2012/04/software-rasterizer-part-2.html)
 
