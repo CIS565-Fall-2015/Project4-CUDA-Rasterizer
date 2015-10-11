@@ -17,15 +17,14 @@ and a framebuffer.
  
 * Primitive assembly with support for triangles read from buffers of index and
   vertex data
- * The newly transformed vertices are passed into the primitive assembler.  The output of this function are all the triangles that are in the model.  Each vertex is passed into the primitve assembler, and based on it's index, it is placed into a new triangle.  The triangle struct holds three VertexOuts and a boolean that says whether it is backfacing or not.  
+ * The newly transformed vertices are passed into the primitive assembler.  The output of this function are all the triangles that are in the model.  Each vertex is passed into the primitve assembler, and based on it's index, it is placed into a new triangle.  The triangle struct holds three VertexOuts and a boolean that says whether it is backfacing or not.  After this implementation, I was able to get the output shown below. 
+
+![](img/cow_triangles.png "Cow after primitive assembly")
  
 * Rasterization
  * The rasterizer does most of the work.  Here, each triangle is passed into the function, and it loops through every fragment to determine if the triangle is in that fragment.  The depth test is done here, along with antialiasing.  With each fragment, we calculate the barycentric coordinates with respect to the given triangle.  These coordinates tell us whether the fragment is in the triangle.  Then, the depth test is done.  If the depth of the triangle at that fragment is lower than any other triangle at that fragment, then the fragment should show that particular triangle.  AtomicMin is used to check the depth.  This function is needed when using the GPU because all threads are being run at once, we need an uninterupted function, since multiple threads could be trying to access the fragment's depth value.  Including the depth test allowed for a much better output.  It changed the image below on the left to the image on the right.
 
 ![](img/cow_normals3.png "Cow no depth test") ![](img/cow_normals_depth.png "Cow with depth test")
-
-
-
 
 * Fragment shading.
 * A depth buffer for storing and depth testing fragments.
