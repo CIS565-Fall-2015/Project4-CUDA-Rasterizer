@@ -170,7 +170,6 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
         depthbuffer[index].valid = false;
         depthbuffer[index].z = INT_MAX;
         depthbuffer[index].color = glm::vec3(.15, .15, .15);
-        //depthbuffer[index] = (Fragment) { glm::vec3(-1, -1, -1) };
     }
 }
 
@@ -262,10 +261,12 @@ __global__ void scanline(int width, int height, int tricount,
 
         AABB bb = getAABBForTriangle(tri.pos);
 
-        float ymin = (int) (bb.min.y / ystep) * ystep;
-        float xmin = (int) (bb.min.x / xstep) * xstep;
-        for (float y = ymin; y < bb.max.y; y += ystep) {
-            for (float x = xmin; x < bb.max.x; x += xstep) {
+        float ymin = glm::max(-1.f, (int) (bb.min.y / ystep) * ystep);
+        float xmin = glm::max(-1.f, (int) (bb.min.x / xstep) * xstep);
+        float ymax = glm::min(1.f, bb.max.y);
+        float xmax = glm::min(1.f, bb.max.x);
+        for (float y = ymin; y < ymax; y += ystep) {
+            for (float x = xmin; x < xmax; x += xstep) {
                 storeFragment(x, y, width, height, tri, fragments);
             }
         }
@@ -309,11 +310,11 @@ void rasterize(uchar4 *pbo) {
     c.view = glm::vec3(0, 0, 1);
     c.up = glm::vec3(0, -1, 0);
     c.light = glm::vec3(0, 4, 0);
-    c.fovy = glm::radians(45);
+    c.fovy = 45.f;
 
     glm::mat4 model = glm::mat4(1.f);
     glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
-    glm::mat4 persp = glm::perspective(45.f, 1.f, .1f, 100.f);
+    glm::mat4 persp = glm::perspective(c.fovy, 1.f, 1.f, 100.f);
     glm::mat4 mvp = persp * view * model;
 
     clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
