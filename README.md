@@ -53,8 +53,23 @@ Incorrect:
 
 ### Performance Analysis
 
-Comparison of size of triangles vs. FPS
+##Comparison of size of triangles vs. FPS
+
+This comparison illustrates the bottleneck of the rasterization portion of the pipeline.
+As triangles get nearer to the camera (effectively, larger), then each thread must spend 
+more time rasterizing. One possible method of reducing this is to compare the number of
+primitives to be rasterized vs. the size of the primitives on screen. If the ratio of size to 
+number is large, then instead of launching 1 thread per primitive, then launch one thread per
+fragment and depth test sequentially that way.
+
+![](renders/trisize_vs_fps.png)
 
 Comparison of pipeline stages
 
+![](renders/pie_chart.png)
 
+Performance Effects of super-sampled Anti-Aliasing
+
+It is quite clear that AAing in this manner is extremely costly as the samples per pixels increases.
+
+![](renders/aa_vs_fps.png)
