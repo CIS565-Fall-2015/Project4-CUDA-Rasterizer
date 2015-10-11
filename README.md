@@ -53,7 +53,7 @@ Performance Analysis
 
 #### Pipeline Optimization
 
-[flow chart here...]
+![](img/Pipeline.png)
 
 description here...
 
@@ -77,3 +77,4 @@ To Do...
 1. cannot tessellate cow.obj
 2. cannot open sponza.obj
 3. Smooth Tessellation
+4. seperate textuers
