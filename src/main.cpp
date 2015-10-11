@@ -335,6 +335,10 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 	{
 		float move = 0.1f;
 		float angle = 0.1f;
+
+//		float move = 10.0f;
+//		float angle = .0f;
+
 		switch(key)
 		{
 			case GLFW_KEY_A:
@@ -343,7 +347,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			    break;
 
 			case GLFW_KEY_D:
-				//scene->updateCameraPos(glm::vec3(-move,0,0));
+//				scene->updateCameraPos(glm::vec3(-move,0,0));
 				scene->moveModel(glm::vec3(-move,0,0));
 				break;
 

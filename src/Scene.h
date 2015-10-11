@@ -42,6 +42,8 @@ public:
 	void moveModel(glm::vec3);
 	void rotateModel(glm::vec3);
 	void updateRenderMode();
+	void configureMVPMatrices();
+	void moveLights();
 };
 
 

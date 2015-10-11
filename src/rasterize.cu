@@ -35,6 +35,7 @@ static int height = 0;
 static int *dev_bufIdx = NULL;
 static VertexIn *dev_bufVertex = NULL;
 static Triangle *dev_primitives = NULL;
+static Edge *dev_edges = NULL;
 static Fragment *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
@@ -81,6 +82,7 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
     }
 }
 
+//Kernel function to figure out vertex in transformes space and NDC
 __global__
 void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, VertexOut *outVertex, Camera cam)
 {
@@ -113,6 +115,7 @@ void kernVertexShader(int numVertices, int w, int h, VertexIn * inVertex, Vertex
 	}
 }
 
+//Kernel function to assemble triangles
 __global__
 void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inVertex, Triangle *triangles, int* indices, glm::vec3 camDir)
 {
@@ -123,18 +126,23 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inV
 		int k_3 = 3 * index;
 
 		Triangle &t = triangles[index];
-		glm::vec3 triNor = glm::normalize(outVertex[k_3].nor + outVertex[k_3+1].nor + outVertex[k_3+2].nor);
+
+		//Find the triangle normal
+		glm::vec3 triNor = (outVertex[k_3].nor + outVertex[k_3+1].nor + outVertex[k_3+2].nor);
 
 //		printf ("Tri Normal : %f %f %f\n", triNor.x, triNor.y, triNor.z);
 //		printf ("Cam Dir : %f %f %f\n", camDir.x, camDir.y, camDir.z);
 
 		if(glm::dot(triNor, camDir) > 0.0f)
 		{
+			//Triangle facing away from the camera
+			//	Mark for deletion
 			t.keep = false;
 		}
 
 		else
 		{
+			//Else save it
 			t.keep = true;
 
 			t.vOut[0] = outVertex[indices[k_3]];
@@ -148,6 +156,28 @@ void kernPrimitiveAssembly(int numTriangles, VertexOut *outVertex, VertexIn *inV
 	}
 }
 
+//Kernel function to assemble edges
+__global__
+void kernEdgeAssembly(int numTriangles, VertexOut *outVertex, Edge *edge, int* indices)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numTriangles)
+	{
+		int k_3 = 3 * index;
+
+		edge[indices[k_3]].v1 = outVertex[k_3].pos;
+		edge[indices[k_3]].v2 = outVertex[k_3+1].pos;
+
+		edge[indices[k_3+1]].v1 = outVertex[k_3+1].pos;
+		edge[indices[k_3+1]].v2 = outVertex[k_3+2].pos;
+
+		edge[indices[k_3+2]].v1 = outVertex[k_3+2].pos;
+		edge[indices[k_3+2]].v2 = outVertex[k_3].pos;
+	}
+}
+
+//Kernel function to draw axis
 __global__
 void kernDrawAxis(int w, int h, Fragment *fragments)
 {
@@ -165,9 +195,18 @@ void kernDrawAxis(int w, int h, Fragment *fragments)
 		{
 			fragments[index].color = glm::vec3(1, 0, 0);
 		}
+	    else if(x == 0 || x == w-1)
+		{
+			fragments[index].color = glm::vec3(1);
+		}
+		else if(y == 0 || y == h)
+		{
+			fragments[index].color = glm::vec3(1);
+		}
     }
 }
 
+//Kernel function to clear the depth and color buffer
 __global__
 void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
 {
@@ -183,6 +222,7 @@ void kernClearFragmentBuffer(int w, int h, Fragment *fragments)
     }
 }
 
+//Kernel function to rasterize the triangle
 __global__
 void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangles, int numTriangles, Camera cam, Light light1, Light light2)
 {
@@ -265,7 +305,10 @@ void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangl
 							{
 								fragments[fragIndex].color = diffusedTerm2 * col * light2.col;
 							}
-							fragments[fragIndex].color += glm::vec3(0.1f);
+							else
+							{
+								fragments[fragIndex].color = glm::vec3(0.0f);
+							}
 						}
 					}
 				}
@@ -274,6 +317,7 @@ void kernRasterizeTraingles(int w, int h, Fragment *fragments, Triangle *triangl
 	}
 }
 
+//Kernel function to rasterize points
 __global__
 void kernRasterizePoints(int numVertices, int w, int h, Fragment *fragments, VertexOut * vertices, Camera cam, Light light1, Light light2)
 {
@@ -289,11 +333,81 @@ void kernRasterizePoints(int numVertices, int w, int h, Fragment *fragments, Ver
 				&& point.y < h*0.5f )
 		{
 
-			int fragIndex = int((point.x + w*0.5f) + (point.y + h*0.5f)*w);
-			fragments[fragIndex].color = glm::vec3(1.0f);
+//			int fragIndex = ;
+			fragments[int((point.x + w*0.5f) + (point.y + h*0.5f)*w)].color = glm::vec3(1.0f);
 		}
 	}
 }
+
+//Kernel function to rasterize lines
+__global__
+void kernRasterizeLines(int numVertices, int w, int h, Fragment *fragments, Edge *edge, Camera cam, Light light1, Light light2)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if(index < numVertices)
+	{
+		Edge &e = edge[index];
+
+		glm::vec2 v1(e.v1.x, e.v1.y);
+		glm::vec2 v2(e.v2.x, e.v2.y);
+
+		v1.x = glm::clamp(v1.x, -(float)w*0.5f, (float)w*0.5f);
+		v1.y = glm::clamp(v1.y, -(float)h*0.5f, (float)h*0.5f);
+		v2.x = glm::clamp(v2.x, -(float)w*0.5f, (float)w*0.5f);
+		v2.y = glm::clamp(v2.y, -(float)h*0.5f, (float)h*0.5f);
+
+		float m = (v2.y - v1.y) / (v2.x - v1.x);
+
+		int inc;
+
+		if(m > 1)
+		{
+			if(v1.y > v2.y)
+			{
+				inc = -1;
+			}
+			else
+			{
+				inc = 1;
+			}
+
+			int i, j;
+
+			for(j=v1.y; j!=(int)v2.y; j += inc)
+			{
+				i = ((float)j - v1.y) / m + v1.x;
+				//			printf("i, j : %d %d\n", i, j);
+				//			int fragIndex = int((i + w*0.5f) + (j + h*0.5f)*w);
+				fragments[int((i + w*0.5f) + (j + h*0.5f)*w)].color = glm::vec3(1.0f);
+			}
+		}
+
+		else
+		{
+			if(v1.x > v2.x)
+			{
+				inc = -1;
+			}
+
+			else
+			{
+				inc = 1;
+			}
+
+			int i, j;
+
+			for(i=v1.x; i!=(int)v2.x; i += inc)
+			{
+				j = m * ((float)i - v1.x) + v1.y;
+				//			printf("i, j : %d %d\n", i, j);
+				//			int fragIndex = int((i + w*0.5f) + (j + h*0.5f)*w);
+				fragments[int((i + w*0.5f) + (j + h*0.5f)*w)].color = glm::vec3(1.0f);
+			}
+		}
+	}
+}
+
 
 /**
  * Called once at the beginning of the program to allocate memory.
@@ -317,13 +431,6 @@ void rasterizeInit(int w, int h) {
  * Set all of the buffers necessary for rasterization.
  */
 
-void setPrimitiveBuffer(int vertCount)
-{
-	cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
-}
-
 void rasterizeSetBuffers(
         int _bufIdxSize, int *bufIdx,
         int _vertCount, float *bufPos, float *bufNor, float *bufCol) {
@@ -346,10 +453,15 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_bufVertex, vertCount * sizeof(VertexIn));
     cudaMemcpy(dev_bufVertex, bufVertex, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
 
-    setPrimitiveBuffer(vertCount);
+    cudaFree(dev_primitives);
+    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
+    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
 
     cudaFree(dev_outVertex);
     cudaMalloc((void**)&dev_outVertex, vertCount * sizeof(VertexOut));
+
+    cudaFree(dev_edges);
+    cudaMalloc((void**)&dev_edges, vertCount * sizeof(Edge));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -366,7 +478,7 @@ void rasterize(uchar4 *pbo) {
 
     if(scene->run)
     {
-    	int numThreads = 256;
+    	int numThreads = 128;
 		int numBlocks;
 		int numTriangles = vertCount/3;
 		scene->run = false;
@@ -379,7 +491,7 @@ void rasterize(uchar4 *pbo) {
 		kernClearFragmentBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
 		//Drawing axis
-//		kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+		kernDrawAxis<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
 		switch (scene->renderMode)
     	{
@@ -419,6 +531,23 @@ void rasterize(uchar4 *pbo) {
 
 				break;
 			}
+
+			case LINES:
+			{
+//				std::cout<<"HERE";
+				//Do vertex shading
+				numBlocks = (vertCount + numThreads -1)/numThreads;
+				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
+
+				//Do primitive assembly
+				numBlocks = (numTriangles + numThreads -1)/numThreads;
+				kernEdgeAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_edges, dev_bufIdx);
+
+				numBlocks = (vertCount + numThreads -1)/numThreads;
+				kernRasterizeLines<<<numBlocks, numThreads>>>(vertCount, width, height, dev_depthbuffer, dev_edges, cam, light1, light2);
+
+				break;
+			}
     	}
     }
 
@@ -454,6 +583,9 @@ void rasterizeFree() {
 
     cudaFree(dev_outVertex);
     dev_outVertex = NULL;
+
+    cudaFree(dev_edges);
+    dev_edges = NULL;
 
     checkCUDAError("rasterizeFree");
 }

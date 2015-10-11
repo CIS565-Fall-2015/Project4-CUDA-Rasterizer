@@ -23,6 +23,11 @@ struct VertexOut {
 	glm::vec3 nor;
 };
 
+struct Edge {
+	glm::vec3 v1;
+	glm::vec3 v2;
+};
+
 //Triangle, saves vertex in screen space and world space
 struct Triangle {
     VertexOut vOut[3];
