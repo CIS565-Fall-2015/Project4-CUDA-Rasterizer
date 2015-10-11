@@ -18,6 +18,17 @@ Scene::Scene(int w, int h)
 	backFaceCulling = true;
 	antiAliasing = true;
 	run = true;
+
+	mouse.dragging = false;
+	mouse.clicked = false;
+	mouse.left = false;
+	mouse.right = false;
+	mouse.middle = false;
+
+	model.translate = glm::vec3(0.0f);
+	model.rotate = glm::vec3(0.0f);
+	model.scale = glm::vec3(1.0f);
+
 	width = w;
 	height = h;
 	imageColor = new glm::vec3[width*height];
@@ -96,7 +107,8 @@ void Scene::updateCameraLookAt(glm::vec3 p)
 
 void Scene::moveModel(glm::vec3 m)
 {
-	cam.model = utilityCore::buildTransformationMatrix(m, glm::vec3(0,0,0), glm::vec3(1,1,1)) * cam.model;
+	model.translate += m;
+	cam.model = utilityCore::buildTransformationMatrix(model.translate, model.rotate, model.scale);
 //	moveLights();
 	run = true;
 	configureCameraMatrix();
@@ -104,7 +116,8 @@ void Scene::moveModel(glm::vec3 m)
 
 void Scene::rotateModel(glm::vec3 r)
 {
-	cam.model = utilityCore::buildTransformationMatrix(glm::vec3(0,0,0), r, glm::vec3(1,1,1)) * cam.model;
+	model.rotate += r;
+	cam.model = utilityCore::buildTransformationMatrix(model.translate, model.rotate, model.scale);
 //	moveLights();
 	run = true;
 	configureCameraMatrix();

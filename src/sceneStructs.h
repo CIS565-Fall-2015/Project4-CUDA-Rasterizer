@@ -48,7 +48,6 @@ struct Light {
 };
 
 //Camera struct
-//TODO: model matrix should be moved out of this
 struct Camera {
 	glm::vec3 pos;
 	glm::vec3 lookat;
@@ -63,4 +62,18 @@ struct Camera {
 	glm::mat4 cameraMatrix;
 };
 
+struct Mouse {
+	glm::vec2 pos;
+	bool dragging;
+	bool left;
+	bool right;
+	bool middle;
+	bool clicked;
+};
+
+struct Model {
+	glm::vec3 translate;
+	glm::vec3 rotate;
+	glm::vec3 scale;
+};
 #endif /* SCENESTRUCTS_H_ */

@@ -149,6 +149,11 @@ bool init(obj *mesh) {
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, keyCallback);
 
+    //Mouse callbacks
+    glfwSetCursorPosCallback(window, mouseCursorPosCallBack);
+    glfwSetMouseButtonCallback(window, mouseButtonCallBack);
+	glfwSetScrollCallback(window, mouseScrollCallBack);
+
     // Set up GL context
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
@@ -404,11 +409,89 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 				break;
 		}
 	}
+}
 
-//            case GLFW_KEY_A:     camchanged = true; cammove -= glm::vec3(.1f, 0, 0); break;
-//            case GLFW_KEY_D:     camchanged = true; cammove += glm::vec3(.1f, 0, 0); break;
-//            case GLFW_KEY_W:     camchanged = true; cammove += glm::vec3(0, 0, .1f); break;
-//            case GLFW_KEY_S:     camchanged = true; cammove -= glm::vec3(0, 0, .1f); break;
-//            case GLFW_KEY_R:     camchanged = true; cammove += glm::vec3(0, .1f, 0); break;
-//            case GLFW_KEY_F:     camchanged = true; cammove -= glm::vec3(0, .1f, 0); break;
+//Mouse Callbacks
+//Reference: http://www.glfw.org/docs/latest/input.html#input_mouse_button
+void mouseButtonCallBack(GLFWwindow *window, int button, int action, int mods)
+{
+	if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	{
+		scene->mouse.left = true;
+//		scene->mouse.dragging = true;
+		scene->mouse.clicked = true;
+	}
+
+	else if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		scene->mouse.right = true;
+//		scene->mouse.dragging = true;
+		scene->mouse.clicked = true;
+	}
+
+	else if(button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS)
+	{
+		scene->mouse.middle = true;
+//		scene->mouse.dragging = true;
+		scene->mouse.clicked = true;
+	}
+
+	else if(action == GLFW_RELEASE)
+	{
+		scene->mouse.dragging = false;
+		scene->mouse.clicked = false;
+		scene->mouse.left = false;
+		scene->mouse.right = false;
+		scene->mouse.middle = false;
+	}
+}
+
+void mouseCursorPosCallBack(GLFWwindow *window, double x, double y)
+{
+	//Set the first click position
+	//Second time the function is called, it means the user is dragging
+	if(!scene->mouse.clicked)
+	{
+		scene->mouse.pos.x = float(x);
+		scene->mouse.pos.y = float(y);
+		scene->mouse.dragging = true;
+	}
+
+	else if(scene->mouse.dragging)
+	{
+		//Left Rotate
+		if(scene->mouse.left)
+		{
+			glm::vec2 angle((float(y) - scene->mouse.pos.y), (float(x) - scene->mouse.pos.x));
+			angle *= 0.003f;
+			scene->rotateModel(glm::vec3(angle.x, angle.y ,0));
+			scene->mouse.pos.x = x;
+			scene->mouse.pos.y = y;
+		}
+
+		//Right Zoom
+		else if(scene->mouse.right)
+		{
+			float movedX = (float(x) - scene->mouse.pos.x) * 0.003f;
+
+			scene->moveModel(glm::vec3(0, 0, movedX));
+			scene->mouse.pos.x = x;
+			scene->mouse.pos.y = y;
+		}
+
+		//Middle Pan
+		else if(scene->mouse.middle)
+		{
+			glm::vec2 move((float(x) - scene->mouse.pos.x), (scene->mouse.pos.y - float(y)));
+			move *= 0.003f;
+			scene->moveModel(glm::vec3(move.x,move.y,0));
+			scene->mouse.pos.x = x;
+			scene->mouse.pos.y = y;
+		}
+	}
+}
+
+void mouseScrollCallBack(GLFWwindow *window, double x, double y)
+{
+
 }

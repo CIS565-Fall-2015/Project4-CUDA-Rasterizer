@@ -31,6 +31,9 @@ public:
 	bool run;
 	Camera cam;
 	Light light1, light2;
+	Mouse mouse;
+	Model model;
+
 	int width, height;
 	glm::vec3 *imageColor;
 
