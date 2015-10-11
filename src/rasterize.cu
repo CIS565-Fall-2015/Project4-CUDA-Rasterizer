@@ -50,7 +50,6 @@ __device__ void printVec3(glm::vec3 v) {
     printf("(%f, %f, %f)\n", v.x, v.y, v.z);
 }
 
-
 /************************* Output to Screen ***********************************/
 
 /**
@@ -151,7 +150,7 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
     if (x < width && y < height) {
         int index = x + (y * width);
 
-        depthbuffer[index] = (Fragment) { glm::vec3(0, 0, 0) };
+        depthbuffer[index] = (Fragment) { glm::vec3(.1, .1, .1) };
     }
 }
 
@@ -187,23 +186,29 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
 
 __global__ void scanline(int width, int height, int tricount,
         Triangle *primitives, Fragment *fragments) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-    int index = x + (y * width);
+    int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-    if (x < width && y < height) {
-        float ndc_x = (2.f * x / (float) width ) - 1;
-        float ndc_y = (2.f * y / (float) height) - 1;
-        glm::vec2 ndc = glm::vec2(ndc_x, ndc_y);
+    if (k < tricount) {
+        Triangle tri = primitives[k];
+        glm::vec3 tripos[3] = { tri.v[0].pos, tri.v[1].pos, tri.v[2].pos };
 
-        for (int i = 0; i < tricount; i++) {
-            Triangle tri = primitives[i];
-            glm::vec3 tripos[3] = { tri.v[0].pos, tri.v[1].pos, tri.v[2].pos };
+        float ystep = 2.f / height;
+        float xstep = 2.f / width;
 
-            glm::vec3 baryCoords = calculateBarycentricCoordinate(tripos, ndc);
-            //fragments[index] = (Fragment) { glm::vec3(ndc.x, ndc.y, 0) };
-            if (isBarycentricCoordInBounds(baryCoords)) {
-                fragments[index] = (Fragment) { glm::vec3(1, 0, 0) };
+        AABB bb = getAABBForTriangle(tripos);
+
+        float ymin = (int) (bb.min.y / ystep) * ystep;
+        float xmin = (int) (bb.min.x / xstep) * xstep;
+        for (float y = ymin; y < bb.max.y; y += ystep) {
+            for (float x = xmin; x < bb.max.x; x += xstep) {
+                glm::vec3 bary = calculateBarycentricCoordinate(tripos, glm::vec2(x, y));
+
+                if (isBarycentricCoordInBounds(bary)) {
+                    glm::vec2 pix = fromNDC(x, y, width, height);
+                    int pixelIndex = pix.x + (pix.y * width);
+
+                    fragments[pixelIndex] = (Fragment) { glm::vec3(1, 0, 0) };
+                }
             }
         }
     }
@@ -221,7 +226,7 @@ void rasterize(uchar4 *pbo) {
     int sideLength1d = 16;
     dim3 blockSize1d(sideLength1d);
     dim3 vertBlockCount((vertCount + sideLength1d - 1) / sideLength1d);
-    dim3 primBlockCount(((vertCount/3) + sideLength1d - 1) / sideLength1d);
+    dim3 triBlockCount(((vertCount/3) + sideLength1d - 1) / sideLength1d);
 
     int tricount = vertCount / 3;
 
@@ -232,11 +237,11 @@ void rasterize(uchar4 *pbo) {
     checkCUDAError("scan");
 
     // VertexOut -> Triangle
-    assemblePrimitives<<<primBlockCount, blockSize1d>>>(tricount, dev_bufVertexOut, dev_primitives);
+    assemblePrimitives<<<triBlockCount, blockSize1d>>>(tricount, dev_bufVertexOut, dev_primitives);
     checkCUDAError("rasterize");
 
     // Triangle -> Fragment
-    scanline<<<blockCount2d, blockSize2d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
+    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount, dev_primitives, dev_depthbuffer);
     checkCUDAError("rasterize");
 
     // Copy depthbuffer colors into framebuffer

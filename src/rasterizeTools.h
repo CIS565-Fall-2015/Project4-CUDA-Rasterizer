@@ -17,6 +17,21 @@ struct AABB {
     glm::vec3 max;
 };
 
+/** Convert from pixel coordinates to normalized device coords */
+__host__ __device__
+glm::vec2 toNDC(int x, int y, int width, int height) {
+    return glm::vec2((2.f * x / (float) width ) - 1,
+            (2.f * y / (float) height) - 1);
+}
+
+/** Convert from NDC coordinates to pixel coords */
+__host__ __device__
+glm::vec2 fromNDC(float ndc_x, float ndc_y, int width, int height) {
+    float x = (ndc_x + 1) * width / 2.f;
+    float y = (ndc_y + 1) * height / 2.f;
+    return glm::vec2(x, y);
+}
+
 /**
  * Multiplies a glm::mat4 matrix and a vec4.
  */
