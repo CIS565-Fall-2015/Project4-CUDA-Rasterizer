@@ -24,7 +24,7 @@ and a framebuffer.
 * Rasterization
  * The rasterizer does most of the work.  Here, each triangle is passed into the function, and it loops through every fragment to determine if the triangle is in that fragment.  The depth test is done here, along with antialiasing.  With each fragment, we calculate the barycentric coordinates with respect to the given triangle.  These coordinates tell us whether the fragment is in the triangle.  Then, the depth test is done.  If the depth of the triangle at that fragment is lower than any other triangle at that fragment, then the fragment should show that particular triangle.  AtomicMin is used to check the depth.  This function is needed when using the GPU because all threads are being run at once, we need an uninterupted function, since multiple threads could be trying to access the fragment's depth value.  Including the depth test allowed for a much better output.  It changed the image below on the left to the image on the right.
 
-![](img/cow_normals3.png "Cow no depth test" = 150x) ![](img/cow_normals_depth.png "Cow with depth test")
+![](img/cow_normals3.png =150x "Cow no depth test") ![](img/cow_normals_depth.png "Cow with depth test")
 
 * Fragment shading
  * In the fragment shader, I applied a diffuse shader to the model.  There was a light source that was placed behind the camera.  Using the lights position, an ambient and diffuse term (created from the dot product of the surface normal and light vector), the new color of the surface was calculated.  The output of the fragment shader was a new triangle with the final output color.  The image below is the same cow image with the shader applied to it.
