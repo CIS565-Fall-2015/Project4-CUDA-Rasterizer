@@ -34,7 +34,10 @@ and a framebuffer.
 * A depth buffer for storing and depth testing fragments (**with** atomics for race avoidance)
  * the depth buffer was part of the Fragment struct.  There were two values, a float depth and an int depth value.  This is because the AtomicMin function only allowed for ints.  
 * Fragment to depth buffer writing
-* (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong.
+* (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong
+ * A Phong shader was applied to the models.  The phong shader takes into account ambient, diffuse, and specular shading.  In this shader, the ambient term is .2, while the diffuse and specular term are determined by the lighting location and normal of the surface.  The image below shows the phong lighting with a red light.  
+
+![](img/cow_red_light.png "Cow with a red light source and phong shading")
 
 You are also required to implement at least "3.0" points in extra features.
 (the parenthesized numbers must add to 3.0 or more):
