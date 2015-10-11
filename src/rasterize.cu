@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <climits>
 #include <cuda.h>
 #include <thrust/random.h>
 #include <glm/glm.hpp>
@@ -46,7 +47,8 @@ struct Fragment {
     glm::vec3 color;
     Triangle tri;
     glm::vec3 baryCoords;
-    float z;
+    int z;
+    bool valid;
 };
 
 static int width = 0;
@@ -165,7 +167,10 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
     if (x < width && y < height) {
         int index = x + (y * width);
 
-        depthbuffer[index] = (Fragment) { glm::vec3(.1, .1, .1) };
+        depthbuffer[index].valid = false;
+        depthbuffer[index].z = INT_MAX;
+        depthbuffer[index].color = glm::vec3(.15, .15, .15);
+        //depthbuffer[index] = (Fragment) { glm::vec3(-1, -1, -1) };
     }
 }
 
@@ -227,11 +232,19 @@ __device__ void storeFragment(float x, float y, float width, float height,
         Triangle tri, Fragment *fragments) {
 
     glm::vec3 bary = calculateBarycentricCoordinate(tri.pos, glm::vec2(x, y));
-    glm::vec3 pos = glm::vec3(fromNDC(x, y, width, height), getZAtCoordinate(tri.pos, bary));
+    glm::vec2 pos = fromNDC(x, y, width, height);
     int pixelIndex = pos.x + (pos.y * width);
 
     if (isBarycentricCoordInBounds(bary)) {
-        fragments[pixelIndex] = (Fragment) { glm::vec3(0, 0, 0), tri, bary, pos.z };
+        Fragment prev = fragments[pixelIndex];
+
+        float z = getZAtCoordinate(tri.worldPos, bary);
+        int depth = z * INT_MAX;
+        atomicMin(&fragments[pixelIndex].z, depth);
+
+        if (fragments[pixelIndex].z == depth) {
+            fragments[pixelIndex] = (Fragment) { glm::vec3(0, 0, 0), tri, bary, depth, true};
+        }
     } else {
     }
 }
@@ -259,7 +272,6 @@ __global__ void scanline(int width, int height, int tricount,
     }
 }
 
-// Scans across triangles to generate primitives (pixels).
 __global__ void fragmentShader(int width, int height,
         Fragment *fragments, glm::vec3 light) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -268,9 +280,9 @@ __global__ void fragmentShader(int width, int height,
 
     if (x < width && y < height) {
         Fragment &frag = fragments[index];
-        if (!isnan(frag.z)) {
+        if (frag.valid) {
             glm::vec3 norm = barycentricInterpolate(frag.tri.worldNor, frag.baryCoords);
-            frag.color = norm;
+            frag.color = glm::abs(norm);
         } else {
         }
     }
