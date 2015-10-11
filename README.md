@@ -26,12 +26,15 @@ and a framebuffer.
 
 ![](img/cow_normals3.png "Cow no depth test") ![](img/cow_normals_depth.png "Cow with depth test")
 
-* Fragment shading.
-* A depth buffer for storing and depth testing fragments.
-* Fragment to depth buffer writing (**with** atomics for race avoidance).
-* (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong.
+* Fragment shading
+ * In the fragment shader, I applied a diffuse shader to the model.  There was a light source that was placed behind the camera.  Using the lights position, an ambient and diffuse term (created from the dot product of the surface normal and light vector), the new color of the surface was calculated.  The output of the fragment shader was a new triangle with the final output color.  The image below is the same cow image with the shader applied to it.
 
-See below for more guidance.
+![](img/cow_frag_shader.png "Cow with fragment shader")
+
+* A depth buffer for storing and depth testing fragments (**with** atomics for race avoidance)
+ * the depth buffer was part of the Fragment struct.  There were two values, a float depth and an int depth value.  This is because the AtomicMin function only allowed for ints.  
+* Fragment to depth buffer writing
+* (Fragment shader) simple lighting scheme, such as Lambert or Blinn-Phong.
 
 You are also required to implement at least "3.0" points in extra features.
 (the parenthesized numbers must add to 3.0 or more):
