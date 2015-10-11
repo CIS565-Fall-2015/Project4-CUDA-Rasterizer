@@ -87,3 +87,8 @@ These fragments are finally output to the framebuffer, and from there displayed 
 ![](data_images/Dragon Pie Chart.png "Dragon Rasterization Pipeline Breakdown")
 
 ![](data_images/Flower Pie Chart.png "Flower Rasterization Pipeline Breakdown")
+
+### Optimizations
+I was able to do a significiant amount of optimization work on this project. Below is the original performance data from NSight.
+![](data_images/Original Performance Summary.png "Original Performance Summary")
+
