@@ -496,7 +496,7 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 								glm::vec3 normal = baryCoord[0] * tris[thrId].v[0].nor + baryCoord[1] * tris[thrId].v[1].nor + baryCoord[2] * tris[thrId].v[2].nor;
 								normal = glm::normalize(normal);
 								//normal = glm::abs(normal);
-								buf[4*x + m + y*4*width].color = glm::vec3(1.0f);
+								buf[4*x + m + y*4*width].color = glm::vec3(0.0f, 1.0f, 1.0f);
 								buf[4*x + m + y*4*width].nor = normal;
 								buf[4*x + m + y*4*width].depth = bbox.min.z;
 					
@@ -588,7 +588,7 @@ void rasterize(uchar4 *pbo) {
 	cudaEventSynchronize(stop);
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("vertex shader: %f \n", milliseconds);
+	//printf("vertex shader: %f \n", milliseconds);
 	checkCUDAError("rasterize");
 	int k;
 	//std::cin >> k;
@@ -600,14 +600,14 @@ void rasterize(uchar4 *pbo) {
 	cudaEventSynchronize(stop);
 	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("primitive Assembly: %f \n", milliseconds);
+	//printf("primitive Assembly: %f \n", milliseconds);
 	checkCUDAError("rasterize");
 	
 
 	//Scanline each triangle to get fragment color (rasterize)
 	int triCount = vertCount / 3;
 	blockCount1d = ((triCount + 64 - 1) / 64);
-	//printf("old triangle count: %i \n", triCount);
+	printf("old triangle count: %i \n", triCount);
 	//checkCUDAError("rasterize");
 	//THRUST REMOVE IF
 	cudaEventRecord(start);
@@ -623,8 +623,8 @@ void rasterize(uchar4 *pbo) {
 	cudaEventSynchronize(stop);
 	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("backface culling: %f \n", milliseconds);
-	//printf("new triangle count: %i \n", triCount);
+	//printf("backface culling: %f \n", milliseconds);
+	printf("new triangle count: %i \n", triCount);
 	//printf("tri count: %i, block count: %i \n", triCount, (triCount + 64 - 1) / 64);
 	
 	cudaEventRecord(start);
@@ -634,7 +634,7 @@ void rasterize(uchar4 *pbo) {
 	cudaEventSynchronize(stop);
 	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("rasterize: %f \n", milliseconds);
+	//printf("rasterize: %f \n", milliseconds);
 	checkCUDAError("Fragment Shader");
 	if (lines) {
 		lineRasterize<<<blockCount1d, blockSize1d>>>(dev_primitives, dev_depthbuffer, width, height, triCount, matrix);
@@ -654,7 +654,7 @@ void rasterize(uchar4 *pbo) {
 	cudaEventSynchronize(stop);
 	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
-	printf("fragment shader: %f \n", milliseconds);
+	//printf("fragment shader: %f \n", milliseconds);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_fragbuffer, dev_framebuffer);
