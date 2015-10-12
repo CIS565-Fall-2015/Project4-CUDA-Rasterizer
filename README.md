@@ -26,22 +26,10 @@ the base color is normal map</br>
 * A performance analysis (described below).
 
 ### Performance Analysis
-
-The performance analysis is where you will investigate how to make your CUDA
-programs more efficient using the skills you've learned in class. You must have
-performed at least one experiment on your code to investigate the positive or
-negative effects on performance. 
-
-We encourage you to get creative with your tweaks. Consider places in your code
-that could be considered bottlenecks and try to improve them. 
-
-Provide summary of your optimizations (no more than one page), along with
-tables and or graphs to visually explain any performance differences.
-
-* Include a breakdown of time spent in each pipeline stage for a few different
-  models. It is suggested that you use pie charts or 100% stacked bar charts.
-* For optimization steps (like backface culling), include a performance
-  comparison to show the effectiveness.
+<img src="p1.png"  width="600" height="400">
+<p>The CPU are all used for opengl related funtions. The computation mostly happened in GPU
+<p> a breakdown of time spent in each pipeline stage 
+<img src="pipe_line.png"  width="600" height="400">
 
 
 
