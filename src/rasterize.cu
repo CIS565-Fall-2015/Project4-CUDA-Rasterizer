@@ -16,6 +16,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <util/utilityCore.hpp>
 #include <util/checkCUDAError.h>
@@ -50,6 +51,8 @@ struct Fragment {
     int z;
     bool valid;
 };
+
+static float t = 0;
 
 static int width = 0;
 static int height = 0;
@@ -320,6 +323,8 @@ __global__ void fragmentShader(int width, int height,
  * Perform rasterization.
  */
 void rasterize(uchar4 *pbo) {
+    //t += 0.025f;
+
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -333,11 +338,11 @@ void rasterize(uchar4 *pbo) {
     dim3 triBlockCount((tricount + sideLength1d - 1) / sideLength1d);
 
     Camera c;
-//    c.position = glm::vec3(0, 3, -10);
-//    c.view = glm::vec3(0, 0, 1);
-//    c.up = glm::vec3(0, -1, 0);
-//    c.light = glm::vec3(5, 4, 0);
-//    c.fovy = 45.f;
+    c.position = glm::vec3(0, 1, 5);
+    c.view = glm::vec3(0, 1, 0);
+    c.up = glm::vec3(0, -1, 0);
+    c.light = glm::vec3(5, 4, 0);
+    c.fovy = glm::radians(45.f);
 
 //    c.position = glm::vec3(0, 6, -90);
 //    c.view = glm::vec3(0, 0, 15);
@@ -345,39 +350,73 @@ void rasterize(uchar4 *pbo) {
 //    c.light = glm::vec3(0, 4, 5);
 //    c.fovy = 17.f;
 
-    c.position = glm::vec3(0, 1, 1);
-    c.view = glm::vec3(0, 0, 0);
-    c.up = glm::vec3(0, 1, 0);
-    c.light = glm::vec3(0, 4, 5);
-    c.fovy = glm::radians(40.f);
+    // Cube
+//    c.position = glm::vec3(0, 1, 1);
+//    c.view = glm::vec3(0, 0, 0);
+//    c.up = glm::vec3(0, 1, 0);
+//    c.light = glm::vec3(0, 4, 5);
+//    c.fovy = glm::radians(40.f);
 
-    glm::mat4 model = glm::mat4(1.f);
+    glm::mat4 model = glm::rotate(t, glm::vec3(0.f, 1.f, 0.f));
     glm::mat4 invModel = glm::inverseTranspose(model);
     glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
     glm::mat4 persp = glm::perspective(c.fovy, 1.f, 1.f, 10.f);
     glm::mat4 mvp = persp * view * model;
 
-    clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
-    checkCUDAError("scan");
+    // Set CudaEvents
+    float vShadeTime, assPrimitivesTime, scanlineTime, fShadeTime;
+    cudaEvent_t begin, end;
+    cudaEventCreate(&begin);
+    cudaEventCreate(&end);
 
-    vertexShader<<<vertBlockCount, blockSize1d>>>( vertCount,
-            dev_bufVertexIn, dev_bufVertexOut, model, invModel, mvp);
-    checkCUDAError("scan");
+    // Clear Depth Buffer
+    clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
+
+    // VertexIn -> VertexOut
+    cudaEventRecord(begin);
+    vertexShader<<<vertBlockCount, blockSize1d>>>(vertCount, dev_bufVertexIn,
+            dev_bufVertexOut, model, invModel, mvp);
+    checkCUDAError("");
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+    cudaEventElapsedTime(&vShadeTime, begin, end);
 
     // VertexOut -> Triangle
+    cudaEventRecord(begin);
     assemblePrimitives<<<triBlockCount, blockSize1d>>>(tricount,
             dev_bufVertexOut, dev_bufIdx, dev_primitives);
-    checkCUDAError("rasterize");
+    checkCUDAError("");
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+    cudaEventElapsedTime(&assPrimitivesTime, begin, end);
 
     // Triangle -> Fragment
+    cudaEventRecord(begin);
     scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount,
             dev_primitives, dev_depthbuffer);
-    checkCUDAError("rasterize");
+    checkCUDAError("");
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+    cudaEventElapsedTime(&scanlineTime, begin, end);
 
     // Fragment -> Fragment
+    cudaEventRecord(begin);
     fragmentShader<<<blockCount2d, blockSize2d>>>(width, height,
             dev_depthbuffer, c.light);
-    checkCUDAError("rasterize");
+    checkCUDAError("");
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+    cudaEventElapsedTime(&fShadeTime, begin, end);
+
+    // Clear CudaEvents
+    cudaEventDestroy(begin);
+    cudaEventDestroy(end);
+
+    fprintf(stderr, "%f %f %f %f\n", vShadeTime, assPrimitivesTime, scanlineTime, fShadeTime);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
