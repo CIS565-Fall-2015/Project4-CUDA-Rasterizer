@@ -69,26 +69,26 @@ Then I use stream compaction to remove these triangles (`thrust::remove_if` used
 ##### Raterization
 Once the primitives are assembled, we send them to the rasterizer. This is a step to determine which fragments will be shaded.
 
-* Rasterizing Triangles
+* <b>Rasterizing Triangles</b>
 
 	For triangles, I find the bounding box of the traingles and loop over the corresponding fragments. The fragments that fall in the triangle are considered for scissor and depth test.
 
-	* Scissor Test
+	* <b>Scissor Test</b>
 	
 		This is a fairly straight forward test. We define a rectangular area on the screen. Any fragment outside this area is not considered. Fragments within the area are considered for fragment shading.
 		
-	* Depth Test
+	* <b>Depth Test</b>
 	
 		The same fragment can be shared by more than one triangle. In such case, we need to decide which triangle nearer to the camera. This is called depth testing. The triangle that is closer to the camera is considered, and the fragment stores the color and normal based on that triangle.
 		
 	Once we decide which fragment is to be considered and the corresponding triangle, we interpolate the color and normals to get a smooth shaded effect. Barycentric interpolation is used for this.
 	
-* Rasterizing Lines
+* <b>Rasterizing Lines</b>
 
 	For lines, I use the naive line rasterization method. Based on the slope of the line, I move either in the x or the y axis from one point to the other. At every scanline, I find the point that would fall most closely on the line and use it to mark the fragment.
 	When the slope of the line is less than 1, we increment in the x axis and solve for y, while for a slope >1 vice versa. The equation `y = mx + c` is used to solve for the point.
 	
-* Rasterizing Points
+* <b>Rasterizing Points</b>
 
 	For points, nothing extra is required. The point itself us used to find the fragment that it will correspond to and that fragment is marked for coloring.
 
@@ -105,17 +105,37 @@ After all these steps, the final step is to send the fragment colors to the frag
 
 ### Performance Analysis
 
+The image used for rasterization analysis is as follows :
+
+<img src="images/analysis image.png">
+
+
 The following table shows the time in ms taken by the 4 basic steps of the pipeline and impact of Anti Aliasing (AA) and Back Face Culling. NOTE: Others include the time for steps like back face culling or function calls etc.
 
 <img src="analysis/Table.png">
+
+Both anti aliasing and back face culling have no impact on vertex shading. This is they have no role to play in this step. In primitive assembly, back face culling speeds up the process. This leads to lesser triangles for rasterization which makes it faster.
+
+The corresponding bar stack and the pie for the various steps is as follows. We can see that in every case, the maximum time is taken by the rasterization step.
 
 <img src="analysis/BarComparison.png">
 
 <img src="analysis/PieCharts.png">
 
-<img src="analysis/RasterizationComparison.png">
+In all the cases the maximum time is taken by the rasterization step and the next most time consuming step is the fragment shader. These are the 2 most computationally expensive steps and this is an expected result.
+
+Let us look at the impact of Anti Aliasing and Back Face Culling on our performance more closely. 
+
+###### Anti Aliasing Performance Impact on Rasterization
+
+<img src="analysis/performanceImpactAA.png">
+
+As I used super sampling, for anti aliasing, the performance was expected to slow down. This is because we are doind 4 times more work for rasterising. Both in the case of Back face culling off (left) and on (right), the performance for rasterization is almost 4 times slower.
 
 
+###### Back Face Culling Performance Impact on Rasterization
 
+<img src="analysis/performanceImpactBFC.png">
 
+Back face culling removes a decent number of triangles from the scene (from around 5800 to 2900 for cow). This makes the rasterization step faster as there are less triangles to run through. This can be seen in the bar graph. The speed up achieved is approx 1.5x.
 
