@@ -4,22 +4,20 @@ CUDA Rasterizer
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
 
 * Xinyue zhu
-* Tested on: (TODO) Windows 10, i7- @ 2.22GHz 22GB, GTX 960M
-
-
+* Tested on: Windows 10, i7- @ 2.22GHz 22GB, GTX 960M
 
 ========================
 ## README
 
-Description:
-This is a rasterizer.It includes the following pipeline:
+0.Description:
+0.This is a rasterizer.It includes the following pipeline:
 1)vertex transformation with camera movement</br>
 2)Tessellation shader
 3)Bling-phong shader and blending
 4)rasterization brute force scan line->boundingbox scan line
 4)depth test
 the base color is normal map
-<img src="1.png" alt=" Blinn-Phong shader with normal-based color" width="300" height="300">
+<img src="1.png"  width="400" height="400">
 
 
 
