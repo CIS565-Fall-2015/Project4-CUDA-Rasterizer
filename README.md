@@ -18,7 +18,7 @@ It includes the following pipeline:<br/>
 6)anti-aliansing:Super sampling - random  </br>
 the base color is normal map</br>
 <img src="1.png"  width="380" height="400">  <img src="2.png"  width="400" height="380">
-[![ScreenShot](https://www.youtube.com/watch?v=IY66btfDzQ0&feature=youtu.be)
+[!][ScreenShot](https://www.youtube.com/watch?v=IY66btfDzQ0&feature=youtu.be)
 
 ### Performance Analysis
 <img src="p1.png"  width="600" height="150">
