@@ -15,12 +15,16 @@ and a framebuffer.
 [![Video Demo](https://vimeo.com/142082419)](https://vimeo.com/142082419)
 
 * Final Images
+* 
+![](img/dragon2.png) 
 
 ![](img/cow_smooth.png)  
 
 ![](img/cow_smooth_lines.png) 
 
 ![](img/suzanne_smooth.png) 
+
+![](img/dragon.png) 
 
 * Vertex Shader
  * In the vertex shader, I took the local coordinates of each triangle and converted them into world coordinates.  To do this, I multiplied the local coordinates by the model, view, and projection matrix.  OpenGl is used to create the view and projection matrices, inputing the camera's location, where it is looking, along with the near and far clippinig planes.  Along with transforming the vertices, the normals were also transformed.  However, the normals were multiplied by the inverse transpose of the model matrix.  This is because the normals are vectors, not points like the vertices.  Thus, we have to transform them differently.
