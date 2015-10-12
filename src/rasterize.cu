@@ -496,7 +496,7 @@ __global__ void kernRasterize(Triangle* tris, Fragment* buf, int width, int heig
 								glm::vec3 normal = baryCoord[0] * tris[thrId].v[0].nor + baryCoord[1] * tris[thrId].v[1].nor + baryCoord[2] * tris[thrId].v[2].nor;
 								normal = glm::normalize(normal);
 								//normal = glm::abs(normal);
-								buf[4*x + m + y*4*width].color = normal;
+								buf[4*x + m + y*4*width].color = glm::vec3(0.0f, 1.0f, 1.0f);
 								buf[4*x + m + y*4*width].nor = normal;
 								buf[4*x + m + y*4*width].depth = bbox.min.z;
 					
