@@ -15,7 +15,7 @@
 #include <util/checkCUDAError.h>
 #include "rasterizeTools.h"
 
-#define ENABLE_ANTI_ALIASING
+//#define ENABLE_ANTI_ALIASING
 //#define ENABLE_BLENDING
 
 #define Alpha 0.5f
@@ -296,11 +296,11 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 
 			if(dot_prod>0)
 			{
-				dev_depthbuffer[index].color *= dot_prod;
+				dev_depthbuffer[index].color *= (dot_prod + 0.1);
 			}
 			else
 			{
-				dev_depthbuffer[index].color = glm::vec3(0.0,0.0,0.0);
+				dev_depthbuffer[index].color *= 0.1;
 			}
 		}
 		
