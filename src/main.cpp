@@ -15,7 +15,8 @@
 
 float theta = 0.78539816339f;// 1.57079632679f;
 float phi = 0.0f;//2.35619449019f;
-float zoom = 10.0f;
+float zoom = 5.0f;
+float fovy = 0.785398f;
 glm::mat4 camMatrix;
 
 int main(int argc, char **argv) {
@@ -164,11 +165,11 @@ bool init(obj *mesh) {
 
 		std::vector<glm::vec3> diffuse;
 		diffuse.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
-		diffuse.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
+		diffuse.push_back(glm::vec3(0.0f, 0.3f, 0.0f));
 
 		std::vector<glm::vec3> specular;
 		specular.push_back(glm::vec3(0.0f, 1.0f, 1.0f));
-		specular.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
+		specular.push_back(glm::vec3(1.0f, 0.3f, 0.0f));
 
 		addLights(positions, ambient, diffuse, specular);
 	}
@@ -318,7 +319,7 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	if (action == GLFW_PRESS) {
-		//printf("%f %f %f\n", theta, phi, zoom);
+		//printf("theta %f phi %f zoom %f fovy %f\n", theta, phi, zoom, fovy);
 		switch (key) {
 		case GLFW_KEY_ESCAPE:
 			glfwSetWindowShouldClose(window, GL_TRUE);
@@ -340,10 +341,19 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_Z:
-			zoom += 1.0f;
+			zoom += 0.5f;
+			computeCameraMatrix();
 			break;
 		case GLFW_KEY_X:
-			zoom -= 1.0f;
+			zoom -= 0.5f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_G:
+			fovy += 0.1f;
+			computeCameraMatrix();
+			break;
+		case GLFW_KEY_F:
+			fovy -= 0.1f;
 			computeCameraMatrix();
 			break;
 		case GLFW_KEY_C:
@@ -356,9 +366,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 	}
 }
 
+
+
 void computeCameraMatrix() {
     // Projection matrix : 45° Field of View, 1:1 ratio, display range : 0.1 unit <-> 100 units
-    glm::mat4 projection = glm::perspective(45.0f, (float) width / (float) height, 0.1f, 100.0f);
+	glm::mat4 projection = glm::perspective(fovy, (float)width / (float)height, 0.1f, 100.0f);
     // compute position: http://www.cs.cmu.edu/~barbic/camera.html
     if (theta < 0.0f) theta = 0.01f;
 	if (theta > 3.141592653589) theta = 3.14;
@@ -367,12 +379,35 @@ void computeCameraMatrix() {
 	cameraPos.x = zoom * sin(phi) * sin(theta);
 	cameraPos.y = zoom * cos(theta);
 	cameraPos.z = zoom * cos(phi) * sin(theta);
-	//cout << cameraPos[0] << " " << cameraPos[1] << " " << cameraPos[2] << endl;
-    // Camera matrix
+	//cout << "camera pos is " << cameraPos[0] << " " << cameraPos[1] << " " << cameraPos[2] << endl;
+    // view matrix
     glm::mat4 view = glm::lookAt(
 		cameraPos, // Camera position in World Space
         glm::vec3(0, 0, 0), // camera lookAt
         glm::vec3(0, 1, 0)  // Head is up
         );
+	//cout << projection[0][0] << " " << projection[1][0] << " " << projection[2][0] << " " << projection[3][0] << endl;
+	//cout << projection[0][1] << " " << projection[1][1] << " " << projection[2][1] << " " << projection[3][1] << endl;
+	//cout << projection[0][2] << " " << projection[1][2] << " " << projection[2][2] << " " << projection[3][2] << endl;
+	//cout << projection[0][3] << " " << projection[1][3] << " " << projection[2][3] << " " << projection[3][3] << endl;
+	//cout << endl;
+	//projection[2][3] = 1.0f;
+	//cout << view[0][0] << " " << view[0][1] << " " << view[0][2] << " " << view[0][3] << endl;
+	//cout << view[1][0] << " " << view[1][1] << " " << view[1][2] << " " << view[1][3] << endl;
+	//cout << view[2][0] << " " << view[2][1] << " " << view[2][2] << " " << view[2][3] << endl;
+	//cout << view[3][0] << " " << view[3][1] << " " << view[3][2] << " " << view[3][3] << endl;
+	//cout << endl;
+	//cout << projection[0][0] << " " << projection[1][0] << " " << projection[2][0] << " " << projection[3][0] << endl;
+	//cout << projection[0][1] << " " << projection[1][1] << " " << projection[2][1] << " " << projection[3][1] << endl;
+	//cout << projection[0][2] << " " << projection[1][2] << " " << projection[2][2] << " " << projection[3][2] << endl;
+	//cout << projection[0][3] << " " << projection[1][3] << " " << projection[2][3] << " " << projection[3][3] << endl;
+	//cout << endl;
+	
 	camMatrix = projection * view;
+	
+	//cout << camMatrix[0][0] << " " << camMatrix[1][0] << " " << camMatrix[2][0] << " " << camMatrix[3][0] << endl;
+	//cout << camMatrix[0][1] << " " << camMatrix[1][1] << " " << camMatrix[2][1] << " " << camMatrix[3][1] << endl;
+	//cout << camMatrix[0][2] << " " << camMatrix[1][2] << " " << camMatrix[2][2] << " " << camMatrix[3][2] << endl;
+	//cout << camMatrix[0][3] << " " << camMatrix[1][3] << " " << camMatrix[2][3] << " " << camMatrix[3][3] << endl;
 }
+

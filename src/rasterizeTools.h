@@ -24,7 +24,9 @@ struct AABB {
 __host__ __device__ static
 glm::vec3 tfPoint(glm::mat4 m, glm::vec3 point) {
 	glm::vec4 v4 = glm::vec4(point, 1.0f);
-	return glm::vec3(m * v4);
+	v4 = m * v4;
+	v4 = v4 / v4.w;
+	return glm::vec3(v4);
 }
 
 /**

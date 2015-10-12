@@ -205,6 +205,8 @@ __global__ void vertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_bufVerti
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < vertCount) {
 		dev_tfVertices[i].screenPos = tfPoint(tf, dev_bufVertices[i].pos);
+		glm::vec3 ogPoint = dev_bufVertices[i].pos;
+		glm::vec3 screenPos = tfPoint(tf, dev_bufVertices[i].pos); // debug
 		dev_tfVertices[i].worldNor = dev_bufVertices[i].nor;
 		dev_tfVertices[i].col = dev_bufVertices[i].col;
 	}
@@ -270,7 +272,7 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 				
 				// do int depthTest using atomicMin. we'll use the whole range of uint to do this.
 				// check depth using bary. the version in utils returns a negative z for some reason
-				int zDepth = UINT16_MAX  * - getZAtCoordinate(baryCoordinate, v);
+				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
 				atomicMin(&dev_intDepths[fragIndex], zDepth);
 
