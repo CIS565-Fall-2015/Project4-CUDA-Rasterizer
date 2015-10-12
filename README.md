@@ -14,7 +14,7 @@ An interactive GPU accelerated rasterizer. The program uses the scanline rasteri
 ![](renders/dragon.png "Stanford Dragon")
 
 ### Video Demo
-<a href="https://youtu.be/Ul5QEM-jp3E" target="_blank"><img src="data_images/Fake Youtube.png" alt="Real Time CUDA Rasterizer" width="956" height="719" border="0"/></a>
+<a href="https://youtu.be/Ul5QEM-jp3E" target="_blank"><img src="data_images/Fake Youtube.png" alt="Real Time CUDA Rasterizer" width="956" height="715" border="0"/></a>
 
 ## Pipeline
 
