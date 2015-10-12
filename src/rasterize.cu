@@ -289,10 +289,10 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 		// for now just doing nothing to test
 		if(abs(dev_depthbuffer[index].z + M_INFINITE)>1e-6)
 		{
-			//dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
+			dev_depthbuffer[index].color = glm::normalize(glm::vec3(abs(dev_depthbuffer[index].nor.x),abs(dev_depthbuffer[index].nor.y),abs(dev_depthbuffer[index].nor.z)));
 			
 			//light direction glm::vec3(0,0,-1)
-			float dot_prod = glm::dot(glm::normalize(glm::vec3(1.0,0.0,0.0)),glm::normalize(dev_depthbuffer[index].nor));
+			/*float dot_prod = glm::dot(glm::normalize(glm::vec3(1.0,0.0,0.0)),glm::normalize(dev_depthbuffer[index].nor));
 
 			if(dot_prod>0)
 			{
@@ -301,7 +301,7 @@ void kern_fragment_shader(Fragment *dev_depthbuffer, int num_of_fragment)
 			else
 			{
 				dev_depthbuffer[index].color *= 0.1;
-			}
+			}*/
 		}
 		
 
