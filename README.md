@@ -37,3 +37,13 @@ I implemented the mouse interaction using the left buttion to change the pitch a
 
 ### Transform with Key Interaction
 I implemented the transform of obj with the key interaction. Button Up and Down for the scaling of the obj, Button W and S for translating along the Y-axis, Button A and D for translating along the X-axis, Button Z and X for translating along Z-axis.
+
+### Alti-Aliasing
+I am using the subpixel sampling method to do the anti-aliasing, basically I do it like this:
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/multiple_sample.png?raw=true)
+
+I use these five sample point to decide the fraction of pixel occupied by the primitive, so that I can use the fraction to change the color assigned to the fragment. The compare of w and w/o anti-aliasing is like this:
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/wo_anti_aliasing_new%20-%20Copy.png?raw=true)
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/w_anti_aliasing_new%20-%20Copy.png?raw=true)
+
+
