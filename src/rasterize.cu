@@ -61,7 +61,7 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 static int bufTexSize = 0;
 static 	int tessIncre = 1;
-static int dTessI = 9;
+static int dTessI = 4;
 static int tessLevel = 0;
 static int lastLevel = 0;
 glm::mat4 M_win;
@@ -144,11 +144,11 @@ __device__ VertexOut EdgeTessellator_PN(VertexOut P1, VertexOut P2)
 
 	//bji0.nor = glm::normalize(t1*P1.nor + t2*P2.nor);
 	bji0.nor = glm::normalize(2.f * P1.nor + P2.nor - Wij*Ni);
-	bji0.col = t1*P1.col + t2*P2.col;
+	bji0.col = (2.f * P1.col + P2.col )*(1.f / 3.f);
 	bji0.ndc = t1*P1.ndc + t2*P2.ndc;
 	bji0.winPos = t1*P1.winPos + t2*P2.winPos;
 
-	bji0.tex = t1*P1.tex + t2*P2.tex;
+	bji0.tex = (2.f * P1.tex + P2.tex)*(1.f / 3.f);
 
 	return bji0;
 }
@@ -200,6 +200,7 @@ __device__ VertexOut EdgeTessellator_calcB111(VertexOut bE,VertexOut bV)
 	//!!!except for pos other things right???
 	b111.nor = glm::normalize(bE.nor + (bE.nor - bV.nor)*(1.f / 2.f));
 	//b111.nor = glm::normalize(bE.pos - bV.pos);
+	//b111.nor = glm::normalize(bE.nor);
 	b111.col = bE.col + (bE.col - bV.col)*(1.f / 2.f);
 	b111.ndc = bE.ndc + (bE.ndc - bV.ndc)*(1.f / 2.f);
 	b111.winPos = bE.winPos + (bE.winPos - bV.winPos)*(1.f / 2.f);
@@ -745,9 +746,11 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	checkCUDAError("kernBufInit");
 	//kernVertexShader << <gSize_vtx, bSize_vtx >> >(vertCount, glm::mat4(), M_view, projMat, dev_bufVertex, dev_bufVtxOut, M_win );
-	if (TessLevel != lastLevel || lastDisp != sCtrl.DispMap || lastUVrepeat != sCtrl.UVrepeat)
+	if (TessLevel != lastLevel || lastDisp != sCtrl.DispMap || lastUVrepeat != sCtrl.UVrepeat || dTessI != sCtrl.dTessIncre)
 	//if (true)
 	{
+		dTessI = sCtrl.dTessIncre;
+		tessIncre = pow(dTessI, tessLevel);
 		lastDisp = sCtrl.DispMap;
 		if (TessLevel > lastLevel)
 		{

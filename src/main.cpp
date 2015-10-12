@@ -348,6 +348,16 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		}
 		printf("UV repeat : %2f \n", sCtrl.UVrepeat);
 	}
+	if (key == GLFW_KEY_M && action == GLFW_PRESS)
+	{
+		sCtrl.dTessIncre = 4;
+		printf("Middle Point Tessellation Method\n", sCtrl.UVrepeat);
+	}
+	if (key == GLFW_KEY_C && action == GLFW_PRESS)
+	{
+		sCtrl.dTessIncre = 9;
+		printf("Curved PN Tessellation Method\n", sCtrl.UVrepeat);
+	}
 
 }
 

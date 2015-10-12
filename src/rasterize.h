@@ -18,6 +18,7 @@ struct shadeControl
 	bool DispMap = true;
 	bool Normal = false;
 	float UVrepeat = 1;
+	int dTessIncre = 4;
 };
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(obj * mesh,int tessLevel = 0);
