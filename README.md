@@ -14,16 +14,20 @@ Attack of the cowwwssss!
 
 This is an implementation of a CUDA-based graphics pipeline with the following stages/features:
 
-* Vertex shading
-* Instancing
-* Primitive Assembly
-* Rasterization with Anti-Aliasing (FSAA using fixed-pattern supersampling)
-* Fragment shading
-* Fragment to Frame buffer transfer
+* Vertex shading (Apply transformations to vertices)
+* Instancing (Create multiple sets of vertices according to new transformations)
+* Primitive Assembly (Assemble vertices into triangles/primitives)
+* Rasterization with Anti-Aliasing (FSAA using fixed-pattern supersampling) (Convert triangles to fragments)
+* Fragment shading (Determine lighting for fragments)
+* Fragment to Frame buffer transfer (Fragments into pixels, AA as needed)
 * Mouse control
 * Color interpolation on primitive surfaces
 
 ### Feature Demos
+
+## Short film demonstrating mouse control
+
+https://www.youtube.com/watch?v=1zS9fQGLfO8
 
 ## Proper normals
 
@@ -54,19 +58,23 @@ Incorrect:
 
 ## Color Interpolation
 
-Each vertex of each primitive was set to a different color to illustrate proper interpolation of colors, normals can be visualized in a similar manner.
+Each vertex of each primitive was set to a different color to illustrate proper interpolation of colors, normals can be visualized in a similar manner. These were computed in the rasterization step by using the barycentric coordinate of each fragment as the weight of the color of each associated vertex, which were then summed together to get the fragment color.
 
 ![](renders/cow_color_interpolation.PNG)
 
 ## Instancing
 
-5x cows with translation and rotations
+Instancing was done in the vertex shading stage. This required generating multiple sets of model-view-perspective transformations (one for each instance) and then generating separate sets of vertices from the original vertices according to their respective transformations. 1 thread per in-vertex was used and for-looped among the model-view-perspective transformations in order to create multiple sets of vertices, as well as duplicating the indices so that vertices could be properly assembled into primitives. An optimization may be to use 1 thread per out-vertex instead.
+
+5x cows with translation and rotations.
 
 ![](renders/cow_instancing.PNG)
 
 ## Anti-Aliasing
 
-3x super sampling results
+Anti-Aliasing was accomplished by super sampling each pixel according to a fixed grid pattern that is variable-adjustable. This is accomplished in the rasterization portion of the pipeline. The fragments are then combined into single pixels via averaging in the Fragment to Buffer stage of the pipeline.
+
+3x super sampling results.
 
 ![](renders/anti_aliasing_cow_3_v_1.PNG)
 
