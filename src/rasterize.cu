@@ -474,7 +474,7 @@ __global__ void kernDispMapping(Triangle* primitives, int crntSize, glm::vec3** 
 		{
 			if (!primitives[index].v[i].DispAdded)
 			{
-				float disp = 0.08*glm::length(ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex), UVrepeat));
+				float disp = 0.03*glm::length(ColorInTexBilinear(0, texs, tInfo, glm::vec2(primitives[index].v[i].tex), UVrepeat));
 				primitives[index].v[i].pos += (disp*primitives[index].v[i].nor);//!!! later : normal after displacement mapping.
 				//!!! later !!! normal
 				primitives[index].v[i].DispAdded = true;
@@ -749,6 +749,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	if (TessLevel != lastLevel || lastDisp != sCtrl.DispMap || lastUVrepeat != sCtrl.UVrepeat || dTessI != sCtrl.dTessIncre)
 	//if (true)
 	{
+		lastUVrepeat = sCtrl.UVrepeat;
 		dTessI = sCtrl.dTessIncre;
 		tessIncre = pow(dTessI, tessLevel);
 		lastDisp = sCtrl.DispMap;
