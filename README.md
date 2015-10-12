@@ -4,22 +4,19 @@ CUDA Rasterizer
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
 
 * Xinyue zhu
-* Tested on: (TODO) Windows 10, i7- @ 2.22GHz 22GB, GTX 960M
-
-
+* Tested on: Windows 10, i7- @ 2.22GHz 22GB, GTX 960M
 
 ========================
-## README
-
-Description:
-This is a rasterizer.It includes the following pipeline:
-1)vertex transformation with camera movement
-2)Tessellation shader
-3)Bling-phong shader and blending
-4)rasterization brute force scan line->boundingbox scan line
-4)depth test
-the base color is normal map
-<img src="img/1.png" alt="alt text" width="whatever" height="whatever">
+## Description:
+ <p>This is a rasterizer.</p>
+It includes the following pipeline:<br/>
+1)vertex transformation with camera movement</br>
+2)Tessellation shader</br>
+3)Bling-phong shader and blending</br>
+4)rasterization brute force scan line->boundingbox scan line</br>
+4)depth test</br>
+the base color is normal map</br>
+<img src="1.png"  width="400" height="400">
 
 
 
@@ -29,22 +26,10 @@ the base color is normal map
 * A performance analysis (described below).
 
 ### Performance Analysis
-
-The performance analysis is where you will investigate how to make your CUDA
-programs more efficient using the skills you've learned in class. You must have
-performed at least one experiment on your code to investigate the positive or
-negative effects on performance. 
-
-We encourage you to get creative with your tweaks. Consider places in your code
-that could be considered bottlenecks and try to improve them. 
-
-Provide summary of your optimizations (no more than one page), along with
-tables and or graphs to visually explain any performance differences.
-
-* Include a breakdown of time spent in each pipeline stage for a few different
-  models. It is suggested that you use pie charts or 100% stacked bar charts.
-* For optimization steps (like backface culling), include a performance
-  comparison to show the effectiveness.
+<img src="1.png"  width="600" height="400">
+<p>The CPU are all used for opengl related funtions. The computation mostly happened in GPU
+<p> a breakdown of time spent in each pipeline stage 
+<img src="1.png"  width="600" height="400">
 
 
 
