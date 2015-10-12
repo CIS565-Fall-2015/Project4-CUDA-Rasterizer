@@ -78,9 +78,9 @@ void runCuda() {
     dptr = NULL;
 
 	if (moveForward)
-		cam->translateBy(0, 0, -0.1f);
-	else if (moveBackward)
 		cam->translateBy(0, 0, 0.1f);
+	else if (moveBackward)
+		cam->translateBy(0, 0, -0.1f);
 
 	if (moveLeft)
 		cam->translateBy(0.1f, 0, 0);

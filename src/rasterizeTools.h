@@ -22,7 +22,9 @@ struct AABB {
  */
 __host__ __device__ static
 glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
-    return glm::vec3(m * v);
+	glm::vec4 out(m * v);
+	if (out.w != 0) out = out / out.w;
+	return glm::vec3(out);
 }
 
 // CHECKITOUT

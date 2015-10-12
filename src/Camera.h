@@ -8,10 +8,9 @@
 class Camera{
 private:
 	glm::vec3 pos;
-	float angle_x;
-	float angle_y;
-	float angle_z;
-	glm::mat4 rot;
+	glm::vec3 direction;
+	glm::vec3 up;
+
 	glm::mat4 view;
 	glm::mat4 projection;
 	glm::mat4 viewProjection;
@@ -31,9 +30,9 @@ public:
 
 Camera::Camera(int width, int height){
 	pos = glm::vec3(0, 0, 4);
-	angle_x = 0;
-	angle_y = 0;
-	angle_z = 0;
+	direction = glm::vec3(0, 0, -1);
+	up = glm::vec3(0, 1, 0);
+
 	fovy_rad = glm::radians(45.0f);
 	aspect = (float)width / height;
 
@@ -43,8 +42,7 @@ Camera::Camera(int width, int height){
 
 void Camera::calculateMatrices(){
 	if (updateView){
-		view = glm::translate(glm::mat4(1.0), pos) * rot;
-		view = glm::inverse(view);
+		view = glm::lookAt(pos, pos + direction, up);
 	}
 
 	if (updateProjection){
@@ -61,21 +59,9 @@ void Camera::calculateMatrices(){
 
 
 void Camera::rotateBy(float x, float y, float z){
-	angle_x += x;
-	angle_y += y;
-	angle_z += z;
-
-	float two_pi = glm::two_pi<float>();
-	if (angle_x >= two_pi) angle_x -= two_pi;
-	if (angle_x < 0) angle_x += two_pi;
-	if (angle_y >= two_pi) angle_y -= two_pi;
-	if (angle_y < 0) angle_y += two_pi;
-	if (angle_z >= two_pi) angle_z -= two_pi;
-	if (angle_z < 0) angle_z += two_pi;
-
-	rot = glm::rotate(glm::mat4(), angle_z, glm::vec3(0, 0, 1));
-	rot = glm::rotate(rot, angle_y, glm::vec3(0, 1, 0));
-	rot = glm::rotate(rot, angle_x, glm::vec3(1, 0, 0));
+	direction = glm::vec3(glm::rotateX(glm::vec4(direction, 0), x));
+	direction = glm::vec3(glm::rotateY(glm::vec4(direction, 0), y));
+	direction = glm::vec3(glm::rotateZ(glm::vec4(direction, 0), z));
 
 	//std::cout << angle_x << " " << angle_y << " " << angle_z << std::endl;
 
@@ -83,18 +69,9 @@ void Camera::rotateBy(float x, float y, float z){
 }
 
 void Camera::translateBy(float x, float y, float z){
-	glm::vec3 dir_x(rot[0][0], rot[0][1], rot[0][2]);
-	dir_x *= x;
-	glm::vec3 dir_y(rot[1][0], rot[1][1], rot[1][2]);
-	dir_y *= y;
-	glm::vec3 dir_z(rot[2][0], rot[2][1], rot[2][2]);
-	dir_z *= z;
-
-	pos += dir_x + dir_y + dir_z;
-
+	glm::vec3 side = glm::cross(direction, up);
+	pos += side * x + up * y + direction * z;
 	updateView = true;
-
-	//std::cout << dir_z.x << " " << dir_z.y << " " << dir_z.z << std::endl;
 }
 
 glm::mat4 Camera::getViewProjection(){
