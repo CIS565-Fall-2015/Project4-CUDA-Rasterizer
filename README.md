@@ -14,9 +14,10 @@ It includes the following pipeline:<br/>
 2)Tessellation shader</br>
 3)Bling-phong shader and blending</br>
 4)rasterization brute force scan line->boundingbox scan line</br>
-4)depth test</br>
+5)depth test</br>
+6)anti-aliansing:Super sampling - random  </br>
 the base color is normal map</br>
-<img src="1.png"  width="400" height="400">
+<img src="1.png"  width="400" height="400"><img src="2.png"  width="400" height="400">
 
 
 
@@ -26,10 +27,10 @@ the base color is normal map</br>
 * A performance analysis (described below).
 
 ### Performance Analysis
-<img src="1.png"  width="600" height="400">
+<img src="p1.png"  width="600" height="150">
 <p>The CPU are all used for opengl related funtions. The computation mostly happened in GPU
 <p> a breakdown of time spent in each pipeline stage 
-<img src="1.png"  width="600" height="400">
+<img src="pipe_line.png"  width="600" height="280">
 
 
 
