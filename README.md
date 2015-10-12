@@ -19,7 +19,7 @@ This is a rasterizer.It includes the following pipeline:
 4)rasterization brute force scan line->boundingbox scan line
 4)depth test
 the base color is normal map
-<img src="img/1.png" alt="alt text" width="whatever" height="whatever">
+<img src="1.png" alt=" Blinn-Phong shader with normal-based color" width="300" height="300">
 
 
 
