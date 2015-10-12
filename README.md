@@ -17,7 +17,7 @@ It includes the following pipeline:<br/>
 5)depth test</br>
 6)anti-aliansing:Super sampling - random  </br>
 the base color is normal map</br>
-<img src="1.png"  width="400" height="400"><img src="2.png"  width="400" height="400">
+<img src="1.png"  width="380" height="400">  <img src="2.png"  width="400" height="380">
 
 
 
