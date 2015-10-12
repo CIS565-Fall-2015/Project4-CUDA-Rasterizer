@@ -178,11 +178,11 @@ __global__ void rasterizing(int n, int w, int h,
 		for (int i = glm::max(0.0f, pixel_min.x); i <= pixel_max.x; i++) {
 			for (int j = glm::max(0.0f, pixel_min.y); j <= pixel_max.y; j++) {
 				
-				thrust::default_random_engine rng = makeSeededRandomEngine(0, index, 0);
-				thrust::uniform_real_distribution<float> u01(0, 1);
+				//thrust::default_random_engine rng = makeSeededRandomEngine(0, index, 0);
+				//thrust::uniform_real_distribution<float> u01(0, 1);
 
-				float x = ((i + u01(rng))/float(w)) * 2.0f - 1;
-				float y = ((j + u01(rng))/float(h)) * 2.0f - 1;
+				float x = (i/float(w)) * 2.0f - 1;
+				float y = (j/float(h)) * 2.0f - 1;
 
 				glm::vec3 barycentric = calculateBarycentricCoordinate(tri_verts,
 					glm::vec2(x,y));
@@ -310,7 +310,7 @@ void rasterize(uchar4 *pbo) {
 	
 	//projection matrix
 	glm::mat4 projection = glm::perspective(
-		45.0f, float(width)/float(height), 1.0f, 100.0f);
+		20.0f, float(width)/float(height), 1.0f, 100.0f);
 
 	glm::mat4 view_projection = projection * view;
 
