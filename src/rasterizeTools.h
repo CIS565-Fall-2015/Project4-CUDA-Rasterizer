@@ -109,25 +109,10 @@ glm::vec3 calculateFragColor(glm::vec3 nor, glm::vec3 pos, glm::vec3 col, Light 
 	glm::vec3 lightVector1 = glm::normalize(light1.pos - pos);
 	glm::vec3 lightVector2 = glm::normalize(light2.pos - pos);
 
-	float diffusedTerm1 = glm::dot(lightVector1, nor);
-	float diffusedTerm2 = glm::dot(lightVector2, nor);
+	float diffusedTerm1 = glm::max(glm::dot(lightVector1, nor), 0.0f);
+	float diffusedTerm2 = glm::max(glm::dot(lightVector2, nor), 0.0f);
 
-	if(diffusedTerm1 > 0.0f && diffusedTerm2 > 0.0f)
-	{
-		return (diffusedTerm1 * col * light1.col +
-				diffusedTerm2 * col * light2.col);
-	}
+	return (diffusedTerm1 * col * light1.col +
+			diffusedTerm2 * col * light2.col);
 
-	else if(diffusedTerm1 > 0.0f)
-	{
-		return (diffusedTerm1 * col * light1.col);
-	}
-	else if(diffusedTerm2 > 0.0f)
-	{
-		return (diffusedTerm2 * col * light2.col);
-	}
-	else
-	{
-		return (glm::vec3(0.0f));
-	}
 }

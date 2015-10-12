@@ -15,7 +15,7 @@
 Scene::Scene(int w, int h)
 {
 	renderMode = TRIANGLES;
-	backFaceCulling = true;
+	backFaceCulling = false;
 	antiAliasing = false;
 	run = true;
 

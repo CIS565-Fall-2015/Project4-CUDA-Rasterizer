@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
@@ -21,6 +22,8 @@
 #include "Scene.h"
 
 extern Scene *scene;
+
+#define SHOW_TIMING 1
 
 struct keep
 {
@@ -594,15 +597,49 @@ void rasterize(uchar4 *pbo) {
     	{
 			case TRIANGLES:
 			{
+				cudaEvent_t startAll, stopAll;
+				cudaEventCreate(&startAll);
+				cudaEventCreate(&stopAll);
+
+				cudaEventRecord(startAll);
+
 				Triangle *dev_primitivesEnd;
 
-				//Do vertex shading
-				numBlocks = (vertCount + numThreads -1)/numThreads;
-				kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
+				cudaEvent_t start, stop;
+				cudaEventCreate(&start);
+				cudaEventCreate(&stop);
 
-				//Do primitive (triangle) assembly
-				numBlocks = (numTriangles + numThreads -1)/numThreads;
-				kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir, scene->backFaceCulling);
+
+				//------------------------------Vertex Shading------------------------------------
+				cudaEventRecord(start);
+
+					//Do vertex shading
+					numBlocks = (vertCount + numThreads -1)/numThreads;
+					kernVertexShader<<<numBlocks, numThreads>>>(vertCount, width, height, dev_bufVertex, dev_outVertex, cam);
+
+				cudaEventRecord(stop);
+				cudaEventSynchronize(stop);
+				float milliseconds = 0;
+				cudaEventElapsedTime(&milliseconds, start, stop);
+				if(SHOW_TIMING)
+					std::cout<<"Time Vertex Shading: "<<milliseconds<<std::endl;
+				//--------------------------------------------------------------------------------------------
+
+
+				//-----------------------------Primitive Assembly-------------------------------------------
+				cudaEventRecord(start);
+
+					//Do primitive (triangle) assembly
+					numBlocks = (numTriangles + numThreads -1)/numThreads;
+					kernPrimitiveAssembly<<<numBlocks, numThreads>>>(numTriangles, dev_outVertex, dev_bufVertex, dev_primitives, dev_bufIdx, cam.dir, scene->backFaceCulling);
+
+				cudaEventRecord(stop);
+				cudaEventSynchronize(stop);
+				milliseconds = 0;
+				cudaEventElapsedTime(&milliseconds, start, stop);
+				if(SHOW_TIMING)
+					std::cout<<"Time Primitive Assembly: "<<milliseconds<<std::endl;
+				//--------------------------------------------------------------------------------------------
 
 				if(scene->backFaceCulling)
 				{
@@ -612,16 +649,50 @@ void rasterize(uchar4 *pbo) {
 					numTriangles = dev_primitivesEnd - dev_primitives;
 				}
 
-				//Rasterization per triangle
-				numBlocks = (numTriangles + numThreads -1)/numThreads;
-				kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, scene->antiAliasing);
 
-				kernFragmentShader<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, light1, light2, scene->antiAliasing);
+				//--------------------------------Rasterization---------------------------------------
+				cudaEventRecord(start);
+
+					//Rasterization per triangle
+					numBlocks = (numTriangles + numThreads -1)/numThreads;
+					kernRasterizeTraingles<<<numBlocks, numThreads>>>(width, height, dev_depthbuffer, dev_primitives, numTriangles, cam, scene->antiAliasing);
+
+				cudaEventRecord(stop);
+				cudaEventSynchronize(stop);
+				milliseconds = 0;
+				cudaEventElapsedTime(&milliseconds, start, stop);
+				if(SHOW_TIMING)
+					std::cout<<"Time Rasterize Triangle: "<<milliseconds<<std::endl;
+				//--------------------------------------------------------------------------------------------
+
+
+				//------------------------------------Fragment Shading----------------------------------------
+				cudaEventRecord(start);
+
+					kernFragmentShader<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, light1, light2, scene->antiAliasing);
+
+				cudaEventRecord(stop);
+				cudaEventSynchronize(stop);
+				milliseconds = 0;
+				cudaEventElapsedTime(&milliseconds, start, stop);
+				if(SHOW_TIMING)
+					std::cout<<"Time Fragment Shader: "<<milliseconds<<std::endl;
+				//--------------------------------------------------------------------------------------------
+
 
 //				if(scene->antiAliasing)
 //				{
 //					kernAntiAliasing<<<numBlocks, numThreads>>>(numTriangles, width, height, dev_depthbuffer, dev_primitives);
 //				}
+
+
+				cudaEventRecord(stopAll);
+				cudaEventSynchronize(stopAll);
+				milliseconds = 0;
+				cudaEventElapsedTime(&milliseconds, startAll, stopAll);
+				if(SHOW_TIMING)
+					std::cout<<"Time All: "<<milliseconds<<std::endl;
+
 
 				break;
 			}
@@ -695,3 +766,4 @@ void rasterizeFree() {
 
     checkCUDAError("rasterizeFree");
 }
+
