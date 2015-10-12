@@ -11,7 +11,7 @@ Overview
 
 A Cuda rasterize with texture mapping, smooth tessellation and displacement mapping. 
 
-![](img/Overview.PNG)
+![](img/Overview.png)
 
 **Video Demo**
 
