@@ -4,7 +4,7 @@ CUDA Rasterizer
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
 
 * Ziye Zhou
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Tested on: Windows 7, i5-3210M @ 2.50GHz 4.00GB, GeForce GT 640M LE (Lenovo Laptop)
 
 Representive Image
 ========================
