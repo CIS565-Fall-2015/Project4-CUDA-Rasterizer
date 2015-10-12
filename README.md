@@ -13,7 +13,7 @@ CUDA Rasterizer
 
 Description:
 This is a rasterizer.It includes the following pipeline:
-1)vertex transformation with camera movement
+1)vertex transformation with camera movement</br>
 2)Tessellation shader
 3)Bling-phong shader and blending
 4)rasterization brute force scan line->boundingbox scan line
