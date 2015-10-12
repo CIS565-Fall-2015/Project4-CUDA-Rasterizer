@@ -104,10 +104,15 @@ __global__ void render(int w, int h, Fragment *depthbuffer,
         glm::vec3 *framebuffer) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-    int index = x + (y * w);
 
     if (x < w && y < h) {
-        framebuffer[index] = depthbuffer[index].color;
+        int frameidx = x + (y * w);
+        int depthidx = 4*frameidx;
+        glm::vec3 color = depthbuffer[depthidx].color +
+            depthbuffer[depthidx+1].color +
+            depthbuffer[depthidx+2].color +
+            depthbuffer[depthidx+3].color;
+        framebuffer[frameidx] = color / 4.f;
     }
 }
 
@@ -121,8 +126,8 @@ void rasterizeInit(int w, int h) {
     height = h;
 
     cudaFree(dev_depthbuffer);
-    cudaMalloc(&dev_depthbuffer,    width * height * sizeof(Fragment));
-    cudaMemset( dev_depthbuffer, 0, width * height * sizeof(Fragment));
+    cudaMalloc(&dev_depthbuffer,    4*width * height * sizeof(Fragment));
+    cudaMemset( dev_depthbuffer, 0, 4*width * height * sizeof(Fragment));
 
     cudaFree(dev_bufVertexOut);
     cudaMalloc(&dev_bufVertexOut,    width * height * sizeof(VertexOut));
@@ -167,16 +172,22 @@ void rasterizeSetBuffers(
 
 /************************* Rasterization Pipeline *****************************/
 
+__device__ void clearFragment(int idx, Fragment *depthbuffer) {
+    depthbuffer[idx].valid = false;
+    depthbuffer[idx].z = INT_MAX;
+    depthbuffer[idx].color = glm::vec3(.15, .15, .15);
+}
+
 __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < width && y < height) {
         int index = x + (y * width);
-
-        depthbuffer[index].valid = false;
-        depthbuffer[index].z = INT_MAX;
-        depthbuffer[index].color = glm::vec3(.15, .15, .15);
+        clearFragment(4*index  , depthbuffer);
+        clearFragment(4*index+1, depthbuffer);
+        clearFragment(4*index+2, depthbuffer);
+        clearFragment(4*index+3, depthbuffer);
     }
 }
 
@@ -230,36 +241,37 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
 }
 
 __device__ void storeFragment(float x, float y, float width, float height,
-        Triangle tri, Fragment *fragments) {
+        int fragmentidx, Triangle tri, Fragment *fragments) {
 
     glm::vec3 bary = calculateBarycentricCoordinate(tri.pos, glm::vec2(x, y));
-    glm::vec2 pos = fromNDC(x, y, width, height);
-    int pixelIndex = pos.x + (pos.y * width);
 
     if (isBarycentricCoordInBounds(bary)) {
-        Fragment prev = fragments[pixelIndex];
+        Fragment prev = fragments[fragmentidx];
 
         float z = getZAtCoordinate(tri.worldPos, bary);
         int depth = z * INT_MAX;
-        atomicMin(&fragments[pixelIndex].z, depth);
+        atomicMin(&fragments[fragmentidx].z, depth);
 
-        if (fragments[pixelIndex].z == depth) {
-            fragments[pixelIndex] = (Fragment) { glm::vec3(0, 0, 0), tri, bary, depth, true};
+        if (fragments[fragmentidx].z == depth) {
+            fragments[fragmentidx] = (Fragment) { glm::vec3(0, 0, 0), tri, bary, depth, true};
         }
     } else {
     }
 }
 
 // Scans across triangles to generate primitives (pixels).
-__global__ void scanline(int width, int height, int tricount,
+__global__ void scanline(int w, int h, int tricount,
         Triangle *primitives, Fragment *fragments) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < tricount) {
         Triangle tri = primitives[k];
 
-        float ystep = 2.f / height;
-        float xstep = 2.f / width;
+        float ystep = 2.f / h;
+        float xstep = 2.f / w;
+
+        float yjit = ystep / 4;
+        float xjit = xstep / 4;
 
         AABB bb = getAABBForTriangle(tri.pos);
 
@@ -269,9 +281,24 @@ __global__ void scanline(int width, int height, int tricount,
         float xmax = glm::min(1.f, bb.max.x);
         for (float y = ymin; y < ymax; y += ystep) {
             for (float x = xmin; x < xmax; x += xstep) {
-                storeFragment(x, y, width, height, tri, fragments);
+                glm::vec2 pos = fromNDC(x, y, w, h);
+                int fragmentidx = 4*(pos.x + (pos.y * w));
+
+                storeFragment(x,      y,      w, h, fragmentidx,   tri, fragments);
+                storeFragment(x+xjit, y,      w, h, fragmentidx+1, tri, fragments);
+                storeFragment(x,      y+yjit, w, h, fragmentidx+2, tri, fragments);
+                storeFragment(x+xjit, y+yjit, w, h, fragmentidx+3, tri, fragments);
             }
         }
+    }
+}
+
+__device__ void colorFragment(Fragment &frag, glm::vec3 light) {
+    if (frag.valid) {
+        glm::vec3 norm = barycentricInterpolate(frag.tri.nor, frag.baryCoords);
+        glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
+        glm::vec3 lightdir = glm::normalize(light - pos);
+        frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
     }
 }
 
@@ -279,17 +306,13 @@ __global__ void fragmentShader(int width, int height,
         Fragment *fragments, glm::vec3 light) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-    int index = x + (y * width);
 
     if (x < width && y < height) {
-        Fragment &frag = fragments[index];
-        if (frag.valid) {
-            glm::vec3 norm = barycentricInterpolate(frag.tri.nor, frag.baryCoords);
-            glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
-            glm::vec3 lightdir = glm::normalize(light - pos);
-            frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
-        } else {
-        }
+        int index = 4*(x + (y * width));
+        colorFragment(fragments[index]  , light);
+        colorFragment(fragments[index+1], light);
+        colorFragment(fragments[index+2], light);
+        colorFragment(fragments[index+3], light);
     }
 }
 
