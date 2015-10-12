@@ -46,4 +46,17 @@ I use these five sample point to decide the fraction of pixel occupied by the pr
 ![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/wo_anti_aliasing_new%20-%20Copy.png?raw=true)
 ![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/w_anti_aliasing_new%20-%20Copy.png?raw=true)
 
+### Color-Interpolation
+Here I test the interpolation on the simple triangle, with each vertex assign different color.
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/color_interpolation.png?raw=true)
+
+###Blending
+Here I am using the simple blending scheme. I add one variable Alpha to denote the transparency of the material. For the color we see, the equation is simply:
+
+`Color = (1-Alpha)*front_Color + Alpha*back_Color`
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/bending_compare.png?raw=true)
+
+More Results
+========================
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/4.png?raw=true)
 
