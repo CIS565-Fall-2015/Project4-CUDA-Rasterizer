@@ -11,9 +11,17 @@
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
+#include <stb_image_write.h>
+#include <stb_image.h>
+#include "image.h"
 
 using namespace std;
-
+enum TEXTYPE
+{
+	DIFFUSE,
+	DISPLACEMENT,
+	BUMP
+};
 class obj {
 private:
     vector<glm::vec4> points;
@@ -23,14 +31,23 @@ private:
     vector<float *> faceboxes;  //bounding boxes for each face are stored in vbo-format!
     vector<glm::vec4> normals;
     vector<glm::vec4> texturecoords;
+	vector<string> textrueFilenames;
+	vector<int> textureType;
+	
+
     int vbosize;
     int nbosize;
     int cbosize;
+	int tbosize;
     int ibosize;
+	
+
     float *vbo;
     float *nbo;
     float *cbo;
+	float *tbo;
     int *ibo;
+	
     float *boundingbox;
     float top;
     glm::vec3 defaultColor;
@@ -42,6 +59,7 @@ private:
     float zmin;
     bool maxminSet;
 public:
+	vector<image> textureImages;
     obj();
     ~obj();
 
@@ -49,10 +67,12 @@ public:
     //-------Mesh Operations---------
     //-------------------------------
     void buildBufPoss();
+	void loadTextures();
     void addPoint(glm::vec3);
     void addFace(vector<int>);
     void addNormal(glm::vec3);
     void addTextureCoord(glm::vec3);
+	void addTexture(string, TEXTYPE);
     void addFaceNormal(vector<int>);
     void addFaceTexture(vector<int>);
     void compareMaxMin(float, float, float);
@@ -66,10 +86,13 @@ public:
     float getTop();
     void setColor(glm::vec3);
     glm::vec3 getColor();
+	float *getBufTex();
     float *getBufPos();
     float *getBufCol();
     float *getBufNor();
-    int *getBufIdx();
+	int *getBufIdx();
+
+	int getBufTexsize();
     int getBufPossize();
     int getBufNorsize();
     int getBufIdxsize();

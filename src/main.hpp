@@ -24,7 +24,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
-
+#include "glm/gtc/matrix_transform.hpp"
 using namespace std;
 
 //-------------------------------
@@ -93,3 +93,7 @@ void deleteTexture(GLuint *tex);
 void mainLoop();
 void errorCallback(int error, const char *description);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void mouseMoveCallback(GLFWwindow *window, double xpos, double ypos);
+void mouseDownCallback(GLFWwindow *window, int button, int action,int mods);
+void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void CalcViewPersMat(float x_move, float y_move);

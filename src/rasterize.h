@@ -9,10 +9,19 @@
 #pragma once
 
 #include <glm/glm.hpp>
-
+#include "util\obj.hpp"
+struct shadeControl
+{
+	bool Color = true;
+	bool Wireframe = false;
+	bool Texture = true;
+	bool DispMap = true;
+	bool Normal = false;
+	float UVrepeat = 1;
+	int dTessIncre = 4;
+};
 void rasterizeInit(int width, int height);
-void rasterizeSetBuffers(
-        int bufIdxSize, int *bufIdx,
-        int vertCount, float *bufPos, float *bufNor, float *bufCol);
-void rasterize(uchar4 *pbo);
+void rasterizeSetBuffers(obj * mesh,int tessLevel = 0);
+void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int TessLevel,shadeControl sCtrl);
 void rasterizeFree();
+

@@ -13,6 +13,7 @@
 #include <string.h>
 #include <glm/glm.hpp>
 #include "objloader.hpp"
+#include "obj.hpp"
 
 using namespace std;
 
@@ -61,7 +62,8 @@ objLoader::objLoader(string filename, obj *newMesh) {
                 getline(liness, y, ' ');
                 getline(liness, z, ' ');
                 geomesh->addPoint(glm::vec3(::atof(x.c_str()), ::atof(y.c_str()), ::atof(z.c_str())));
-            } else if (line[0] == 'f') {
+			}
+			else if (line[0] == 'f') {
                 string v;
                 getline(liness, v, ' ');
                 string delim1 = "//";
@@ -115,6 +117,18 @@ objLoader::objLoader(string filename, obj *newMesh) {
                     //std::cout << "Vertex Format" << std::endl;
                 }
             }
+			else if (line[0] == 'm'&&line[1] == 'a'&&line[2] == 'p'&&line[3] == '_')
+			{
+				if (line[4]=='K'&&line[5]=='d')
+				{
+					istringstream liness(line);
+					string mapType;
+					string texFilename;
+					getline(liness, mapType, ' ');
+					getline(liness, texFilename, ' ');
+					geomesh->addTexture(texFilename, TEXTYPE::DIFFUSE);
+				}
+			}
         }
 
         printf("Loaded %d faces & %d vertices from %s\n",

@@ -11,6 +11,9 @@
 #include <cmath>
 #include <glm/glm.hpp>
 #include <util/utilityCore.hpp>
+#include "glm/gtc/matrix_transform.hpp"
+
+#define MAX_DEPTH 10000000;
 
 struct AABB {
     glm::vec3 min;
@@ -98,4 +101,19 @@ float getZAtCoordinate(const glm::vec3 barycentricCoord, const glm::vec3 tri[3])
     return -(barycentricCoord.x * tri[0].z
            + barycentricCoord.y * tri[1].z
            + barycentricCoord.z * tri[2].z);
+}
+
+// CHECKITOUT
+/**
+* Check if a barycentric coordinate is on the boundaries of a triangle.
+*/
+__host__ __device__ static
+bool isBarycentricCoordOnBounds(const glm::vec3 barycentricCoord,float scale) {
+	return
+		barycentricCoord.x >= 0.0 && barycentricCoord.x <= 1.0 &&
+		barycentricCoord.y >= 0.0 && barycentricCoord.y <= 1.0 &&
+		barycentricCoord.z >= 0.0 && barycentricCoord.z <= 1.0 &&
+		(abs(barycentricCoord.x + barycentricCoord.y - 1.0) < 0.02*scale ||
+		abs(barycentricCoord.y + barycentricCoord.z - 1.0) < 0.02*scale ||
+		abs(barycentricCoord.x + barycentricCoord.z - 1.0) < 0.02*scale);
 }
