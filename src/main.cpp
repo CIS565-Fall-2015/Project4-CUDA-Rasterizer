@@ -77,8 +77,19 @@ void runCuda() {
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
     dptr = NULL;
 
+	if (moveForward)
+		cam->translateBy(0, 0, -0.1f);
+	else if (moveBackward)
+		cam->translateBy(0, 0, 0.1f);
+
+	if (moveLeft)
+		cam->translateBy(0.1f, 0, 0);
+	else if (moveRight)
+		cam->translateBy(-0.1f, 0, 0);
+
+
     cudaGLMapBufferObject((void **)&dptr, pbo);
-    rasterize(dptr);
+    rasterize(dptr, cam->getViewProjection());
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
@@ -99,13 +110,18 @@ bool init(obj *mesh) {
 
     width = 800;
     height = 800;
+	cam = new Camera(width, height);
+
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return false;
     }
-    glfwMakeContextCurrent(window);
-    glfwSetKeyCallback(window, keyCallback);
+	glfwMakeContextCurrent(window);
+	glfwSetKeyCallback(window, keyCallback);
+	glfwSetCursorPosCallback(window, cursorCallback);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPos(window, width/2, height / 2);
 
     // Set up GL context
     glewExperimental = GL_TRUE;
@@ -242,7 +258,6 @@ void deletePBO(GLuint *pbo) {
 
         glBindBuffer(GL_ARRAY_BUFFER, *pbo);
         glDeleteBuffers(1, pbo);
-
         *pbo = (GLuint)NULL;
     }
 }
@@ -269,8 +284,44 @@ void errorCallback(int error, const char *description) {
     fputs(description, stderr);
 }
 
-void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    }
+#define YAW_SENSITIVITY 0.005f
+#define PITCH_SENSITIVITY 0.005f
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+		exit(0);
+
+	if (key == GLFW_KEY_W && action == GLFW_PRESS)
+		moveForward = true;
+	else
+		moveForward = false;
+
+	if (key == GLFW_KEY_S && action == GLFW_PRESS)
+		moveBackward = true;
+	else
+		moveBackward = false;
+
+	if (key == GLFW_KEY_A && action == GLFW_PRESS)
+		moveLeft = true;
+	else
+		moveLeft = false;
+
+	if (key == GLFW_KEY_D && action == GLFW_PRESS)
+		moveRight = true;
+	else
+		moveRight = false;
+
+	//else if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+	//TODO: print image
+}
+
+void cursorCallback(GLFWwindow* window, double xpos, double ypos){
+	//camera control
+	float yaw = (xpos - width / 2) * YAW_SENSITIVITY;		//around local y
+	float pitch = (ypos - height/2) * PITCH_SENSITIVITY;	//around local x
+
+	cam->rotateBy(pitch, yaw, 0);
+
+	//reset cursor to middle pos.
+	glfwSetCursorPos(window, width/2, height/2);
 }

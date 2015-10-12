@@ -24,6 +24,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
+#include "src\Camera.h"
 
 using namespace std;
 
@@ -42,6 +43,12 @@ GLuint displayImage;
 uchar4 *dptr;
 
 GLFWwindow *window;
+Camera *cam;
+
+bool moveForward = false;
+bool moveBackward = false;
+bool moveLeft = false;
+bool moveRight = false;
 
 //-------------------------------
 //----------CUDA STUFF-----------
@@ -93,3 +100,4 @@ void deleteTexture(GLuint *tex);
 void mainLoop();
 void errorCallback(int error, const char *description);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void cursorCallback(GLFWwindow* window, double xpos, double ypos);
