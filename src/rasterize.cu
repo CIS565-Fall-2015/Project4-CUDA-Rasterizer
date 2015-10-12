@@ -19,7 +19,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #define DEG2RAD  PI/180.f
-#define Tess 1
+#define Tess 0
+#define Blending 1
 struct VertexIn {
 	glm::vec3 pos;
 	glm::vec3 nor;
@@ -486,7 +487,13 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 			for (int j = aabb.min.y - 1; j < aabb.max.y + 1; j++){
 				glm::vec2 point(i, j);
 				glm::vec3 baryc = calculateBarycentricCoordinate(tri, point);
+				//random sample anti-aliansing 1-sample..
+				thrust::default_random_engine rngx = makeSeededRandomEngine(i, id, 1);
+				thrust::default_random_engine rngy = makeSeededRandomEngine(j, id, 1);
+				thrust::uniform_real_distribution<float> u1(0, 1);
+				thrust::uniform_real_distribution<float> u2(0.5, 0.999);
 				//simple clip.. 
+				point =glm::vec2(i + u1(rngx), j + u1(rngy));
 				if (tri[0].x > w || tri[0].x < 0 || tri[0].y>h || tri[0].x < 0)continue;
 				if (isBarycentricCoordInBounds(baryc)){
 					//these three normal should be the same since they are on the same face (checked) 
@@ -622,19 +629,21 @@ __global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, i
 		//dev_fmOutput[id].color = phong_color;
 		//blending
 		//DestinationColor.rgb = (SourceColor.rgb * One) + (DestinationColor.rgb * (1 - SourceColor.a));
-		if (defaultbackground)
-		{
-			glm::vec3 background = glm::vec3(0, 0, 1);
-			float default_a = 0.8;
-			dev_fmOutput[id].color = phong_color +(background * (1 - default_a));
-		}
-		else
-		{
-			float depth = dev_fmInput[id].dis;
-			if (depth > 0) {
-				dev_fmOutput[id].color = glm::vec3(0.8, 0.8, 0.8);
+		if (Blending){
+			if (defaultbackground)
+			{
+				glm::vec3 background = glm::vec3(0, 0, 1);
+				float default_a = 0.8;
+				dev_fmOutput[id].color = phong_color + (background * (1 - default_a));
 			}
-			else dev_fmOutput[id].color = (-depth)* phong_color +(1 + depth)*glm::vec3(0.8, 0.8, 0.8);
+			else
+			{
+				float depth = dev_fmInput[id].dis;
+				if (depth > 0) {
+					dev_fmOutput[id].color = glm::vec3(0.8, 0.8, 0.8);
+				}
+				else dev_fmOutput[id].color = (-depth)* phong_color + (1 + depth)*glm::vec3(0.8, 0.8, 0.8);
+			}
 		}
 	}
 }
