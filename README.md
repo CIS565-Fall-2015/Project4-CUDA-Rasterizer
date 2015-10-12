@@ -11,11 +11,11 @@ CUDA Rasterizer
  <p>This is a rasterizer.</p>
 It includes the following pipeline:<br/>
 1)vertex transformation with camera movement</br>
-2)Tessellation shader
-3)Bling-phong shader and blending
-4)rasterization brute force scan line->boundingbox scan line
-4)depth test
-the base color is normal map
+2)Tessellation shader</br>
+3)Bling-phong shader and blending</br>
+4)rasterization brute force scan line->boundingbox scan line</br>
+4)depth test</br>
+the base color is normal map</br>
 <img src="1.png"  width="400" height="400">
 
 
