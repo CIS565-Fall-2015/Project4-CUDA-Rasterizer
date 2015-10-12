@@ -251,16 +251,25 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
         tri.worldPos[0] = v[0].worldPos;
         tri.worldPos[1] = v[1].worldPos;
         tri.worldPos[2] = v[2].worldPos;
+        tri.valid = true;
         primitives[k] = tri;
     }
 }
 
 __global__ void geometryShader(int primitivecount, Triangle *primitives,
-        Triangle *genprimitives) {
+        Triangle *genprimitives, glm::vec3 eye) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < primitivecount) {
-        genprimitives[k] = primitives[k];
+        // Back-face culling
+        Triangle tri = primitives[k];
+        glm::vec3 n = glm::cross(tri.pos[1] - tri.pos[0], tri.pos[2] - tri.pos[0]);
+        float dir = glm::dot(eye - tri.pos[0], n);
+        if (dir < 0.f) {
+            genprimitives[k] = primitives[k];
+        } else {
+            genprimitives[k].valid = false;
+        }
     }
 }
 
@@ -290,6 +299,9 @@ __global__ void scanline(int w, int h, int tricount,
 
     if (k < tricount) {
         Triangle tri = primitives[k];
+        if (tri.valid == false) {
+            return;
+        }
 
         float ystep = 2.f / h;
         float xstep = 2.f / w;
@@ -323,6 +335,7 @@ __device__ void colorFragment(Fragment &frag, glm::vec3 light) {
         glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
         glm::vec3 lightdir = glm::normalize(light - pos);
         frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
+        //frag.color = glm::abs(norm);
     }
 }
 
@@ -371,10 +384,10 @@ void rasterize(uchar4 *pbo) {
     dim3 triBlockCount((tricount + sideLength1d - 1) / sideLength1d);
 
     Camera c;
-    c.position = glm::vec3(0, 1, 5);
+    c.position = glm::vec3(1, 1, 4);
     c.view = glm::vec3(0, 1, 0);
     c.up = glm::vec3(0, -1, 0);
-    c.light = glm::vec3(5, 4, 0);
+    c.light = glm::vec3(2, 4, 2);
     c.fovy = glm::radians(45.f);
 
 //    c.position = glm::vec3(0, 6, -90);
@@ -424,7 +437,7 @@ void rasterize(uchar4 *pbo) {
     // Triangle -> Triangle
         cudaEventRecord(begin);
     geometryShader<<<triBlockCount, blockSize1d>>>(tricount,
-            dev_origPrimitives, dev_genPrimitives);
+            dev_origPrimitives, dev_genPrimitives, c.position);
         checkCUDAError("");
 
         cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&assPrimitivesTime, begin, end);
