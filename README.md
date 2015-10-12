@@ -60,3 +60,17 @@ More Results
 ========================
 ![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/4.png?raw=true)
 
+Performace Analysis
+========================
+Since I haven't implamented the optimization part for the pipeline, I don't have a very numerical analysis of this program. But I do test the performance with and without the anti-liasing. By using the cow_smooth.obj, the difference is not obvious. I use the FPS to roughly compare the performance. I run the program 100 iterations and get the average result like this:
+
+![alt tag](https://github.com/ziyezhou-Jerry/Project4-CUDA-Rasterizer/blob/master/image/excel.png?raw=true)
+
+The difference is not obivious, and I think the reason may be the mesh is not so large and my sample point is just 5.
+
+Future Work
+========================
+* Adding some more stages ( Geometry shader, etc.) into the pipeline
+* Implementing some optimization methods
+
+
