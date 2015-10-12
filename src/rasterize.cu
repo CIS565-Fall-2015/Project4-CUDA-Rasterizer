@@ -1,4 +1,4 @@
-/**
+/*
  * @file      rasterize.cu
  * @brief     CUDA-accelerated rasterization pipeline.
  * @authors   Skeleton code: Yining Karl Li, Kai Ninomiya
@@ -49,6 +49,7 @@ struct Triangle {
 
     glm::vec3 worldPos[3];
     bool valid;
+    bool middle;
 };
 struct Fragment {
     glm::vec3 color;
@@ -73,6 +74,39 @@ static Triangle  *dev_origPrimitives = NULL;
 static Triangle  *dev_genPrimitives  = NULL;
 static Fragment  *dev_depthbuffer    = NULL;
 static glm::vec3 *dev_framebuffer    = NULL;
+
+__device__ VertexOut transformVertex(glm::vec3 pos, glm::vec3 nor,
+        glm::mat4 model, glm::mat4 invModel, glm::mat4 mvp) {
+    VertexOut vo;
+    vo.pos = pos;
+    vo.worldPos = multiplyMV(model, glm::vec4(pos, 1));
+    vo.pos = multiplyMV(mvp, glm::vec4(pos, 1));
+    vo.nor = glm::vec3(invModel * glm::vec4(nor, 0));
+    vo.col = glm::vec3(0.f);
+    return vo;
+}
+
+__device__ Triangle buildTriangle(VertexOut v0, VertexOut v1, VertexOut v2) {
+    Triangle tri;
+    tri.pos[0] = v0.pos;
+    tri.pos[1] = v1.pos;
+    tri.pos[2] = v2.pos;
+
+    tri.nor[0] = v0.nor;
+    tri.nor[1] = v1.nor;
+    tri.nor[2] = v2.nor;
+
+    tri.col[0] = v0.col;
+    tri.col[1] = v1.col;
+    tri.col[2] = v2.col;
+
+    tri.worldPos[0] = v0.worldPos;
+    tri.worldPos[1] = v1.worldPos;
+    tri.worldPos[2] = v2.worldPos;
+    tri.valid = true;
+    tri.middle = false;
+    return tri;
+}
 
 __device__ void printVec3(glm::vec3 v) {
     printf("(%f, %f, %f)\n", v.x, v.y, v.z);
@@ -207,19 +241,18 @@ __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
 }
 
 // Applies vertex transformations (from given model-view-projection matrix)
-__global__ void vertexShader(int vertcount, VertexIn *verticesIn,
-        VertexOut *verticesOut, glm::mat4 model, glm::mat4 invModel,
-        glm::mat4 mvp) {
+__global__ void vertexShader(int vertcount,
+        VertexIn *verticesIn, VertexOut *verticesOut,
+        glm::mat4 model, glm::mat4 invModel, glm::mat4 mvp) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < vertcount) {
         VertexIn vin = verticesIn[k];
 
+        //VertexOut vo = transformVertex(vin.pos, vin.nor, model, invModel, mvp);
         VertexOut vo;
-        vo.worldPos = multiplyMV(model, glm::vec4(vin.pos, 1));
-        vo.pos = multiplyMV(mvp, glm::vec4(vin.pos, 1));
-        vo.nor = glm::vec3(invModel * glm::vec4(vin.nor, 0));
-        vo.col = vin.col;
+        vo.pos = vin.pos;
+        vo.nor = vin.nor;
         verticesOut[k] = vo;
     }
 }
@@ -230,45 +263,67 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < primitivecount) {
-        VertexOut v[3];
-        v[0] = vertices[indices[k*3  ]];
-        v[1] = vertices[indices[k*3+1]];
-        v[2] = vertices[indices[k*3+2]];
-
-        Triangle tri;
-        tri.pos[0] = v[0].pos;
-        tri.pos[1] = v[1].pos;
-        tri.pos[2] = v[2].pos;
-
-        tri.nor[0] = v[0].nor;
-        tri.nor[1] = v[1].nor;
-        tri.nor[2] = v[2].nor;
-
-        tri.col[0] = v[0].col;
-        tri.col[1] = v[1].col;
-        tri.col[2] = v[2].col;
-
-        tri.worldPos[0] = v[0].worldPos;
-        tri.worldPos[1] = v[1].worldPos;
-        tri.worldPos[2] = v[2].worldPos;
-        tri.valid = true;
-        primitives[k] = tri;
+        VertexOut v0 = vertices[indices[k*3  ]];
+        VertexOut v1 = vertices[indices[k*3+1]];
+        VertexOut v2 = vertices[indices[k*3+2]];
+        primitives[k] = buildTriangle(v0, v1, v2);
     }
 }
 
-__global__ void geometryShader(int primitivecount, Triangle *primitives,
-        Triangle *genprimitives, glm::vec3 eye) {
+__device__ void subdivide(int idx, Triangle tri, Triangle *genprimitives,
+        glm::mat4 model, glm::mat4 invModel, glm::mat4 mvp) {
+    // New vertices
+    glm::vec3 v0pos = tri.pos[0];
+    glm::vec3 v1pos = tri.pos[1];
+    glm::vec3 v2pos = tri.pos[2];
+    glm::vec3 v3pos = midpoint(v0pos, v1pos);
+    glm::vec3 v4pos = midpoint(v0pos, v2pos);
+    glm::vec3 v5pos = midpoint(v1pos, v2pos);
+
+    // New normals
+    glm::vec3 v0nor = tri.nor[0];
+    glm::vec3 v1nor = tri.nor[1];
+    glm::vec3 v2nor = tri.nor[2];
+    glm::vec3 v3nor = midpoint(v0nor, v1nor);
+    glm::vec3 v4nor = midpoint(v0nor, v2nor);
+    glm::vec3 v5nor = midpoint(v1nor, v2nor);
+
+    VertexOut v0 = transformVertex(v0pos, v0nor, model, invModel, mvp);
+    VertexOut v1 = transformVertex(v1pos, v1nor, model, invModel, mvp);
+    VertexOut v2 = transformVertex(v2pos, v2nor, model, invModel, mvp);
+    VertexOut v3 = transformVertex(v3pos, v3nor, model, invModel, mvp);
+    VertexOut v4 = transformVertex(v4pos, v4nor, model, invModel, mvp);
+    VertexOut v5 = transformVertex(v5pos, v5nor, model, invModel, mvp);
+
+    genprimitives[idx  ] = buildTriangle(v0, v3, v4);
+    genprimitives[idx+1] = buildTriangle(v3, v1, v5);
+    genprimitives[idx+2] = buildTriangle(v4, v5, v2);
+    genprimitives[idx+3] = buildTriangle(v3, v5, v4); // middle triangle
+    genprimitives[idx+3].middle = true;
+}
+
+__global__ void geometryShader(int primitivecount, int multFactor, Triangle *primitives,
+        Triangle *genprimitives, glm::vec3 eye,
+        glm::mat4 model, glm::mat4 invModel, glm::mat4 mvp) {
     int k = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (k < primitivecount) {
+        int genidx = k * multFactor;
+
         // Back-face culling
         Triangle tri = primitives[k];
         glm::vec3 n = glm::cross(tri.pos[1] - tri.pos[0], tri.pos[2] - tri.pos[0]);
         float dir = glm::dot(eye - tri.pos[0], n);
+        subdivide(genidx, tri, genprimitives, model, invModel, mvp);
         if (dir < 0.f) {
-            genprimitives[k] = primitives[k];
+            // Triangle tessellation
+            //subdivide(genidx, tri, genprimitives);
         } else {
-            genprimitives[k].valid = false;
+            //subdivide(genidx, tri, genprimitives);
+            //genprimitives[genidx  ].valid = false;
+            //genprimitives[genidx+1].valid = false;
+            //genprimitives[genidx+2].valid = false;
+            //genprimitives[genidx+3].valid = false;
         }
     }
 }
@@ -335,7 +390,10 @@ __device__ void colorFragment(Fragment &frag, glm::vec3 light) {
         glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
         glm::vec3 lightdir = glm::normalize(light - pos);
         frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
-        //frag.color = glm::abs(norm);
+        frag.color = glm::abs(glm::normalize(norm));
+        if (frag.tri.middle == true) {
+            frag.color *= .75;
+        }
     }
 }
 
@@ -369,7 +427,7 @@ int compactPrimitives(int primitivecount, Triangle *primitives) {
  * Perform rasterization.
  */
 void rasterize(uchar4 *pbo) {
-    //t += 0.025f;
+    //t += 0.01f;
 
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
@@ -384,17 +442,19 @@ void rasterize(uchar4 *pbo) {
     dim3 triBlockCount((tricount + sideLength1d - 1) / sideLength1d);
 
     Camera c;
-    c.position = glm::vec3(1, 1, 4);
-    c.view = glm::vec3(0, 1, 0);
-    c.up = glm::vec3(0, -1, 0);
-    c.light = glm::vec3(2, 4, 2);
-    c.fovy = glm::radians(45.f);
+    // Suzanne
+//    c.position = glm::vec3(1, 1, 4);
+//    c.view = glm::vec3(0, 1, 0);
+//    c.up = glm::vec3(0, -1, 0);
+//    c.light = glm::vec3(2, 5, -1);
+//    c.fovy = glm::radians(45.f);
 
-//    c.position = glm::vec3(0, 6, -90);
-//    c.view = glm::vec3(0, 0, 15);
-//    c.up = glm::vec3(0, 1, 0);
-//    c.light = glm::vec3(0, 4, 5);
-//    c.fovy = 17.f;
+    // Cow
+    c.position = glm::vec3(0, .2, -0.5);
+    c.view = glm::vec3(0, .2, 0);
+    c.up = glm::vec3(0, 1, 0);
+    c.light = glm::vec3(0, 4, 5);
+    c.fovy = 17.f;
 
     // Cube
 //    c.position = glm::vec3(0, 1, 1);
@@ -436,19 +496,20 @@ void rasterize(uchar4 *pbo) {
 
     // Triangle -> Triangle
         cudaEventRecord(begin);
-    geometryShader<<<triBlockCount, blockSize1d>>>(tricount,
-            dev_origPrimitives, dev_genPrimitives, c.position);
+    geometryShader<<<triBlockCount, blockSize1d>>>(tricount, primMultFactor,
+            dev_origPrimitives, dev_genPrimitives,
+            c.position, model, invModel, mvp);
         checkCUDAError("");
 
         cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&assPrimitivesTime, begin, end);
 
-    int genPrimitiveCount = compactPrimitives(tricount, dev_genPrimitives);
+    int genPrimitiveCount = compactPrimitives(tricount * primMultFactor, dev_genPrimitives);
     dim3 genPrimCount((genPrimitiveCount + sideLength1d - 1) / sideLength1d);
 
     // Triangle -> Fragment
         cudaEventRecord(begin);
-    scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount,
-            dev_genPrimitives, dev_depthbuffer);
+    scanline<<<genPrimitiveCount, blockSize1d>>>(width, height, tricount *
+            primMultFactor, dev_genPrimitives, dev_depthbuffer);
         checkCUDAError("");
 
         cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&scanlineTime, begin, end);

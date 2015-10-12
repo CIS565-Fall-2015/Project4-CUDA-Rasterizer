@@ -32,6 +32,12 @@ glm::vec2 fromNDC(float ndc_x, float ndc_y, int width, int height) {
     return glm::vec2(x, y);
 }
 
+/** Returns the midpoint between two vec3s */
+__host__ __device__
+glm::vec3 midpoint (glm::vec3 v1, glm::vec3 v2) {
+    return (v1 + v2) / 2.f;
+}
+
 /**
  * Multiplies a glm::mat4 matrix and a vec4.
  */
