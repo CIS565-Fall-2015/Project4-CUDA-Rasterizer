@@ -35,6 +35,7 @@ struct VertexOut {
 struct Triangle {
 	VertexOut v[3];
 };
+
 struct Fragment {
 	Triangle* t;
 	glm::vec3 bCoord;
@@ -47,6 +48,3 @@ __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int ver
 __global__ void primitiveAssembly(VertexOut* d_vertsOut, int* d_idx, int idxNo, Triangle* d_tri);
 __global__ void rasterization(Triangle* d_tri, int triNo, Fragment* d_fragment, int screenWidth, int screenHeight, int* mutex);
 __global__ void fragmentShader(glm::vec3* framebuffer, Fragment * d_fragment, int screenWidth, int screenHeight);
-
-__global__ void rClr(Triangle* d_tri, int triNo,
-	glm::vec3* d_fragment, int screenWidth, int screenHeight);

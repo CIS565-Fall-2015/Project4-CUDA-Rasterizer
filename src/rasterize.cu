@@ -75,6 +75,10 @@ void rasterizeInit(int w, int h) {
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
+
+	cudaMalloc(&d_mutex, sizeof(int));
+	cudaMemset(d_mutex, 0, sizeof(int));
+
     checkCUDAError("rasterizeInit");
 }
 
@@ -108,10 +112,6 @@ void rasterizeSetBuffers(
     cudaFree(dev_primitives);
     cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
     cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
-
-	cudaFree(d_mutex);
-	cudaMalloc(&d_mutex, sizeof(int));
-	cudaMemset(d_mutex, 0, sizeof(int));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -241,11 +241,15 @@ __global__ void rasterization(Triangle* d_tri, int triNo,
 	int hW = screenWidth / 2;
 	int hH = screenHeight / 2;
 
-	int maxY = (1 - bbox.min.y) * hH;
-	int maxX = (bbox.max.x + 1) * hW;
+	int maxY = (int)((1 - bbox.min.y) * hH) % screenHeight;
+	int maxX = (int)((bbox.max.x + 1) * hW) % screenWidth;
+	int x = (bbox.min.x + 1) * hW;
+	if (x < 0) x = 0;
+	int y = (1 - bbox.max.y) * hH;
+	if (y < 0) y = 0;
 
-	for (int y = (1 - bbox.max.y) * hH; y < maxY; y++){
-		for (int x = (bbox.min.x + 1) * hW; x < maxX; x++){
+	for (; y < maxY; y++){
+		for (; x < maxX; x++){
 			glm::vec2 p;
 			p.x = -1 + ((x + 0.5f) / screenWidth) * 2;
 			p.y = 1 - ((y + 0.5f) / screenHeight) * 2;
@@ -299,41 +303,7 @@ __global__ void fragmentShader(glm::vec3* framebuffer, Fragment* d_fragment, int
 		
 		glm::vec3 lightSource = glm::normalize(lightSource - pos);
 		framebuffer[j * screenWidth + i] = glm::dot(pos, nor) * clr;
+		return;
 	}
-}
-
-//perform rasterization per pixel.
-__global__ void rClr(Triangle* d_tri, int triNo, 
-								glm::vec3* d_fragment, int screenWidth, int screenHeight)
-{
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	if (i >= screenWidth || j >= screenHeight) return;
-
-	glm::vec2 p;
-	p.x = -1 + ((i + 0.5f) / screenWidth) * 2;
-	p.y = 1 - ((j + 0.5f) / screenHeight) * 2;
-
-	glm::vec3 targetBCoord;
-	int targetTriPtr = -1;
-	float depth = -INFINITY;
-
-	for (int x = 0; x < triNo; x++){
-		glm::vec3 tri[3] = {d_tri[x].v[0].pos, d_tri[x].v[1].pos, d_tri[x].v[2].pos};
-		glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p);
-
-		if (isBarycentricCoordInBounds(bCoord)){
-			float newDepth = getZAtCoordinate(bCoord, tri);
-			if (newDepth <= 0 && newDepth > depth){
-				depth = newDepth;
-				targetBCoord = bCoord;
-				targetTriPtr = x;
-			}
-		}
-	}
-
-	//fragment shader!
-	if (targetTriPtr != -1){
-		d_fragment[j * screenWidth + i] = glm::vec3(1, 1, 1);
-	}
+	framebuffer[j * screenWidth + i] = glm::vec3();
 }

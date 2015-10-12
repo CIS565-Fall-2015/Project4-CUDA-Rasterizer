@@ -24,6 +24,7 @@
 #include <util/utilityCore.hpp>
 #include <util/objloader.hpp>
 #include "rasterize.h"
+#include "src\Camera.h"
 
 using namespace std;
 
@@ -42,7 +43,12 @@ GLuint displayImage;
 uchar4 *dptr;
 
 GLFWwindow *window;
-glm::mat4 viewProjection;
+Camera *cam;
+
+bool moveForward = false;
+bool moveBackward = false;
+bool moveLeft = false;
+bool moveRight = false;
 
 //-------------------------------
 //----------CUDA STUFF-----------
