@@ -1,7 +1,8 @@
 add:
+-anti-aliasing
+-tessellation shader + wireframe shading OR instancing
 -tile based pipeline
--tessellation shader
--instancing
 
-Fragment Shading
--so the recommendation is to NOT do depth tests during rasterization?
+TESSELATION
+-every triangle gets an "innter" value and 4 "outer" values
+-

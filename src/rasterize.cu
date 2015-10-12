@@ -360,7 +360,7 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 	dim3 blockCount1d_primitives(((bufIdxSize / 3) + sideLength1d - 1) / sideLength1d);
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
-	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
+	glm::vec3 bgColor = glm::vec3(1.1f, 1.1f, 1.1f);
 	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
 	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor, defaultNorm,
 		dev_depthbuffer);
