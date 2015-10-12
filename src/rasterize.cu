@@ -693,6 +693,7 @@ void rasterize(uchar4 *pbo) {
 				if(SHOW_TIMING)
 					std::cout<<"Time All: "<<milliseconds<<std::endl;
 
+				std::cout<<std::endl;
 
 				break;
 			}

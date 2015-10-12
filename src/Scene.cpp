@@ -15,7 +15,7 @@
 Scene::Scene(int w, int h)
 {
 	renderMode = TRIANGLES;
-	backFaceCulling = false;
+	backFaceCulling = true;
 	antiAliasing = false;
 	run = true;
 
@@ -76,16 +76,16 @@ void Scene::moveLights()
 
 void Scene::setDefaultCamera()
 {
-	cam.pos = glm::vec3(0,0,5);
+	cam.pos = glm::vec3(0,0,2);
 	cam.lookat = glm::vec3(0,0,0);
 	cam.up = glm::vec3(0,-1,0);
 	cam.view = glm::lookAt(cam.pos, cam.lookat, cam.up);
 	cam.projection = glm::perspective<float>(45.0f, float(width)/ float(height), -100.0f, 100.0f);
-	cam.model = glm::mat4();
 
-	model.translate = glm::vec3(0.0f);
+	model.translate = glm::vec3(0.0f, -0.25f, 0.0f);
 	model.rotate = glm::vec3(0.0f);
 	model.scale = glm::vec3(1.0f);
+	cam.model = utilityCore::buildTransformationMatrix(model.translate, model.rotate, model.scale);
 
 	run = true;
 	configureCameraMatrix();
