@@ -256,6 +256,8 @@ __host__ __device__ glm::vec3 ColorInTexBilinear(int texId, glm::vec3**texs, glm
 
 	int xSize = info[texId].x;
 	int ySize = info[texId].y;
+	uv.x = uv.x;
+	uv.y = 1-uv.y;
 	//if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
 	uv.x = uv.x < 0 ? (uv.x - int(uv.x) + 1) : (uv.x>1 ? uv.x - (int)uv.x : uv.x);
 	uv.y = uv.y < 0 ? (uv.y - int(uv.y) + 1) : (uv.y>1 ? uv.y - (int)uv.y : uv.y);

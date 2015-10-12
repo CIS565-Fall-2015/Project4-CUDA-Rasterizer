@@ -12,6 +12,8 @@ Overview
 [Demo Pic]
 [Demo Video]
 
+![](img/YoutubeDemo.PNG)(https://www.youtube.com/watch?v=pTgm4-0rwd8)
+
 Description here:...
 
 #### Controls
@@ -111,11 +113,22 @@ References
 
 **Mouse Control**
 
+* http://www.opengl-tutorial.org/beginners-tutorials/tutorial-6-keyboard-and-mouse/
+* http://r3dux.org/2011/05/simple-opengl-keyboard-and-mouse-fps-controls/
+* https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.3-Input-handling-with-GLFW
+
 **Tessellation**
 
 **Texture Mapping**
 
+* https://en.wikipedia.org/wiki/Bilinear_interpolation
+
 **Displacement Map**
+
+* https://www.opengl.org/wiki/Calculating_a_Surface_Normal
+
+**Obj Files**
+* http://www.kunzhou.net/tex-models.htm
 
 To Do...
 ========================
