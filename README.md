@@ -29,6 +29,8 @@ Description here:...
 |Key 't'		| turn texture on/off			    |  [pic]			|
 |Key 'n'		|  normal testing					|  [pic]			|
 |Key 'd'		| turn displacement mapping on/off  |  [pic]			|
+|Key 'm'		|use middle point tessellation method|  [pic]			|
+|Key 'c'		|use curved PN tessellation method	|  [pic]			|
 |Key Up/Down	|increase/reduce tessellation level |  [pic]			|
 |Key Left/Right	|increase/reduce texture repeat		|  [pic]			|
 
@@ -36,6 +38,18 @@ Features
 ========================
 
 #### Tessellation
+
+**Middle Point Tessellation**
+
+|original geometry			|Middle Point Tessellation	| Curved PN Tessellation
+|:-------------------------:|:-------------------------:|:-----------------------:
+|![](img/tess_orig.PNG)		|![](img/tess_MidP_w.png)	|![](img/tess_PN_.png)	
+
+**Smooth Tessellation (Curved PN Method)**
+
+|original geometry			|after tessellated using cubic Bezier interpolation
+|:-------------------------:|:-------------------:
+|![](img/suzzane_pn.PNG)	|![](img/suzzane_pn_s.PNG)
 
 #### Displacement Mapping
 
