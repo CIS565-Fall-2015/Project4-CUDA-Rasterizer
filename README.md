@@ -9,12 +9,13 @@ CUDA Rasterizer
 Overview
 ========================
 
-[Demo Pic]
-[Demo Video]
+A Cuda rasterize with texture mapping, smooth tessellation and displacement mapping. 
+
+![](img/Overview.PNG)
+
+**Video Demo**
 
 [![](img/YoutubeDemo.PNG)](https://www.youtube.com/watch?v=pTgm4-0rwd8)
-
-Description here:...
 
 #### Controls
 
@@ -41,11 +42,15 @@ Features
 
 **Middle Point Tessellation**
 
+This method is very straight forward. For each triangle (primitive), find middle points on each edge, then tessellate one triangle into four triangles.
+
 |original geometry			|Middle Point Tessellation	| Curved PN Tessellation
 |:-------------------------:|:-------------------------:|:-----------------------:
 |![](img/tess_orig.PNG)		|![](img/tess_MidP_w.png)	|![](img/tess_PN_.png)	
 
 **Smooth Tessellation (Curved PN Method)**
+
+Using cubic Bezier interpolation to calculate tessellated points and normals. Each triangle is tessellated into nine triangles.
 
 |original geometry			|after tessellated using cubic Bezier interpolation
 |:-------------------------:|:-------------------:
@@ -133,6 +138,12 @@ References
 
 **Tessellation**
 
+* http://prideout.net/blog/?p=48
+* http://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/lectures/25_micropolygons.pdf
+* http://www.eecs.berkeley.edu/~sequin/CS284/PROJ_12/Brandon/Smooth%20GPU%20Tessellation.pdf
+* http://http.developer.nvidia.com/GPUGems2/gpugems2_chapter07.html
+* http://perso.telecom-paristech.fr/~boubek/papers/PhongTessellation/PhongTessellation.pdf
+
 **Texture Mapping**
 
 * https://en.wikipedia.org/wiki/Bilinear_interpolation
@@ -148,5 +159,4 @@ To Do...
 ========================
 1. cannot tessellate cow.obj
 2. cannot open sponza.obj
-3. Smooth Tessellation
-4. seperate textuers
+3. seperate textures
