@@ -9,4 +9,4 @@ CUDA Rasterizer
 A simplified rasterized graphics pipeline, similar to the OpenGL pipeline. I implemented a vertex shader, primitive assembly, rasterization, and a fragment shader (lambert).
 
 ### Sample Image of a cow
-![](renders/cow.png)
+![](renders/cow.PNG)
