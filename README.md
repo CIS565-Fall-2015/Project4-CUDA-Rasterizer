@@ -77,7 +77,7 @@ Once the primitives are assembled, we send them to the rasterizer. This is a ste
 
 	* <b>Scissor Test</b>
 	
-		This is a fairly straight forward test. We define a rectangular area on the screen. Any fragment outside this area is not considered. Fragments within the area are considered for fragment shading.
+		This is a fairly straight forward test. We define a rectangular area on the screen. Any fragment outside this area is not considered. Fragments within the area are considered for fragment shading. I use the screen boundaries as my scissors, this cuts the image at the boundaries else they would wrap around the other side.
 		
 	* <b>Depth Test</b>
 	
@@ -105,6 +105,9 @@ Once the primitives are assembled, we send them to the rasterizer. This is a ste
 	
 ##### Anti Aliasing
 To remove aliasing, I super sample the image and then average the color in the fragment shader. 4 samples are taken per fragment. As expected, this slowes down the performance as we have to perform both the fragment and color calculation 4 times.
+Comparison between aliased (left) and an anti aliased (right) image is as follows. As we only over sample by 4 pixels, the image is still a little aliased
+
+<img src="images/aa off.png" height="300" width="300"> <img src="images/aa on.png" height="300" width="300">
 
 
 ##### Fragment Shading
