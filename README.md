@@ -7,10 +7,8 @@ CUDA Rasterizer
 * Tested on: Windows 10, i7- @ 2.22GHz 22GB, GTX 960M
 
 ========================
-## README
-
-# Description:
-0.This is a rasterizer.It includes the following pipeline:
+## Description:
+This is a rasterizer.It includes the following pipeline:
 1)vertex transformation with camera movement</br>
 2)Tessellation shader
 3)Bling-phong shader and blending
