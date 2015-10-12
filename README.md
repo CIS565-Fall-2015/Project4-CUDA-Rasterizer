@@ -8,7 +8,7 @@ CUDA Rasterizer
 
 ========================
 ## Description:
- This is a rasterizer.
+ <p>This is a rasterizer.</p>
  It includes the following pipeline:
 1)vertex transformation with camera movement</br>
 2)Tessellation shader
