@@ -17,6 +17,7 @@ CUDA Rasterizer
 - Basic Lambert Diffuse-only lighting.
 - Color interpolation with barycentric coordinates
 - Mouse-based interactive camera support
+- Scissor Test
 
 ![](Capture.PNG)
 

@@ -153,8 +153,11 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
 	Triangle* new_end = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + numTri, facing_backward());
 	numTri = new_end - dev_primitives;
 
+	glm::vec2 scissorMin(100, 100);
+	glm::vec2 scissorMax(600, 600);
+
 	rasterization << <numBlock, bSize >> > (dev_primitives, numTri,
-		dev_depthbuffer, width, height, d_mutex);
+		dev_depthbuffer, width, height, d_mutex, scissorMin, scissorMax);
 	checkCUDAError("rasterization");
 
 	fragmentShader << < blockCount2d, blockSize2d >> >(dev_framebuffer, 
@@ -241,7 +244,8 @@ __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, in
 
 //perform rasterization per Triangle
 __global__ void rasterization(Triangle* d_tri, int triNo,
-	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex)
+	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
+	glm::vec2 scissorMin, glm::vec2 scissorMax)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= triNo) return;
@@ -259,13 +263,13 @@ __global__ void rasterization(Triangle* d_tri, int triNo,
 	//start rasterizing from min to max
 	//dont forget that the screen starts from -1 to 1
 	int maxY = ceil((1 - bbox.min.y) * screenHeight / 2);
-	if (maxY > screenHeight) maxY = screenHeight;
+	if (maxY > scissorMax.y) maxY = scissorMax.y;
 	int maxX = ceil((bbox.max.x + 1) * screenWidth / 2);
-	if (maxX > screenWidth) maxX = screenWidth;
+	if (maxX > scissorMax.x) maxX = scissorMax.x;
 	int y = (1 - bbox.max.y) * screenHeight / 2;
-	if (y < 0) y = 0;
+	if (y < scissorMin.y) y = scissorMin.y;
 	int minX = (bbox.min.x + 1) * screenWidth / 2;
-	if (minX < 0) minX = 0;
+	if (minX < scissorMin.x) minX = scissorMin.x;
 
 	glm::vec2 p;
 	for (; y < maxY; y++){
@@ -312,7 +316,7 @@ __global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbu
 	int i = x + (y * width);
 
 	if (x < width && y < height) {
-		glm::vec3 clrOut;
+		glm::vec3 clrOut(0.3, 0.3, 0.3);
 		if (dev_depthbuffer[i].depth != -INFINITY){
 			glm::vec3 bCoord = dev_depthbuffer[i].bCoord;
 			VertexIn v0 = dev_depthbuffer[i].t->vIn[0];

@@ -60,7 +60,8 @@ __global__ void clearBuffers(Fragment* dev_depthbuffer, int screenWidth, int scr
 __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int vertsNum, glm::mat4 viewProjection);
 __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int* d_idx, int idxNo, Triangle* d_tri);
 __global__ void rasterization(Triangle* d_tri, int triNo,
-	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex);
+	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
+	glm::vec2 scissorMin, glm::vec2 scissorMax);
 
 __global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer,
 	int width, int height, glm::vec3 *lightSourcePos);
