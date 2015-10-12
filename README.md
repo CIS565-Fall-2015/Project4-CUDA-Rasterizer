@@ -18,13 +18,7 @@ It includes the following pipeline:<br/>
 6)anti-aliansing:Super sampling - random  </br>
 the base color is normal map</br>
 <img src="1.png"  width="380" height="400">  <img src="2.png"  width="400" height="380">
-
-
-
-* A brief description of the project and the specific features you implemented.
-* At least one screenshot of your project running.
-* A 30 second or longer video of your project running.
-* A performance analysis (described below).
+[![ScreenShot](https://)
 
 ### Performance Analysis
 <img src="p1.png"  width="600" height="150">
