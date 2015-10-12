@@ -17,12 +17,24 @@ struct AABB {
     glm::vec3 max;
 };
 
+struct Camera {
+    glm::ivec2 resolution;
+    glm::vec3 position;
+    glm::vec3 target;
+    glm::vec3 up;
+    glm::vec2 fov;
+	float nearPlane;
+	float farPlane;
+};
+
 /**
  * Multiplies a glm::mat4 matrix and a vec4.
  */
 __host__ __device__ static
 glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
-    return glm::vec3(m * v);
+    //glm::vec4 product = m * v;
+    //return glm::vec3(product.x, product.y, product.z) / product.w;
+	return glm::vec3(m*v);
 }
 
 // CHECKITOUT
@@ -99,3 +111,4 @@ float getZAtCoordinate(const glm::vec3 barycentricCoord, const glm::vec3 tri[3])
            + barycentricCoord.y * tri[1].z
            + barycentricCoord.z * tri[2].z);
 }
+

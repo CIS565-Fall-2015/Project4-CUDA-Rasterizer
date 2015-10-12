@@ -7,6 +7,7 @@
  */
 
 #include "main.hpp"
+#include "rasterizeTools.h"
 
 //-------------------------------
 //-------------MAIN--------------
@@ -159,7 +160,7 @@ void initCuda() {
     // Use device with highest Gflops/s
     cudaGLSetGLDevice(0);
 
-    rasterizeInit(width, height);
+	rasterizeInit(width, height);
 
     // Clean up on program exit
     atexit(cleanupCuda);
