@@ -38,7 +38,12 @@ int main(int argc, char **argv) {
 }
 
 void mainLoop() {
+    int iters = 0;
     while (!glfwWindowShouldClose(window)) {
+        iters++;
+        if (iters > 500) {
+            exit(1);
+        }
         glfwPollEvents();
         runCuda();
 
@@ -69,7 +74,6 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
-
 void runCuda() {
     // Map OpenGL buffer object for writing from CUDA on a single GPU
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer

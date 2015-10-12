@@ -12,7 +12,12 @@
 #include <cstdio>
 #include <climits>
 #include <cuda.h>
+
+#include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
 #include <thrust/random.h>
+#include <thrust/remove.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
@@ -43,6 +48,7 @@ struct Triangle {
     glm::vec3 col[3];
 
     glm::vec3 worldPos[3];
+    bool valid;
 };
 struct Fragment {
     glm::vec3 color;
@@ -58,13 +64,15 @@ static int width = 0;
 static int height = 0;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+static int primMultFactor = 4;
 
-static int       *dev_bufIdx       = NULL;
-static VertexIn  *dev_bufVertexIn  = NULL;
-static VertexOut *dev_bufVertexOut = NULL;
-static Triangle  *dev_primitives   = NULL;
-static Fragment  *dev_depthbuffer  = NULL;
-static glm::vec3 *dev_framebuffer  = NULL;
+static int       *dev_bufIdx         = NULL;
+static VertexIn  *dev_bufVertexIn    = NULL;
+static VertexOut *dev_bufVertexOut   = NULL;
+static Triangle  *dev_origPrimitives = NULL;
+static Triangle  *dev_genPrimitives  = NULL;
+static Fragment  *dev_depthbuffer    = NULL;
+static glm::vec3 *dev_framebuffer    = NULL;
 
 __device__ void printVec3(glm::vec3 v) {
     printf("(%f, %f, %f)\n", v.x, v.y, v.z);
@@ -136,6 +144,10 @@ void rasterizeInit(int w, int h) {
     cudaMalloc(&dev_bufVertexOut,    width * height * sizeof(VertexOut));
     cudaMemset( dev_bufVertexOut, 0, width * height * sizeof(VertexOut));
 
+    cudaFree(dev_genPrimitives);
+    cudaMalloc(&dev_genPrimitives,    primMultFactor * width * height * sizeof(Triangle));
+    cudaMemset( dev_genPrimitives, 0, primMultFactor * width * height * sizeof(Triangle));
+
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,    width * height * sizeof(glm::vec3));
     cudaMemset( dev_framebuffer, 0, width * height * sizeof(glm::vec3));
@@ -166,9 +178,9 @@ void rasterizeSetBuffers(
     cudaMalloc(&dev_bufVertexIn, vertCount * sizeof(VertexIn));
     cudaMemcpy( dev_bufVertexIn, bufVertexIn, vertCount * sizeof(VertexIn), cudaMemcpyHostToDevice);
 
-    cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+    cudaFree(dev_origPrimitives);
+    cudaMalloc(&dev_origPrimitives, vertCount / 3 * sizeof(Triangle));
+    cudaMemset(dev_origPrimitives, 0, vertCount / 3 * sizeof(Triangle));
 
     checkCUDAError("rasterizeSetBuffers");
 }
@@ -240,6 +252,15 @@ __global__ void assemblePrimitives(int primitivecount, VertexOut *vertices,
         tri.worldPos[1] = v[1].worldPos;
         tri.worldPos[2] = v[2].worldPos;
         primitives[k] = tri;
+    }
+}
+
+__global__ void geometryShader(int primitivecount, Triangle *primitives,
+        Triangle *genprimitives) {
+    int k = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if (k < primitivecount) {
+        genprimitives[k] = primitives[k];
     }
 }
 
@@ -319,6 +340,18 @@ __global__ void fragmentShader(int width, int height,
     }
 }
 
+struct terminator {
+    __device__ bool operator()(const Triangle tri) {
+        return tri.valid == false;
+    }
+};
+
+int compactPrimitives(int primitivecount, Triangle *primitives) {
+    Triangle *new_end = thrust::remove_if(thrust::device,
+            primitives, primitives+primitivecount, terminator());
+    return (new_end - primitives);
+}
+
 /**
  * Perform rasterization.
  */
@@ -373,50 +406,53 @@ void rasterize(uchar4 *pbo) {
     clearDepthBuffer<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer);
 
     // VertexIn -> VertexOut
-    cudaEventRecord(begin);
+        cudaEventRecord(begin);
     vertexShader<<<vertBlockCount, blockSize1d>>>(vertCount, dev_bufVertexIn,
             dev_bufVertexOut, model, invModel, mvp);
-    checkCUDAError("");
+        checkCUDAError("");
 
-    cudaEventRecord(end);
-    cudaEventSynchronize(end);
-    cudaEventElapsedTime(&vShadeTime, begin, end);
+        cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&vShadeTime, begin, end);
 
     // VertexOut -> Triangle
-    cudaEventRecord(begin);
+        cudaEventRecord(begin);
     assemblePrimitives<<<triBlockCount, blockSize1d>>>(tricount,
-            dev_bufVertexOut, dev_bufIdx, dev_primitives);
-    checkCUDAError("");
+            dev_bufVertexOut, dev_bufIdx, dev_origPrimitives);
+        checkCUDAError("");
 
-    cudaEventRecord(end);
-    cudaEventSynchronize(end);
-    cudaEventElapsedTime(&assPrimitivesTime, begin, end);
+        cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&assPrimitivesTime, begin, end);
+
+    // Triangle -> Triangle
+        cudaEventRecord(begin);
+    geometryShader<<<triBlockCount, blockSize1d>>>(tricount,
+            dev_origPrimitives, dev_genPrimitives);
+        checkCUDAError("");
+
+        cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&assPrimitivesTime, begin, end);
+
+    int genPrimitiveCount = compactPrimitives(tricount, dev_genPrimitives);
+    dim3 genPrimCount((genPrimitiveCount + sideLength1d - 1) / sideLength1d);
 
     // Triangle -> Fragment
-    cudaEventRecord(begin);
+        cudaEventRecord(begin);
     scanline<<<triBlockCount, blockSize1d>>>(width, height, tricount,
-            dev_primitives, dev_depthbuffer);
-    checkCUDAError("");
+            dev_genPrimitives, dev_depthbuffer);
+        checkCUDAError("");
 
-    cudaEventRecord(end);
-    cudaEventSynchronize(end);
-    cudaEventElapsedTime(&scanlineTime, begin, end);
+        cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&scanlineTime, begin, end);
 
     // Fragment -> Fragment
-    cudaEventRecord(begin);
+        cudaEventRecord(begin);
     fragmentShader<<<blockCount2d, blockSize2d>>>(width, height,
             dev_depthbuffer, c.light);
-    checkCUDAError("");
+        checkCUDAError("");
 
-    cudaEventRecord(end);
-    cudaEventSynchronize(end);
-    cudaEventElapsedTime(&fShadeTime, begin, end);
+        cudaEventRecord(end); cudaEventSynchronize(end); cudaEventElapsedTime(&fShadeTime, begin, end);
 
     // Clear CudaEvents
     cudaEventDestroy(begin);
     cudaEventDestroy(end);
 
-    fprintf(stderr, "%f %f %f %f\n", vShadeTime, assPrimitivesTime, scanlineTime, fShadeTime);
+    //fprintf(stderr, "%f %f %f %f\n", vShadeTime, assPrimitivesTime, scanlineTime, fShadeTime);
 
     // Copy depthbuffer colors into framebuffer
     render<<<blockCount2d, blockSize2d>>>(width, height, dev_depthbuffer, dev_framebuffer);
@@ -438,8 +474,11 @@ void rasterizeFree() {
     cudaFree(dev_bufVertexIn);
     dev_bufVertexIn = NULL;
 
-    cudaFree(dev_primitives);
-    dev_primitives = NULL;
+    cudaFree(dev_origPrimitives);
+    dev_origPrimitives = NULL;
+
+    cudaFree(dev_genPrimitives);
+    dev_genPrimitives = NULL;
 
     cudaFree(dev_depthbuffer);
     dev_depthbuffer = NULL;
