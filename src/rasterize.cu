@@ -23,7 +23,7 @@
 
 extern Scene *scene;
 
-#define SHOW_TIMING 1
+#define SHOW_TIMING 0
 
 struct keep
 {

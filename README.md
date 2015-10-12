@@ -7,6 +7,8 @@ CUDA Rasterizer
 * Tested on: Mac OSX 10.10.4, i7 @ 2.4 GHz, GT 650M 1GB (Personal Computer)
 
 
+<a href="https://youtu.be/Bvoplg3SCs8"> <img src="images/analysis image.png"> </a>
+
 ### What is a Rasterization Pipeline
 
 A rasterization pipeline (also known as the Graphics pipeline or the Rendering Pipeline) is a sequence of steps used to create a 2D image from a 3D scene. The basic steps in a very simple rasterization pipeline include :
@@ -126,14 +128,14 @@ In all the cases the maximum time is taken by the rasterization step and the nex
 
 Let us look at the impact of Anti Aliasing and Back Face Culling on our performance more closely. 
 
-###### Anti Aliasing Performance Impact on Rasterization
+###### <u>Anti Aliasing Performance Impact on Rasterization</u>
 
 <img src="analysis/performanceImpactAA.png">
 
 As I used super sampling, for anti aliasing, the performance was expected to slow down. This is because we are doind 4 times more work for rasterising. Both in the case of Back face culling off (left) and on (right), the performance for rasterization is almost 4 times slower.
 
 
-###### Back Face Culling Performance Impact on Rasterization
+###### <u>Back Face Culling Performance Impact on Rasterization</u>
 
 <img src="analysis/performanceImpactBFC.png">
 
