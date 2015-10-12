@@ -12,7 +12,7 @@ Overview
 [Demo Pic]
 [Demo Video]
 
-![](img/YoutubeDemo.PNG)(https://www.youtube.com/watch?v=pTgm4-0rwd8)
+[![](img/YoutubeDemo.PNG)(https://www.youtube.com/watch?v=pTgm4-0rwd8)
 
 Description here:...
 
