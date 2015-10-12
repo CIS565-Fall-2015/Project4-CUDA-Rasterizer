@@ -8,9 +8,18 @@
 
 #include "main.hpp"
 #include "GLFW\glfw3.h"
-int all_amt=0;
-int all_dev = 0;
+float up_rot=0;
+float right_rot =0 ;
+glm::vec2 all_amt = glm::vec2(0,0);//translate along x,y
+float posx1;
+float posy1;
+float posx;
+float posy;
+
 bool click = false;
+float previous_t;
+bool rotation = false;
+bool translate = false;
 
 //-------------------------------
 //-------------MAIN--------------
@@ -78,6 +87,24 @@ void mainLoop() {
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
+//the camera movement refers to CIS-560 based code..  MyGL::keyPressEvent(QKeyEvent *e){..}
+void mouse_pos_callback(GLFWwindow *window, double x_current, double y_current)
+{
+	float amount = 0.03;
+	float deltaTime = glfwGetTime() -previous_t;
+
+	if (rotation)//right
+	{
+		right_rot += amount * deltaTime * float(x_current - posx);
+		up_rot += amount * deltaTime * float(y_current - posy);
+	}
+	else if (translate)//left
+	{
+		all_amt.x = amount * deltaTime * float(x_current - posx);
+		all_amt.y = amount * deltaTime * float(y_current - posy);
+ 	}
+	previous_t = glfwGetTime();
+}
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
 	click = true;
@@ -85,41 +112,48 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 	//double xpos, ypos; double xpos1, ypos1;
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
-		glfwGetCursorPos(window, &xpos, &ypos);
+		translate = true;//press left button move..
+		rotation = false;//glfwGetCursorPos(window, &xpos, &ypos);...not a good idea to put inside...
 	}
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
 	{
-		glfwGetCursorPos(window, &xpos1, &ypos1);
+		/*glfwGetCursorPos(window, &xpos1, &ypos1);
 		if (xpos1 - xpos > 0){all_amt += 1;}
-		if (xpos1 - xpos <= 0){all_amt += -1;}
+		if (xpos1 - xpos <= 0){all_amt += -1;}*/
+		translate = false;
+		rotation = false;
 	}
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
-		glfwGetCursorPos(window, &xpos, &ypos);
+		translate = false;//press right button rotate..
+		rotation = true;
 	}
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
 	{
-		glfwGetCursorPos(window, &xpos1, &ypos1);
-		if (xpos1 - xpos > 0){ all_dev += 1; }
-		if (xpos1 - xpos <= 0){ all_dev += -1; }
+		translate = false;
+		rotation = false;
 	}
 }
-
+void mouse_scroll_callback(GLFWwindow* window,double front,double back)
+{
+	//......
+}
 void runCuda() {
 	// Map OpenGL buffer object for writing from CUDA on a single GPU
 	// No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
 	dptr = NULL;
 	//Camera camera;
-	
+	/*
+	glfwSetCursorPosCallback(window, mouse_move_callback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetScrollCallback(window, mouse_scroll_callback);*/
 	//if (!click){
 	//	all_amt=0;
 	//}
 	//glm::mat4 projview = camera.PerspectiveProjectionMatrix;
 	cudaGLMapBufferObject((void **)&dptr, pbo);
 
-	glm::mat4 viewProj;// = setup_camera();
-	rasterize(dptr, all_amt,all_dev);
+	rasterize(dptr, all_amt.x, all_amt.x,up_rot, right_rot);
 	cudaGLUnmapBufferObject(pbo);
 
 	frame++;
@@ -147,6 +181,9 @@ bool init(obj *mesh) {
 		return false;
 	}
 	glfwMakeContextCurrent(window);
+	glfwSetCursorPosCallback(window, mouse_pos_callback);
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	//glfwSetScrollCallback(window, mouse_scroll_callback);
 	glfwSetKeyCallback(window, keyCallback);
 
 	// Set up GL context
@@ -317,3 +354,4 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 		glfwSetWindowShouldClose(window, GL_TRUE);
 	}
 }
+

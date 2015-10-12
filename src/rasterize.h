@@ -14,5 +14,5 @@ void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
         int bufIdxSize, int *bufIdx,
         int vertCount, float *bufPos, float *bufNor, float *bufCol,bool resellation);
-void rasterize(uchar4 *pbo, int s,int d);
+void rasterize(uchar4 *pbo, float x,float y,float u,float r);
 void rasterizeFree();
