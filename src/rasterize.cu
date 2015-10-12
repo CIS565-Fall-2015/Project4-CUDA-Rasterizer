@@ -142,7 +142,8 @@ __device__ VertexOut EdgeTessellator_PN(VertexOut P1, VertexOut P2)
 	t1 = t1 / (t1 + t2);
 	t2 = t2 / (t1 + t2);
 
-	bji0.nor = glm::normalize(t1*P1.nor + t2*P2.nor);
+	//bji0.nor = glm::normalize(t1*P1.nor + t2*P2.nor);
+	bji0.nor = glm::normalize(2.f * P1.nor + P2.nor - Wij*Ni);
 	bji0.col = t1*P1.col + t2*P2.col;
 	bji0.ndc = t1*P1.ndc + t2*P2.ndc;
 	bji0.winPos = t1*P1.winPos + t2*P2.winPos;
@@ -198,6 +199,7 @@ __device__ VertexOut EdgeTessellator_calcB111(VertexOut bE,VertexOut bV)
 	b111.pos = bE.pos + (bE.pos - bV.pos)*(1.f / 2.f);
 	//!!!except for pos other things right???
 	b111.nor = glm::normalize(bE.nor + (bE.nor - bV.nor)*(1.f / 2.f));
+	//b111.nor = glm::normalize(bE.pos - bV.pos);
 	b111.col = bE.col + (bE.col - bV.col)*(1.f / 2.f);
 	b111.ndc = bE.ndc + (bE.ndc - bV.ndc)*(1.f / 2.f);
 	b111.winPos = bE.winPos + (bE.winPos - bV.winPos)*(1.f / 2.f);
@@ -542,8 +544,8 @@ __global__ void kernRasterizer(shadeControl sctrl,int w, int h, Fragment * depth
 					{
 						normal = norm[0] * bPoint.x + norm[1] * bPoint.y + norm[2] * bPoint.z;
 						color = cols[0] * bPoint.x + cols[1] * bPoint.y + cols[2] * bPoint.z;
-						if (sctrl.Normal)		
-							depthbuffer[x + y*w].color = normal;
+						if (sctrl.Normal)
+							depthbuffer[x + y*w].color = (OnEdge&&sctrl.Wireframe)?glm::vec3(0,0,0):normal;
 						else{
 							glm::vec3 Pos = tri[0] * bPoint.x + tri[1] * bPoint.y + tri[2] * bPoint.z;
 							glm::vec3 uv = tex[0] * bPoint.x + tex[1] * bPoint.y + tex[2] * bPoint.z;
