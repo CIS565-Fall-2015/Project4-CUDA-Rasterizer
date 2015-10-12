@@ -26,10 +26,10 @@ the base color is normal map</br>
 * A performance analysis (described below).
 
 ### Performance Analysis
-<img src="p1.png"  width="600" height="100">
+<img src="p1.png"  width="600" height="150">
 <p>The CPU are all used for opengl related funtions. The computation mostly happened in GPU
 <p> a breakdown of time spent in each pipeline stage 
-<img src="pipe_line.png"  width="600" height="200">
+<img src="pipe_line.png"  width="600" height="280">
 
 
 
