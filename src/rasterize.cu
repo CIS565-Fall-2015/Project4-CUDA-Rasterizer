@@ -607,7 +607,7 @@ void rasterize(uchar4 *pbo) {
 	//Scanline each triangle to get fragment color (rasterize)
 	int triCount = vertCount / 3;
 	blockCount1d = ((triCount + 64 - 1) / 64);
-	printf("old triangle count: %i \n", triCount);
+	//printf("old triangle count: %i \n", triCount);
 	//checkCUDAError("rasterize");
 	//THRUST REMOVE IF
 	cudaEventRecord(start);
@@ -624,7 +624,7 @@ void rasterize(uchar4 *pbo) {
 	milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
 	//printf("backface culling: %f \n", milliseconds);
-	printf("new triangle count: %i \n", triCount);
+	//printf("new triangle count: %i \n", triCount);
 	//printf("tri count: %i, block count: %i \n", triCount, (triCount + 64 - 1) / 64);
 	
 	cudaEventRecord(start);
