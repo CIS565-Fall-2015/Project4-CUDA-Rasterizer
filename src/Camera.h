@@ -11,6 +11,10 @@ private:
 	glm::vec3 direction;
 	glm::vec3 up;
 
+	float angle_x;
+	float angle_y;
+	float angle_z;
+
 	glm::mat4 view;
 	glm::mat4 projection;
 	glm::mat4 viewProjection;
@@ -38,6 +42,11 @@ Camera::Camera(int width, int height){
 
 	updateView = true;
 	updateProjection = true;
+
+	angle_x = 0;
+	angle_y = 0;
+	angle_z = 0;
+
 }
 
 void Camera::calculateMatrices(){
@@ -59,9 +68,13 @@ void Camera::calculateMatrices(){
 
 
 void Camera::rotateBy(float x, float y, float z){
-	direction = glm::vec3(glm::rotateX(glm::vec4(direction, 0), x));
-	direction = glm::vec3(glm::rotateY(glm::vec4(direction, 0), y));
-	direction = glm::vec3(glm::rotateZ(glm::vec4(direction, 0), z));
+	angle_x += x;
+	angle_y += y;
+	angle_z += z;
+
+	direction = glm::vec3(glm::rotateX(glm::vec4(0, 0, -1, 0), angle_x));
+	direction = glm::vec3(glm::rotateY(glm::vec4(direction, 0), angle_y));
+	direction = glm::vec3(glm::rotateZ(glm::vec4(direction, 0), angle_z));
 
 	//std::cout << angle_x << " " << angle_y << " " << angle_z << std::endl;
 
