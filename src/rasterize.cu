@@ -22,7 +22,7 @@ static int *d_mutex = NULL;
 static VertexIn *dev_bufVertex = NULL;
 static VertexOut *dev_vOut = NULL;
 static Triangle *dev_primitives = NULL;
-static Fragment *dev_depthbuffer = NULL;
+static float *dev_depthbuffer = NULL;
 static glm::vec3 *dev_framebuffer = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
@@ -70,14 +70,14 @@ void rasterizeInit(int w, int h) {
     width = w;
     height = h;
     cudaFree(dev_depthbuffer);
-    cudaMalloc(&dev_depthbuffer,   width * height * sizeof(Fragment));
-    cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+    cudaMalloc(&dev_depthbuffer,   width * height * sizeof(float));
+	cudaMemset(dev_depthbuffer, -INFINITY, width * height * sizeof(float));
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
 
-	cudaMalloc(&d_mutex, sizeof(int));
-	cudaMemset(d_mutex, 0, sizeof(int));
+	cudaMalloc(&d_mutex, width * height * sizeof(int));
+	cudaMemset(d_mutex, 0, width * height * sizeof(int));
 
     checkCUDAError("rasterizeInit");
 }
@@ -121,17 +121,18 @@ void rasterizeSetBuffers(
  */
 void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
     int sideLength2d = 8;
-	int bSize = sideLength2d * sideLength2d;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
-	clearDepthBuffer << <blockCount2d, blockSize2d >> > (dev_depthbuffer, width, height);
+	clearBuffers << <blockCount2d, blockSize2d >> > 
+		(dev_depthbuffer, dev_framebuffer, width, height);
 	checkCUDAError("clearDepthBuffer");
 
     // TODO: Execute your rasterization pipeline here
     // (See README for rasterization pipeline outline.)
 
+	int bSize = 64;
 	int numBlock = ceil(((float)vertCount) / bSize);
 	vertexShader << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, vertCount, viewProjection);
 	checkCUDAError("vShader");
@@ -140,12 +141,15 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
 	primitiveAssembly <<<numBlock, bSize >>> (dev_vOut, dev_bufIdx, bufIdxSize / 3, dev_primitives);
 	checkCUDAError("primitiveAssembly");
 
-	rasterization << <numBlock, bSize >> > (dev_primitives, bufIdxSize / 3, dev_depthbuffer, width, height, d_mutex);
+	rasterization << <numBlock, bSize >> > (dev_primitives, bufIdxSize / 3, 
+		dev_depthbuffer, dev_framebuffer, width, height, d_mutex);
 	checkCUDAError("rasterization");
 
+	/*
 	fragmentShader << < blockCount2d, blockSize2d >> >(dev_framebuffer, dev_depthbuffer, width, height);
 	checkCUDAError("fragmentShader");
-	
+	*/
+
 	// rClr << < blockCount2d, blockSize2d >> >(dev_primitives, bufIdxSize / 3,
 	//	dev_framebuffer, width, height);
 
@@ -182,14 +186,15 @@ void rasterizeFree() {
 }
 
 
-__global__ void clearDepthBuffer(Fragment* dev_depthbuffer, int screenWidth, int screenHeight){
+__global__ void clearBuffers(float* dev_depthbuffer, glm::vec3* dev_framebuffer,
+	int screenWidth, int screenHeight){
 
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	if (i >= screenWidth || j >= screenHeight) return;
 
-	dev_depthbuffer[j * screenWidth + i].depth = -INFINITY;
-	dev_depthbuffer[j * screenWidth + i].t = NULL;
+	dev_depthbuffer[j * screenWidth + i] = -INFINITY;
+	dev_framebuffer[j * screenWidth + i] = glm::vec3(0,0,0);
 }
 //per vertex
 __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int vertsNum, 
@@ -204,8 +209,8 @@ __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int ver
 	glm::vec4 tmp = viewProjection * glm::vec4(in.pos, 1);
 	out.pos = glm::vec3(tmp / tmp.w);
 
-	tmp = viewProjection * glm::vec4(in.nor, 1);
-	out.nor = glm::vec3(tmp / tmp.w);
+	tmp = viewProjection * glm::vec4(in.nor, 0);
+	out.nor = glm::vec3(tmp);
 
 	out.col = in.col;
 
@@ -228,82 +233,69 @@ __global__ void primitiveAssembly(VertexOut* d_vertsOut, int* d_idx, int triangl
 
 //perform rasterization per Triangle
 __global__ void rasterization(Triangle* d_tri, int triNo,
-	Fragment* d_fragment, int screenWidth, int screenHeight, int* mutex)
+	float* dev_depthbuffer, glm::vec3* dev_framebuffer,
+	int screenWidth, int screenHeight, int* mutex)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= triNo) return;
 
-	glm::vec3 tri[3] = {d_tri[i].v[0].pos, d_tri[i].v[1].pos, d_tri[i].v[2].pos};
+	Triangle t = d_tri[i];
+	glm::vec3 tri[3] = {t.v[0].pos, t.v[1].pos, t.v[2].pos};
 	AABB bbox = getAABBForTriangle(tri);
+
+	if (bbox.min.x > 1 || bbox.min.y > 1 || bbox.min.z > 1 ||
+		bbox.max.x < -1 || bbox.max.y < -1 || bbox.max.z < 0)
+		return;
 
 	//start rasterizing from min to max
 	//dont forget that the screen starts from -1 to 1
-	int hW = screenWidth / 2;
-	int hH = screenHeight / 2;
-
-	int maxY = (int)((1 - bbox.min.y) * hH) % screenHeight;
-	int maxX = (int)((bbox.max.x + 1) * hW) % screenWidth;
-	int x = (bbox.min.x + 1) * hW;
-	if (x < 0) x = 0;
-	int y = (1 - bbox.max.y) * hH;
+	int maxY = ceil((1 - bbox.min.y) * screenHeight / 2);
+	if (maxY > screenHeight) maxY = screenHeight;
+	int maxX = ceil((bbox.max.x + 1) * screenWidth / 2);
+	if (maxX > screenWidth) maxX = screenWidth;
+	int y = (1 - bbox.max.y) * screenHeight / 2;
 	if (y < 0) y = 0;
+	int minX = (bbox.min.x + 1) * screenWidth / 2;
+	if (minX < 0) minX = 0;
 
+	glm::vec2 p;
 	for (; y < maxY; y++){
-		for (; x < maxX; x++){
-			glm::vec2 p;
-			p.x = -1 + ((x + 0.5f) / screenWidth) * 2;
-			p.y = 1 - ((y + 0.5f) / screenHeight) * 2;
+		p.y = 1 - ((y + 0.5f) / screenHeight * 2);
+
+		for (int x = minX; x < maxX; x++){
+			p.x = -1 + ((x + 0.5f) / screenWidth * 2);
 
 			glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p);
 
 			if (isBarycentricCoordInBounds(bCoord)){
-				float newDepth = getZAtCoordinate(bCoord, tri);
-
+				glm::vec3 pos = (bCoord.x * tri[0]) + (bCoord.y * tri[1]) + (bCoord.z * tri[2]);
 				int ptr = y * screenWidth + x;
-				
+
 				// mutex code from stackOverflow
 				// Loop-wait until this thread is able to execute its critical section.
 				bool isSet;
 				do {
-					isSet = (atomicCAS(mutex, 0, 1) == 0);
+					isSet = (atomicCAS(&mutex[ptr], 0, 1) == 0);
 					if (isSet) {
 						// Critical section goes here.
 						// The critical section MUST be inside the wait loop;
 						// if it is afterward, a deadlock will occur.
 
-						if (newDepth <= 0 && newDepth > d_fragment[ptr].depth){
-							d_fragment[ptr].depth = newDepth;
-							d_fragment[ptr].bCoord = bCoord;
-							d_fragment[ptr].t = &(d_tri[i]);
+						if (-pos.z > dev_depthbuffer[ptr]){
+							
+							glm::vec3 clr = (bCoord.x * t.v[0].col) + (bCoord.y * t.v[1].col) + (bCoord.z * t.v[2].col);
+							glm::vec3 nor = (bCoord.x * t.v[0].nor) + (bCoord.y * t.v[1].nor) + (bCoord.z * t.v[2].nor);
+		
+							clr = glm::dot(glm::normalize(glm::vec3(0, 1, 0) - pos), nor) * clr;
+							dev_framebuffer[ptr] = clr;
+							dev_depthbuffer[ptr] = -pos.z;
 						}
 					}
 					if (isSet) {
-						*mutex = 0;
+						mutex[ptr] = 0;
 					}
 				} while (!isSet);
 			}
-
 		}
 	}
-}
-
-__global__ void fragmentShader(glm::vec3* framebuffer, Fragment* d_fragment, int screenWidth, int screenHeight){
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	if (i >= screenWidth || j >= screenHeight) return;
-
-	glm::vec3 lightSource(0,1,0);
-
-	Triangle* t = d_fragment[j * screenWidth + i].t;
-	if (t != NULL){
-		glm::vec3 bCoord  = d_fragment[j * screenWidth + i].bCoord;
-		glm::vec3 clr = (bCoord.x * t->v[0].col) + (bCoord.y * t->v[1].col) + (bCoord.z * t->v[2].col);
-		glm::vec3 pos = (bCoord.x * t->v[0].pos) + (bCoord.y * t->v[1].pos) + (bCoord.z * t->v[2].pos);
-		glm::vec3 nor = (bCoord.x * t->v[0].nor) + (bCoord.y * t->v[1].nor) + (bCoord.z * t->v[2].nor);
-		
-		glm::vec3 lightSource = glm::normalize(lightSource - pos);
-		framebuffer[j * screenWidth + i] = glm::dot(pos, nor) * clr;
-		return;
-	}
-	framebuffer[j * screenWidth + i] = glm::vec3();
 }
