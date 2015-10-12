@@ -42,7 +42,7 @@ void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         iters++;
         if (iters > 500) {
-            exit(1);
+            //exit(1);
         }
         glfwPollEvents();
         runCuda();
@@ -98,8 +98,8 @@ bool init(obj *mesh) {
         return false;
     }
 
-    width = 800;
-    height = 800;
+    width  = 350;
+    height = 350;
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();

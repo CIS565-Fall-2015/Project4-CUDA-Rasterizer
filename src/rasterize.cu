@@ -78,7 +78,6 @@ static glm::vec3 *dev_framebuffer    = NULL;
 __device__ VertexOut transformVertex(glm::vec3 pos, glm::vec3 nor,
         glm::mat4 model, glm::mat4 invModel, glm::mat4 mvp) {
     VertexOut vo;
-    vo.pos = pos;
     vo.worldPos = multiplyMV(model, glm::vec4(pos, 1));
     vo.pos = multiplyMV(mvp, glm::vec4(pos, 1));
     vo.nor = glm::vec3(invModel * glm::vec4(nor, 0));
@@ -224,7 +223,7 @@ void rasterizeSetBuffers(
 __device__ void clearFragment(int idx, Fragment *depthbuffer) {
     depthbuffer[idx].valid = false;
     depthbuffer[idx].z = INT_MAX;
-    depthbuffer[idx].color = glm::vec3(.15, .15, .15);
+    depthbuffer[idx].color = glm::vec3(.1, .1, .1);
 }
 
 __global__ void clearDepthBuffer(int width, int height, Fragment *depthbuffer) {
@@ -312,18 +311,19 @@ __global__ void geometryShader(int primitivecount, int multFactor, Triangle *pri
 
         // Back-face culling
         Triangle tri = primitives[k];
-        glm::vec3 n = glm::cross(tri.pos[1] - tri.pos[0], tri.pos[2] - tri.pos[0]);
-        float dir = glm::dot(eye - tri.pos[0], n);
-        subdivide(genidx, tri, genprimitives, model, invModel, mvp);
-        if (dir < 0.f) {
+        glm::vec3 v0 = multiplyMV(mvp, glm::vec4(tri.pos[0], 1));
+        glm::vec3 v1 = multiplyMV(mvp, glm::vec4(tri.pos[1], 1));
+        glm::vec3 v2 = multiplyMV(mvp, glm::vec4(tri.pos[2], 1));
+        glm::vec3 n = glm::cross(v1 - v0, v2 - v0);
+        if (n.z > 0.f) {
             // Triangle tessellation
-            //subdivide(genidx, tri, genprimitives);
+            subdivide(genidx, tri, genprimitives, model, invModel, mvp);
         } else {
-            //subdivide(genidx, tri, genprimitives);
-            //genprimitives[genidx  ].valid = false;
-            //genprimitives[genidx+1].valid = false;
-            //genprimitives[genidx+2].valid = false;
-            //genprimitives[genidx+3].valid = false;
+            //subdivide(genidx, tri, genprimitives, model, invModel, mvp);
+            genprimitives[genidx  ].valid = false;
+            genprimitives[genidx+1].valid = false;
+            genprimitives[genidx+2].valid = false;
+            genprimitives[genidx+3].valid = false;
         }
     }
 }
@@ -336,7 +336,11 @@ __device__ void storeFragment(float x, float y, float width, float height,
     if (isBarycentricCoordInBounds(bary)) {
         Fragment prev = fragments[fragmentidx];
 
-        float z = getZAtCoordinate(tri.worldPos, bary);
+        float z = getZAtCoordinate(tri.pos, bary);
+        if (z < -1.f) {
+            return;
+        }
+
         int depth = z * INT_MAX;
         atomicMin(&fragments[fragmentidx].z, depth);
 
@@ -387,12 +391,13 @@ __global__ void scanline(int w, int h, int tricount,
 __device__ void colorFragment(Fragment &frag, glm::vec3 light) {
     if (frag.valid) {
         glm::vec3 norm = barycentricInterpolate(frag.tri.nor, frag.baryCoords);
+        glm::vec3 ndc_pos = barycentricInterpolate(frag.tri.pos, frag.baryCoords);
         glm::vec3 pos = barycentricInterpolate(frag.tri.worldPos, frag.baryCoords);
         glm::vec3 lightdir = glm::normalize(light - pos);
-        frag.color = glm::dot(lightdir, norm) * glm::vec3(1, 0, 0);
-        frag.color = glm::abs(glm::normalize(norm));
+        frag.color = glm::dot(lightdir, norm) * glm::vec3(.2f, .2f, .7f) + glm::vec3(.1, .1, .3);
+        //frag.color = glm::abs(glm::normalize(norm));
         if (frag.tri.middle == true) {
-            frag.color *= .75;
+            frag.color *= 1.5;
         }
     }
 }
@@ -443,30 +448,30 @@ void rasterize(uchar4 *pbo) {
 
     Camera c;
     // Suzanne
-//    c.position = glm::vec3(1, 1, 4);
-//    c.view = glm::vec3(0, 1, 0);
-//    c.up = glm::vec3(0, -1, 0);
-//    c.light = glm::vec3(2, 5, -1);
-//    c.fovy = glm::radians(45.f);
+    c.position = glm::vec3(1, 1, 4);
+    c.view = glm::vec3(0, 1, 0);
+    c.up = glm::vec3(0, -1, 0);
+    c.light = glm::vec3(1, 3, 3);
+    c.fovy = glm::radians(45.f);
 
     // Cow
-    c.position = glm::vec3(0, .2, -0.5);
-    c.view = glm::vec3(0, .2, 0);
-    c.up = glm::vec3(0, 1, 0);
-    c.light = glm::vec3(0, 4, 5);
-    c.fovy = 17.f;
-
-    // Cube
-//    c.position = glm::vec3(0, 1, 1);
-//    c.view = glm::vec3(0, 0, 0);
+//    c.position = glm::vec3(0, .2, -0.5);
+//    c.view = glm::vec3(0, .2, 0);
 //    c.up = glm::vec3(0, 1, 0);
 //    c.light = glm::vec3(0, 4, 5);
-//    c.fovy = glm::radians(40.f);
+//    c.fovy = 17.f;
+
+    // Cube
+    c.position = glm::vec3(0, 0, 0.25);
+    c.view = glm::vec3(0, 0, 0);
+    c.up = glm::vec3(0, 1, 0);
+    c.light = glm::vec3(0, 4, 5);
+    c.fovy = glm::radians(40.f);
 
     glm::mat4 model = glm::rotate(t, glm::vec3(0.f, 1.f, 0.f));
     glm::mat4 invModel = glm::inverseTranspose(model);
     glm::mat4 view = glm::lookAt(c.position, c.view, c.up);
-    glm::mat4 persp = glm::perspective(c.fovy, 1.f, 1.f, 10.f);
+    glm::mat4 persp = glm::perspective(c.fovy, 1.f, .1f, 10.f);
     glm::mat4 mvp = persp * view * model;
 
     // Set CudaEvents
