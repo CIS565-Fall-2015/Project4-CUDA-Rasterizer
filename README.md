@@ -83,11 +83,11 @@ Once the primitives are assembled, we send them to the rasterizer. This is a ste
 	
 		The same fragment can be shared by more than one triangle. In such case, we need to decide which triangle nearer to the camera. This is called depth testing. The triangle that is closer to the camera is considered, and the fragment stores the color and normal based on that triangle. Comparison of the result with and without depth test is as follows
 		
-		<img src="images/with depth test.png" height="300" width="300"> <img src="images/without depth test.png" height="350" width="350">
+		<img src="images/with depth test.png" height="300" width="300"> <img src="images/without depth test.png" height="300" width="300">
 		
 	Once we decide which fragment is to be considered and the corresponding triangle, we interpolate the color and normals to get a smooth shaded effect. Barycentric interpolation is used for this. Comparison between smooth shaded and flat shaded images.
 	
-	<img src="images/diffused shading model (flat).png" height="300" width="300"> <img src="images/diffused shading model (smooth).png" height="350" width="350">
+	<img src="images/diffused shading model (flat).png" height="300" width="300"> <img src="images/diffused shading model (smooth).png" height="300" width="300">
 * <b>Rasterizing Lines</b>
 
 	For lines, I use the naive line rasterization method. Based on the slope of the line, I move either in the x or the y axis from one point to the other. At every scanline, I find the point that would fall most closely on the line and use it to mark the fragment.
