@@ -61,7 +61,7 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 static int bufTexSize = 0;
 static 	int tessIncre = 1;
-static int dTessI = 4;
+static int dTessI = 9;
 static int tessLevel = 0;
 static int lastLevel = 0;
 glm::mat4 M_win;
@@ -313,7 +313,7 @@ __global__ void kernTessellation_MidP(Triangle* primitives,int crntSize,  int cr
 	
 }
 
-__global__ void kernTessellation_PN(Triangle* primitives, int crntSize, int crntInce, glm::mat4 Mats, glm::mat4 M_win)
+__global__ void kernTessellation_PN(Triangle* primitives, int crntSize, int crntInce)
 {
 
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -760,9 +760,17 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 		for (int i = 0; i < tessLevel; i++)
 		{
 			//printf("%dth level tessellated\n", i);
-			kernTessellation_MidP << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
-			tempSize *= 4;
-			tempIncre /= 4;
+			if (dTessI == 4)
+			{
+				kernTessellation_MidP << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
+			}
+			else if (dTessI == 9)
+			{
+				kernTessellation_PN << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre);
+			}
+			
+			tempSize *= dTessI;
+			tempIncre /= dTessI;
 			priSize = tempSize;
 			gSize_pri = dim3((priSize + bSize_pri - 1) / bSize_pri);
 		}
