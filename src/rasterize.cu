@@ -61,10 +61,12 @@ static int bufIdxSize = 0;
 static int vertCount = 0;
 static int bufTexSize = 0;
 static 	int tessIncre = 1;
+static int dTessI = 4;
 static int tessLevel = 0;
 static int lastLevel = 0;
 glm::mat4 M_win;
 glm::mat4 M_view;
+
 
 __global__
 void kernBufInit(int w, int h, Fragment * depthbuffer, glm::vec3 *framebuffer)
@@ -120,6 +122,91 @@ __device__ VertexOut EdgeTessellator_MipP(VertexOut vtxA, VertexOut vtxB, glm::m
 	vtxC.DispAdded = false;
 	return vtxC;
 }
+
+__device__ VertexOut EdgeTessellator_PN(VertexOut P1, VertexOut P2)
+{
+	VertexOut bji0;
+
+	glm::vec3 Pi = P1.pos;
+	glm::vec3 Pj = P2.pos;
+	glm::vec3 Ni = P1.nor;
+	float Wij = glm::dot((Pj - Pi), Ni);
+	
+	glm::vec3 b = (2.f * Pi + Pj - Wij*Ni)*(1.f / 3.f);
+	bji0.pos = b;
+
+	//???!!!linear, right?
+	float t1 = abs(glm::length(b - Pi));
+	float t2 = abs(glm::length(b - Pj));
+
+	t1 = t1 / (t1 + t2);
+	t2 = t2 / (t1 + t2);
+
+	bji0.nor = glm::normalize(t1*P1.nor + t2*P2.nor);
+	bji0.col = t1*P1.col + t2*P2.col;
+	bji0.ndc = t1*P1.ndc + t2*P2.ndc;
+	bji0.winPos = t1*P1.winPos + t2*P2.winPos;
+
+	bji0.tex = t1*P1.tex + t2*P2.tex;
+
+	return bji0;
+}
+
+__device__ VertexOut EdgeTessellator_calcE(
+	VertexOut b210, 
+	VertexOut b120,
+	VertexOut b021,
+	VertexOut b012,
+	VertexOut b102,
+	VertexOut b201
+	)
+{
+	VertexOut bE;
+
+	bE.pos = (b210.pos + b120.pos + b021.pos + b012.pos + b102.pos + b201.pos)*(1.f / 6.f);
+	bE.nor = glm::normalize(b210.nor + b120.nor + b021.nor + b012.nor + b102.nor + b201.nor);
+	bE.col = (b210.col + b120.col + b021.col + b012.col + b102.col + b201.col)*(1.f / 6.f);
+	bE.ndc = (b210.ndc + b120.ndc + b021.ndc + b012.ndc + b102.ndc + b201.ndc)*(1.f / 6.f);
+	bE.winPos = (b210.winPos + b120.winPos + b021.winPos + b012.winPos + b102.winPos + b201.winPos)*(1.f / 6.f);
+	bE.tex = (b210.tex + b120.tex + b021.tex + b012.tex + b102.tex + b201.tex)*(1.f / 6.f);
+
+	return bE;
+}
+
+__device__ VertexOut EdgeTessellator_calcV(
+	VertexOut P1,
+	VertexOut P2,
+	VertexOut P3
+	)
+{
+	VertexOut bV;
+
+	bV.pos = (P1.pos + P2.pos + P3.pos)*(1.f / 3.f);
+	bV.nor = glm::normalize(P1.nor + P2.nor + P3.nor);
+	bV.col = (P1.col + P2.col + P3.col)*(1.f / 3.f);
+	bV.ndc = (P1.ndc + P2.ndc + P3.ndc)*(1.f / 3.f);
+	bV.winPos = (P1.winPos + P2.winPos + P3.winPos)*(1.f / 3.f);
+	bV.tex = (P1.tex + P2.tex + P3.tex)*(1.f / 3.f);
+
+	return bV;
+}
+
+__device__ VertexOut EdgeTessellator_calcB111(VertexOut bE,VertexOut bV)
+{
+	VertexOut b111;
+
+	b111.pos = bE.pos + (bE.pos - bV.pos)*(1.f / 2.f);
+	//!!!except for pos other things right???
+	b111.nor = glm::normalize(bE.nor + (bE.nor - bV.nor)*(1.f / 2.f));
+	b111.col = bE.col + (bE.col - bV.col)*(1.f / 2.f);
+	b111.ndc = bE.ndc + (bE.ndc - bV.ndc)*(1.f / 2.f);
+	b111.winPos = bE.winPos + (bE.winPos - bV.winPos)*(1.f / 2.f);
+	b111.tex = bE.tex + (bE.tex - bV.tex)*(1.f / 2.f);
+
+	return b111;
+}
+
+
 
 __global__ void kernPrimitiveAssembly(Triangle* primitives,int* bufIdx,int bufIdxSize, VertexOut * bufVtxOut,int tessLevel,int tessIncre)
 {
@@ -182,7 +269,6 @@ __device__ VertexOut VtxUpdate(VertexOut v,glm::mat4 M_model,glm::mat4 M_view,gl
 __global__ void kernPrimUpdate(Triangle* primitives, int primSize, glm::mat4 M_model, glm::mat4 M_view, glm::mat4 M_Proj, glm::mat4 M_win)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//bufIdxSize *= tessIncre;
 	if (primSize)
 	{
 		primitives[index].v[0] = VtxUpdate(primitives[index].v[0], M_model, M_view, M_Proj, M_win);
@@ -191,7 +277,7 @@ __global__ void kernPrimUpdate(Triangle* primitives, int primSize, glm::mat4 M_m
 	}
 }
 
-__global__ void kernTessellation_aftPri(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
+__global__ void kernTessellation_MidP(Triangle* primitives,int crntSize,  int crntInce, glm::mat4 Mats, glm::mat4 M_win)
 {
 	
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -226,6 +312,75 @@ __global__ void kernTessellation_aftPri(Triangle* primitives,int crntSize,  int 
 	}
 	
 }
+
+__global__ void kernTessellation_PN(Triangle* primitives, int crntSize, int crntInce, glm::mat4 Mats, glm::mat4 M_win)
+{
+
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < crntSize)
+	{
+		index *= crntInce;
+		crntInce = crntInce / 9;
+		VertexOut P1 = primitives[index].v[0];
+		VertexOut P2 = primitives[index].v[1];
+		VertexOut P3 = primitives[index].v[2];
+
+		VertexOut b300 = P1;
+		VertexOut b030 = P2;
+		VertexOut b003 = P3;
+
+		VertexOut b210 = EdgeTessellator_PN(P1, P2);
+		VertexOut b120 = EdgeTessellator_PN(P2, P1);
+		VertexOut b021 = EdgeTessellator_PN(P2, P3);
+		VertexOut b012 = EdgeTessellator_PN(P3, P2);
+		VertexOut b102 = EdgeTessellator_PN(P3, P1);
+		VertexOut b201 = EdgeTessellator_PN(P1, P3);
+
+		VertexOut bE = EdgeTessellator_calcE(b210, b120, b021, b012, b102, b201);
+		VertexOut bV = EdgeTessellator_calcV(P1, P2, P3);
+
+		VertexOut b111 = EdgeTessellator_calcB111(bE, bV);
+
+		primitives[index + 0 * crntInce].v[0] = b003;
+		primitives[index + 0 * crntInce].v[1] = b102;
+		primitives[index + 0 * crntInce].v[2] = b012;
+
+		primitives[index + 1 * crntInce].v[0] = b102;
+		primitives[index + 1 * crntInce].v[1] = b012;
+		primitives[index + 1 * crntInce].v[2] = b111;
+
+		primitives[index + 2 * crntInce].v[0] = b102;
+		primitives[index + 2 * crntInce].v[1] = b201;
+		primitives[index + 2 * crntInce].v[2] = b111;
+
+		primitives[index + 3 * crntInce].v[0] = b012;
+		primitives[index + 3 * crntInce].v[1] = b111;
+		primitives[index + 3 * crntInce].v[2] = b021;
+
+		primitives[index + 4 * crntInce].v[0] = b201;
+		primitives[index + 4 * crntInce].v[1] = b300;
+		primitives[index + 4 * crntInce].v[2] = b210;
+
+		primitives[index + 5 * crntInce].v[0] = b201;
+		primitives[index + 5 * crntInce].v[1] = b210;
+		primitives[index + 5 * crntInce].v[2] = b111;
+
+		primitives[index + 6 * crntInce].v[0] = b210;
+		primitives[index + 6 * crntInce].v[1] = b111;
+		primitives[index + 6 * crntInce].v[2] = b120;
+
+		primitives[index + 7 * crntInce].v[0] = b111;
+		primitives[index + 7 * crntInce].v[1] = b021;
+		primitives[index + 7 * crntInce].v[2] = b120;
+
+		primitives[index + 8 * crntInce].v[0] = b021;
+		primitives[index + 8 * crntInce].v[1] = b120;
+		primitives[index + 8 * crntInce].v[2] = b030;
+
+	}
+
+}
+
 
 __host__ __device__ glm::vec3 ColorInTex(int texId, glm::vec3**texs, glm::vec2*info, glm::vec2 uv)
 {
@@ -583,7 +738,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 	dim3 gSize_pri((priSize + bSize_pri - 1) / bSize_pri);
 
 	tessLevel = TessLevel;
-	tessIncre = pow(4, tessLevel);
+	tessIncre = pow(dTessI, tessLevel);
 
 	kernBufInit << <blockCount2d, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	checkCUDAError("kernBufInit");
@@ -605,7 +760,7 @@ void rasterize(uchar4 *pbo,glm::mat4 viewMat,glm::mat4 projMat,glm::vec3 eye,int
 		for (int i = 0; i < tessLevel; i++)
 		{
 			//printf("%dth level tessellated\n", i);
-			kernTessellation_aftPri << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
+			kernTessellation_MidP << <gSize_pri, bSize_pri >> >(dev_primitives, tempSize, tempIncre, projMat * M_view * glm::mat4(), M_win);
 			tempSize *= 4;
 			tempIncre /= 4;
 			priSize = tempSize;
