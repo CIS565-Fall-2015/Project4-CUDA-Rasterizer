@@ -20,7 +20,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #define DEG2RAD  PI/180.f
 #define Tess 0
-#define Blending 1
+#define Blending 0
 struct VertexIn {
 	glm::vec3 pos;
 	glm::vec3 nor;
@@ -104,6 +104,9 @@ __global__ void cleanDepth(Fragment* dev_depthbuffer, Fragment* dev_fmInput, int
 	if (x < w && y < h)
 	{
 		dev_depthbuffer[index].color = glm::vec3(1, 0, 0);
+		dev_depthbuffer[index].dis = INFINITY;
+		dev_depthbuffer[index].normal = glm::vec3(0, 1, 0);
+		dev_fmInput[index].normal = glm::vec3(0, 1, 0);
 		dev_fmInput[index].dis = INFINITY;
 		dev_fmInput[index].color = glm::vec3(1, 1, 1);
 		dev_fmInput[index].normal = glm::vec3(0, 1, 0);
@@ -503,7 +506,6 @@ __global__ void rasterization(Triangle * dev_primitives, Fragment *dev_fmInput, 
 					//and stores the result back to memory at the same address. returns old
 					atomicMin(&dev_fmInput[i*w + j].dis, intdepth);
 					if (dev_fmInput[i*w + j].dis == intdepth){
-
 						dev_fmInput[i*w + j].color = dev_primitives[id].v[0].col;
 						dev_fmInput[i*w + j].normal = dev_primitives[id].v[0].nor;
 						dev_fmInput[i*w + j].pos = (dev_primitives[id].v[0].pos + dev_primitives[id].v[1].pos + dev_primitives[id].v[2].pos) / 3.f;
@@ -585,7 +587,7 @@ dev_fmInput[i*w + j].color = glm::vec3(1, 0, 0);
 
 glm::vec3 SetLight()
 {
-	glm::vec3 light_pos = glm::vec3(0, 1, 2);
+	glm::vec3 light_pos = glm::vec3(2, 1, 2);
 
 	return light_pos;
 }
@@ -645,6 +647,7 @@ __global__ void	fragmentShading(Fragment *dev_fmInput, Fragment *dev_fmOutput, i
 				else dev_fmOutput[id].color = (-depth)* phong_color + (1 + depth)*glm::vec3(0.8, 0.8, 0.8);
 			}
 		}
+		else dev_fmOutput[id].color = phong_color;
 	}
 }
 
@@ -689,7 +692,7 @@ void TranslateAlongUp(float amt, glm::vec3 &eye, glm::vec3 & ref, const glm::vec
 }
 glm::mat4 camera(float x_trans_amount, float y_trans_amount, float up_angle_amount, float right_angle_amount, glm::vec3 &camerapos)
 {
-	glm::vec3 eye = glm::vec3(0, 0, 3);
+	glm::vec3 eye = glm::vec3(3, 0, 3);
 	glm::vec3 up = glm::vec3(0, 1, 0);
 	glm::vec3 ref = glm::vec3(0, 0, 0);
 	camerapos = eye;
@@ -734,10 +737,10 @@ void rasterize(uchar4 *pbo, float amt_x, float amt_y, float up_a, float right_a)
 	int image_blockCount1d = (width*height + image_blockSize1d - 1) / image_blockSize1d;
 	glm::vec3 camera_pos = glm::vec3(0);
 	glm::vec3 light_pos = SetLight();
-	//glm::mat4 getViewProj = camera(amt_x,amt_y, up_a,right_a, camera_pos);
-	glm::mat4 getViewProj = glm::mat4(1);
+	glm::mat4 getViewProj = camera(amt_x,amt_y, up_a,right_a, camera_pos);
+	//glm::mat4 getViewProj = glm::mat4(1);
 	//clean depth buffer
-	//cleanDepth << < image_blockCount1d, image_blockSize1d >> >(dev_depthbuffer, dev_fmInput, width, height);
+	cleanDepth << < image_blockCount1d, image_blockSize1d >> >(dev_depthbuffer, dev_fmInput, width, height);
 	checkCUDAError("clean");
 	vertexShader << <blockCount1d, blockSize1d >> >(dev_bufVertex, dev_vsOutput, vertCount, getViewProj);
 	checkCUDAError("vertexShader");
