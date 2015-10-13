@@ -8,28 +8,27 @@ CUDA Rasterizer
 
 ## Features
 
-- Vertex shading.
-- (Vertex shader) perspective transformation.
-- Primitive assembly with support for triangles read from buffers of index and vertex data.
+- Vertex shader
+- Primitive assembly
 - Backface culling (with thrust::remove_if)
-- Rasterization + depth testing (with atomics for race avoidance)
-- Fragment shading 
-- Basic Lambert Diffuse-only lighting.
-- Color interpolation with barycentric coordinates
+- Rasterization
+    - Scissor Test
+    - Depth testing (with atomics for race avoidance)
+    - Fragment Shading (basic Lambert Diffuse-only lighting)
+    - Color interpolation with barycentric coordinates
 - Mouse-based interactive camera support
     - Spherical Camera : [W] and [S] to zoom in-out. Use mouse to rotate around the target position (0,0,0)
-- Scissor Test
 - Anti Aliasing
 
 ![](img/aa.png)
 
 ##Performance Analysis
 ### Sample Image
-![](img/Capture.PNG)
+<img src=img/Capture.PNG width=50%/>
 
 ### Breakdown
-![](img/graph.png)
-![](img/time.png)
+<img src=img/graph.png width=80%/>
 
+<img src=img/time.png width=50%/>
 
-
+Note that there are not much performance difference from backface culling. This is because I already check if the triangle's AABB.min.Z and AABB.max.Z value is in the range [0, -1] before rasterizing.
