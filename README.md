@@ -21,11 +21,15 @@ CUDA Rasterizer
 - Scissor Test
 - Anti Aliasing
 
-![](img/Capture.PNG)
+![](img/aa.png)
 
 ##Performance Analysis
-### Anti Aliasing
+### Sample Image
 ![](img/aa.png)
+
+### Breakdown
+![](img/graph.png)
+![](img/time.png)
 
 
 
