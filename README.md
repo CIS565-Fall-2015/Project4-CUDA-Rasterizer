@@ -27,7 +27,7 @@ CUDA Rasterizer
 ### Anti Aliasing
 
 #### Result
-![](img/aa.PNG)
+![](img/aa.png)
 
 
 
