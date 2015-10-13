@@ -28,9 +28,7 @@ CUDA Rasterizer
 <img src=img/Capture.PNG width=50%/>
 
 ### Breakdown
-![](img/graph.png)
-
-![](img/time.png)
-
+<img src=img/graph.png width=80%/>
+<img src=img/time.png width=50%/>
 
 
