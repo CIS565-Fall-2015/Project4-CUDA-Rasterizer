@@ -29,6 +29,7 @@ CUDA Rasterizer
 
 ### Breakdown
 ![](img/graph.png)
+
 ![](img/time.png)
 
 
