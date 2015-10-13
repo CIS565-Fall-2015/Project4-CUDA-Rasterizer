@@ -29,6 +29,6 @@ CUDA Rasterizer
 ### Breakdown
 <img src=img/graph.png width=80%/>
 
-<img src=img/time.png width=50%/>
+<img src=img/time.png width=70%/>
 
 Note that there are not much performance difference from backface culling. This is because I already check if the triangle's AABB.min.Z and AABB.max.Z value is in the range [0, -1] before rasterizing.
