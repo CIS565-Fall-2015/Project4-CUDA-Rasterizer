@@ -27,8 +27,8 @@ static glm::vec3 *dev_framebuffer = NULL;
 static glm::vec3 *d_lightSourcePos = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
-#define ANTIALIASING 2.0f
-#define TWOAA 4.0f
+#define ANTIALIASING 1.0f
+#define TWOAA 1.0f
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -154,8 +154,8 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 	Triangle* new_end = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + numTri, facing_backward());
 	numTri = new_end - dev_primitives;
 
-	glm::ivec2 scissorMin(100, 100);
-	glm::ivec2 scissorMax(600, 600);
+	glm::ivec2 scissorMin(0, 0);
+	glm::ivec2 scissorMax(800, 800);
 
 	rasterization << <numBlock, bSize >> > (dev_primitives, numTri,
 		dev_depthbuffer, width, height, d_mutex, d_lightSourcePos, scissorMin, scissorMax);

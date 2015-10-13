@@ -33,7 +33,7 @@ public:
 
 Camera::Camera(int width, int height){
 	zoomRadius = glm::vec3(0, 0, 5);
-	target = glm::vec3(0, 0, 0);
+	target = glm::vec3(0, 0.35, 0);
 	up = glm::vec3(0, 1, 0);
 
 	fovy_rad = glm::radians(90.0f);
@@ -42,8 +42,8 @@ Camera::Camera(int width, int height){
 	updateView = true;
 	updateProjection = true;
 
-	angle_x = 0;
-	angle_y = 0;
+	angle_x = glm::radians(20.0f);
+	angle_y = glm::radians(60.0f);
 }
 
 void Camera::rotateBy(float x, float y){
