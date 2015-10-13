@@ -19,6 +19,7 @@ CUDA Rasterizer
 - Mouse-based interactive camera support
     - Spherical Camera : [W] and [S] to zoom in-out. Use mouse to rotate around the target position (0,0,0)
 - Scissor Test
+- Anti Aliasing
 
 ![](Capture.PNG)
 
