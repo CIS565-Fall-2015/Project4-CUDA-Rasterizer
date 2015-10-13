@@ -38,9 +38,8 @@ struct Triangle {
 };
 
 struct Fragment{
-	Triangle *t;
+	glm::vec3 col;
 	float depth;
-	glm::vec3 bCoord;
 };
 
 struct facing_backward
@@ -61,7 +60,7 @@ __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int ver
 __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int* d_idx, int idxNo, Triangle* d_tri);
 __global__ void rasterization(Triangle* d_tri, int triNo,
 	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
-	glm::ivec2 scissorMin, glm::ivec2 scissorMax);
+	glm::vec3 *lightSourcePos, glm::ivec2 scissorMin, glm::ivec2 scissorMax);
 
-__global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer,
-	int width, int height, glm::vec3 *lightSourcePos);
+__global__ void copyToFrameBuffer(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer,
+	int width, int height);

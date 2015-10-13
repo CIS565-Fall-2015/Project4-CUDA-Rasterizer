@@ -61,6 +61,7 @@ void Camera::rotateBy(float x, float y){
 
 void Camera::zoomInBy(float z){
 	zoomRadius.z += z;
+	if (zoomRadius.z < 0) zoomRadius.z = 0;
 	updateView = true;
 }
 

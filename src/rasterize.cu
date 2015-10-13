@@ -27,6 +27,8 @@ static glm::vec3 *dev_framebuffer = NULL;
 static glm::vec3 *d_lightSourcePos = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
+#define ANTIALIASING 2.0f
+#define TWOAA 4.0f
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -71,14 +73,14 @@ void rasterizeInit(int w, int h) {
     width = w;
     height = h;
     cudaFree(dev_depthbuffer);
-	cudaMalloc(&dev_depthbuffer, width * height * sizeof(Fragment));
-	cudaMemset(dev_depthbuffer, 0, width * height * sizeof(Fragment));
+	cudaMalloc(&dev_depthbuffer, TWOAA * width * height * sizeof(Fragment));
+	cudaMemset(dev_depthbuffer, 0, TWOAA * width * height * sizeof(Fragment));
     cudaFree(dev_framebuffer);
     cudaMalloc(&dev_framebuffer,   width * height * sizeof(glm::vec3));
     cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
 
-	cudaMalloc(&d_mutex, width * height * sizeof(int));
-	cudaMemset(d_mutex, 0, width * height * sizeof(int));
+	cudaMalloc(&d_mutex, TWOAA * width * height * sizeof(int));
+	cudaMemset(d_mutex, 0, TWOAA * width * height * sizeof(int));
 
     checkCUDAError("rasterizeInit");
 }
@@ -148,21 +150,20 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 	primitiveAssembly << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, dev_bufIdx, numTri, dev_primitives);
 	checkCUDAError("primitiveAssembly");
 
-	/*
 	//backface culling
 	Triangle* new_end = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + numTri, facing_backward());
-	numTri = new_end - dev_primitives;*/
+	numTri = new_end - dev_primitives;
 
 	glm::ivec2 scissorMin(100, 100);
 	glm::ivec2 scissorMax(600, 600);
 
 	rasterization << <numBlock, bSize >> > (dev_primitives, numTri,
-		dev_depthbuffer, width, height, d_mutex, scissorMin, scissorMax);
+		dev_depthbuffer, width, height, d_mutex, d_lightSourcePos, scissorMin, scissorMax);
 	checkCUDAError("rasterization");
 
-	fragmentShader << < blockCount2d, blockSize2d >> >(dev_framebuffer, 
-		dev_depthbuffer, width, height, d_lightSourcePos);
-	checkCUDAError("fragmentShader");
+	copyToFrameBuffer << < blockCount2d, blockSize2d >> >(dev_framebuffer,
+		dev_depthbuffer, width, height);
+	checkCUDAError("copyToFrameBuffer");
 
 	// rClr << < blockCount2d, blockSize2d >> >(dev_primitives, bufIdxSize / 3,
 	//	dev_framebuffer, width, height);
@@ -207,7 +208,11 @@ __global__ void clearBuffers(Fragment* dev_depthbuffer,
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	if (i >= screenWidth || j >= screenHeight) return;
 
-	dev_depthbuffer[j * screenWidth + i].depth = INFINITY;
+	int ptr = (j * TWOAA * screenWidth) + (i * TWOAA);
+	for (int offset = 0; offset < TWOAA; offset++){
+		dev_depthbuffer[ptr + offset].depth = INFINITY;
+		dev_depthbuffer[ptr + offset].col = glm::vec3(0, 0, 0);
+	}
 }
 //per vertex
 __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int vertsNum, 
@@ -246,6 +251,7 @@ __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, in
 //perform rasterization per Triangle
 __global__ void rasterization(Triangle* d_tri, int triNo,
 	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
+	glm::vec3 *lightSourcePos,
 	glm::ivec2 scissorMin = glm::ivec2(0, 0), 
 	glm::ivec2 scissorMax = glm::ivec2(width, height))
 {
@@ -278,64 +284,70 @@ __global__ void rasterization(Triangle* d_tri, int triNo,
 
 	glm::vec2 p;
 	for (; y < maxY; y++){
-		p.y = 1 - ((y + 0.5f) / screenHeight * 2);
-
 		for (int x = minX; x < maxX; x++){
-			p.x = -1 + ((x + 0.5f) / screenWidth * 2);
+			for (int k = 0; k < ANTIALIASING; k++){
+				for (int l = 0; l < ANTIALIASING; l++){
+					float offsetY = (0.5f / ANTIALIASING) + (1.0f / ANTIALIASING)*k;
+					float offsetX = (0.5f / ANTIALIASING) + (1.0f / ANTIALIASING)*l;
 
-			glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p, signedAreaTri);
+					p.x = -1 + ((x + offsetX) / screenWidth * 2);
+					p.y = 1 - ((y + offsetY) / screenHeight * 2);
+					glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p, signedAreaTri);
 
-			if (isBarycentricCoordInBounds(bCoord)){
-				float depth = getZAtCoordinate(bCoord, tri);
+					if (isBarycentricCoordInBounds(bCoord)){
+						float depth = getZAtCoordinate(bCoord, tri);
 
-				int ptr = y * screenWidth + x;
+						int ptr = (y * TWOAA * screenWidth) + (x * TWOAA) +
+							(k * ANTIALIASING) + l;
 
-				// mutex code from stackOverflow
-				// Loop-wait until this thread is able to execute its critical section.
-				bool isSet;
-				do {
-					isSet = (atomicCAS(&mutex[ptr], 0, 1) == 0);
-					if (isSet) {
-						// Critical section goes here.
-						// The critical section MUST be inside the wait loop;
-						// if it is afterward, a deadlock will occur.
+						// mutex code from stackOverflow
+						// Loop-wait until this thread is able to execute its critical section.
+						bool isSet;
+						do {
+							isSet = (atomicCAS(&mutex[ptr], 0, 1) == 0);
+							if (isSet) {
+								// Critical section goes here.
+								// The critical section MUST be inside the wait loop;
+								// if it is afterward, a deadlock will occur.
 
-						if (depth < dev_depthbuffer[ptr].depth){
-							dev_depthbuffer[ptr].t = &(d_tri[i]);
-							dev_depthbuffer[ptr].depth = depth;
-							dev_depthbuffer[ptr].bCoord = bCoord;
-						}
+								if (depth < dev_depthbuffer[ptr].depth){
+									dev_depthbuffer[ptr].depth = depth;
+								
+									glm::vec3 pos = (bCoord.x * t.vIn[0].pos) + (bCoord.y * t.vIn[1].pos) + (bCoord.z * t.vIn[2].pos);
+									glm::vec3 clr = (bCoord.x * t.vIn[0].col) + (bCoord.y * t.vIn[1].col) + (bCoord.z * t.vIn[2].col);
+									glm::vec3 nor = (bCoord.x * t.vIn[0].nor) + (bCoord.y * t.vIn[1].nor) + (bCoord.z * t.vIn[2].nor);
+
+									dev_depthbuffer[ptr].col = glm::dot(glm::normalize(*lightSourcePos - pos), nor) * clr;
+								}
+							}
+							if (isSet) {
+								mutex[ptr] = 0;
+							}
+						} while (!isSet);
 					}
-					if (isSet) {
-						mutex[ptr] = 0;
-					}
-				} while (!isSet);
+				}
 			}
 		}
 	}
 }
 
-__global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer, 
-	int width, int height, glm::vec3 *lightSourcePos){
+__global__ void copyToFrameBuffer(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer, int width, int height){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int i = x + (y * width);
 
 	if (x >= width || y >= height) return;
 
-	glm::vec3 clrOut(0.3, 0.3, 0.3);
-	if (dev_depthbuffer[i].depth != INFINITY){
-		glm::vec3 bCoord = dev_depthbuffer[i].bCoord;
-		VertexIn v0 = dev_depthbuffer[i].t->vIn[0];
-		VertexIn v1 = dev_depthbuffer[i].t->vIn[1];
-		VertexIn v2 = dev_depthbuffer[i].t->vIn[2];
+	glm::vec3 clrOut(0, 0, 0);
 
-		glm::vec3 pos = (bCoord.x * v0.pos) + (bCoord.y * v1.pos) + (bCoord.z * v2.pos);
-		glm::vec3 clr = (bCoord.x * v0.col) + (bCoord.y * v1.col) + (bCoord.z * v2.col);
-		glm::vec3 nor = (bCoord.x * v0.nor) + (bCoord.y * v1.nor) + (bCoord.z * v2.nor);
-
-		clrOut = glm::dot(glm::normalize(*lightSourcePos - pos), nor) * clr;
+	int ptr = (y * TWOAA * width) + (x * TWOAA);
+	for (int offset = 0; offset < TWOAA; offset++){
+		if (dev_depthbuffer[ptr + offset].depth != INFINITY){
+			clrOut += dev_depthbuffer[ptr + offset].col;
+		}
+		else 
+			clrOut += glm::vec3(0.3, 0.3, 0.3);
 	}
-		
-	dev_framebuffer[i] = clrOut;
+	
+	dev_framebuffer[i] = clrOut / TWOAA;
 }
