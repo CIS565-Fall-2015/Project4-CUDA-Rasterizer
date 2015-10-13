@@ -25,7 +25,7 @@ CUDA Rasterizer
 
 ##Performance Analysis
 ### Sample Image
-<img src=img/Capture.PNG width=200 height=210 />
+<img src=img/Capture.PNG width=50%/>
 
 ### Breakdown
 ![](img/graph.png)
