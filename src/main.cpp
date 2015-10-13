@@ -78,14 +78,14 @@ void runCuda() {
     dptr = NULL;
 
 	if (moveForward)
-		cam->translateBy(0, 0, 0.1f);
+		cam->zoomInBy(-0.05f);
 	else if (moveBackward)
-		cam->translateBy(0, 0, -0.1f);
+		cam->zoomInBy(0.05f);
 
 	if (moveLeft)
-		cam->translateBy(0.1f, 0, 0);
+		cam->translateBy(0.01f, 0, 0);
 	else if (moveRight)
-		cam->translateBy(-0.1f, 0, 0);
+		cam->translateBy(-0.01f, 0, 0);
 
 
     cudaGLMapBufferObject((void **)&dptr, pbo);
@@ -284,8 +284,8 @@ void errorCallback(int error, const char *description) {
     fputs(description, stderr);
 }
 
-#define YAW_SENSITIVITY 0.005f
-#define PITCH_SENSITIVITY 0.005f
+#define YAW_SENSITIVITY 0.001f
+#define PITCH_SENSITIVITY 0.001f
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -320,7 +320,7 @@ void cursorCallback(GLFWwindow* window, double xpos, double ypos){
 	float yaw = (xpos - width / 2) * YAW_SENSITIVITY;		//around local y
 	float pitch = (ypos - height/2) * PITCH_SENSITIVITY;	//around local x
 
-	cam->rotateBy(pitch, yaw, 0);
+	cam->rotateBy(pitch, yaw);
 
 	//reset cursor to middle pos.
 	glfwSetCursorPos(window, width/2, height/2);

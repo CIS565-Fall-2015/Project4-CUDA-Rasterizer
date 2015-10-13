@@ -111,8 +111,7 @@ void rasterizeSetBuffers(
 	cudaMalloc(&dev_vOut, vertCount * sizeof(VertexIn));
 
     cudaFree(dev_primitives);
-    cudaMalloc(&dev_primitives, vertCount / 3 * sizeof(Triangle));
-    cudaMemset(dev_primitives, 0, vertCount / 3 * sizeof(Triangle));
+	cudaMalloc(&dev_primitives, bufIdxSize / 3 * sizeof(Triangle));
 
 	cudaFree(d_lightSourcePos);
 	cudaMalloc(&d_lightSourcePos, sizeof(glm::vec3));
@@ -123,7 +122,7 @@ void rasterizeSetBuffers(
 /**
  * Perform rasterization.
  */
-void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
+void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
     int sideLength2d = 8;
     dim3 blockSize2d(sideLength2d, sideLength2d);
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
@@ -141,7 +140,7 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
 
 	int bSize = 64;
 	int numBlock = ceil(((float)vertCount) / bSize);
-	vertexShader << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, vertCount, viewProjection);
+	vertexShader << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, vertCount, viewProjecition);
 	checkCUDAError("vShader");
 
 	int numTri = bufIdxSize / 3;
@@ -149,12 +148,13 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjection) {
 	primitiveAssembly << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, dev_bufIdx, numTri, dev_primitives);
 	checkCUDAError("primitiveAssembly");
 
+	/*
 	//backface culling
 	Triangle* new_end = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + numTri, facing_backward());
-	numTri = new_end - dev_primitives;
+	numTri = new_end - dev_primitives;*/
 
-	glm::vec2 scissorMin(100, 100);
-	glm::vec2 scissorMax(600, 600);
+	glm::ivec2 scissorMin(100, 100);
+	glm::ivec2 scissorMax(600, 600);
 
 	rasterization << <numBlock, bSize >> > (dev_primitives, numTri,
 		dev_depthbuffer, width, height, d_mutex, scissorMin, scissorMax);
@@ -207,7 +207,7 @@ __global__ void clearBuffers(Fragment* dev_depthbuffer,
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	if (i >= screenWidth || j >= screenHeight) return;
 
-	dev_depthbuffer[j * screenWidth + i].depth = -INFINITY;
+	dev_depthbuffer[j * screenWidth + i].depth = INFINITY;
 }
 //per vertex
 __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int vertsNum, 
@@ -219,7 +219,8 @@ __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int ver
 	VertexIn in = d_vertsIn[i];
 	VertexOut out;
 
-	out.pos = multiplyMV(viewProjection, glm::vec4(in.pos, 1));
+	glm::vec4 v = viewProjection * glm::vec4(in.pos, 1);
+	out.pos = glm::vec3(v / v.w);
 
 	d_vertsOut[i] = out;
 }
@@ -235,9 +236,9 @@ __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, in
 	out.vOut[1] = d_vertsOut[d_idx[(3*i)+1]];
 	out.vOut[2] = d_vertsOut[d_idx[(3*i)+2]];
 
-	out.vIn[0] = d_vertsIn[d_idx[(3 * i)]];
-	out.vIn[1] = d_vertsIn[d_idx[(3 * i) + 1]];
-	out.vIn[2] = d_vertsIn[d_idx[(3 * i) + 2]];
+	out.vIn[0] = d_vertsIn[d_idx[(3*i)]];
+	out.vIn[1] = d_vertsIn[d_idx[(3*i)+1]];
+	out.vIn[2] = d_vertsIn[d_idx[(3*i)+2]];
 
 	d_tri[i] = out;
 }
@@ -245,31 +246,35 @@ __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, in
 //perform rasterization per Triangle
 __global__ void rasterization(Triangle* d_tri, int triNo,
 	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
-	glm::vec2 scissorMin, glm::vec2 scissorMax)
+	glm::ivec2 scissorMin = glm::ivec2(0, 0), 
+	glm::ivec2 scissorMax = glm::ivec2(width, height))
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= triNo) return;
 
 	Triangle t = d_tri[i];
 	glm::vec3 tri[3] = { t.vOut[0].pos, t.vOut[1].pos, t.vOut[2].pos };
+	float signedAreaTri = calculateSignedArea(tri);
+	if (signedAreaTri <= 0) return;
+
 	AABB bbox = getAABBForTriangle(tri);
 
-	//start rasterizing from min to max
-	//dont forget that the screen starts from -1 to 1
-	if (bbox.min.x > 1 || bbox.min.y > 1 || bbox.min.z > 1 ||
-		bbox.max.x < -1 || bbox.max.y < -1 || bbox.max.z < 0)
-		return;
+	if (bbox.max.z > 0 && bbox.min.z < -1) return;
 
 	//start rasterizing from min to max
 	//dont forget that the screen starts from -1 to 1
 	int maxY = ceil((1 - bbox.min.y) * screenHeight / 2);
 	if (maxY > scissorMax.y) maxY = scissorMax.y;
+
 	int maxX = ceil((bbox.max.x + 1) * screenWidth / 2);
 	if (maxX > scissorMax.x) maxX = scissorMax.x;
+
 	int y = (1 - bbox.max.y) * screenHeight / 2;
 	if (y < scissorMin.y) y = scissorMin.y;
+
 	int minX = (bbox.min.x + 1) * screenWidth / 2;
 	if (minX < scissorMin.x) minX = scissorMin.x;
+
 
 	glm::vec2 p;
 	for (; y < maxY; y++){
@@ -278,10 +283,11 @@ __global__ void rasterization(Triangle* d_tri, int triNo,
 		for (int x = minX; x < maxX; x++){
 			p.x = -1 + ((x + 0.5f) / screenWidth * 2);
 
-			glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p);
+			glm::vec3 bCoord = calculateBarycentricCoordinate(tri, p, signedAreaTri);
 
 			if (isBarycentricCoordInBounds(bCoord)){
 				float depth = getZAtCoordinate(bCoord, tri);
+
 				int ptr = y * screenWidth + x;
 
 				// mutex code from stackOverflow
@@ -294,7 +300,7 @@ __global__ void rasterization(Triangle* d_tri, int triNo,
 						// The critical section MUST be inside the wait loop;
 						// if it is afterward, a deadlock will occur.
 
-						if (depth > dev_depthbuffer[ptr].depth){
+						if (depth < dev_depthbuffer[ptr].depth){
 							dev_depthbuffer[ptr].t = &(d_tri[i]);
 							dev_depthbuffer[ptr].depth = depth;
 							dev_depthbuffer[ptr].bCoord = bCoord;
@@ -315,21 +321,21 @@ __global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbu
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int i = x + (y * width);
 
-	if (x < width && y < height) {
-		glm::vec3 clrOut(0.3, 0.3, 0.3);
-		if (dev_depthbuffer[i].depth != -INFINITY){
-			glm::vec3 bCoord = dev_depthbuffer[i].bCoord;
-			VertexIn v0 = dev_depthbuffer[i].t->vIn[0];
-			VertexIn v1 = dev_depthbuffer[i].t->vIn[1];
-			VertexIn v2 = dev_depthbuffer[i].t->vIn[2];
+	if (x >= width || y >= height) return;
 
-			glm::vec3 pos = (bCoord.x * v0.pos) + (bCoord.y * v1.pos) + (bCoord.z * v2.pos);
-			glm::vec3 clr = (bCoord.x * v0.col) + (bCoord.y * v1.col) + (bCoord.z * v2.col);
-			glm::vec3 nor = (bCoord.x * v0.nor) + (bCoord.y * v1.nor) + (bCoord.z * v2.nor);
+	glm::vec3 clrOut(0.3, 0.3, 0.3);
+	if (dev_depthbuffer[i].depth != INFINITY){
+		glm::vec3 bCoord = dev_depthbuffer[i].bCoord;
+		VertexIn v0 = dev_depthbuffer[i].t->vIn[0];
+		VertexIn v1 = dev_depthbuffer[i].t->vIn[1];
+		VertexIn v2 = dev_depthbuffer[i].t->vIn[2];
 
-			clrOut = glm::dot(glm::normalize(*lightSourcePos - pos), nor) * clr;
-		}
-		
-		dev_framebuffer[i] = clrOut;
+		glm::vec3 pos = (bCoord.x * v0.pos) + (bCoord.y * v1.pos) + (bCoord.z * v2.pos);
+		glm::vec3 clr = (bCoord.x * v0.col) + (bCoord.y * v1.col) + (bCoord.z * v2.col);
+		glm::vec3 nor = (bCoord.x * v0.nor) + (bCoord.y * v1.nor) + (bCoord.z * v2.nor);
+
+		clrOut = glm::dot(glm::normalize(*lightSourcePos - pos), nor) * clr;
 	}
+		
+	dev_framebuffer[i] = clrOut;
 }

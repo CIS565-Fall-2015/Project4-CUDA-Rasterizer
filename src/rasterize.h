@@ -51,7 +51,7 @@ struct facing_backward
 		glm::vec3 v1 = glm::normalize(t.vOut[1].pos - t.vOut[0].pos);
 		glm::vec3 v2 = glm::normalize(t.vOut[2].pos - t.vOut[0].pos);
 		v1 = glm::cross(v1, v2);
-		return glm::dot(v1, glm::vec3(0,0,1)) < 0;
+		return glm::dot(v1, glm::vec3(0,0,-1)) < 0;
 	}
 };
 
@@ -61,7 +61,7 @@ __global__ void vertexShader(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int ver
 __global__ void primitiveAssembly(VertexIn* d_vertsIn, VertexOut* d_vertsOut, int* d_idx, int idxNo, Triangle* d_tri);
 __global__ void rasterization(Triangle* d_tri, int triNo,
 	Fragment* dev_depthbuffer, int screenWidth, int screenHeight, int* mutex,
-	glm::vec2 scissorMin, glm::vec2 scissorMax);
+	glm::ivec2 scissorMin, glm::ivec2 scissorMax);
 
 __global__ void fragmentShader(glm::vec3* dev_framebuffer, Fragment* dev_depthbuffer,
 	int width, int height, glm::vec3 *lightSourcePos);
