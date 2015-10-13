@@ -25,8 +25,6 @@ CUDA Rasterizer
 
 ##Performance Analysis
 ### Anti Aliasing
-
-#### Result
 ![](img/aa.png)
 
 
