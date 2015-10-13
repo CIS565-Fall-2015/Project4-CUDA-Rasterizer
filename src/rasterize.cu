@@ -130,12 +130,30 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
     dim3 blockCount2d((width  - 1) / blockSize2d.x + 1,
                       (height - 1) / blockSize2d.y + 1);
 
+	float timeValue = 0, total_acc = 0;
+	cudaEvent_t beginEvent_acc;
+	cudaEvent_t endEvent_acc;
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
+
 	clearBuffers << <blockCount2d, blockSize2d >> > 
 		(dev_depthbuffer, width, height);
 	checkCUDAError("clearDepthBuffer");
 
-    // TODO: Execute your rasterization pipeline here
-    // (See README for rasterization pipeline outline.)
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "ClearBuffer : " << timeValue << std::endl;
+
+	/////////////////////////////////////////////////////////////
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
 
 	glm::vec3 lightSource(0, 2, 0);
 	cudaMemcpy(d_lightSourcePos, &lightSource, sizeof(glm::vec3), cudaMemcpyHostToDevice);
@@ -145,14 +163,54 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 	vertexShader << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, vertCount, viewProjecition);
 	checkCUDAError("vShader");
 
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "Vertex Shader : " << timeValue << std::endl;
+
+	/////////////////////////////////////////////////////////////
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
+
 	int numTri = bufIdxSize / 3;
 	numBlock = ceil((float)numTri / bSize);
 	primitiveAssembly << <numBlock, bSize >> > (dev_bufVertex, dev_vOut, dev_bufIdx, numTri, dev_primitives);
 	checkCUDAError("primitiveAssembly");
 
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "Primitive Assembly : " << timeValue << std::endl;
+
+	/*
+	/////////////////////////////////////////////////////////////
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
+
 	//backface culling
 	Triangle* new_end = thrust::remove_if(thrust::device, dev_primitives, dev_primitives + numTri, facing_backward());
 	numTri = new_end - dev_primitives;
+
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "backface culling : " << timeValue << std::endl;
+	*/
+	/////////////////////////////////////////////////////////////
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
 
 	glm::ivec2 scissorMin(0, 0);
 	glm::ivec2 scissorMax(800, 800);
@@ -161,9 +219,34 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 		dev_depthbuffer, width, height, d_mutex, d_lightSourcePos, scissorMin, scissorMax);
 	checkCUDAError("rasterization");
 
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "rasterization : " << timeValue << std::endl;
+
+	/////////////////////////////////////////////////////////////
+
+	cudaEventCreate(&beginEvent_acc);
+	cudaEventCreate(&endEvent_acc);
+	cudaEventRecord(beginEvent_acc, 0);
+
 	copyToFrameBuffer << < blockCount2d, blockSize2d >> >(dev_framebuffer,
 		dev_depthbuffer, width, height);
 	checkCUDAError("copyToFrameBuffer");
+
+	cudaEventRecord(endEvent_acc, 0);
+	cudaEventSynchronize(endEvent_acc);
+	cudaEventElapsedTime(&timeValue, beginEvent_acc, endEvent_acc);
+	total_acc += timeValue;
+
+	std::cout << "copyToFrameBuffer : " << timeValue << std::endl;
+
+	/////////////////////////////////////////////////////////////
+
+
+	std::cout << "Total : " << total_acc << std::endl << std::endl;
 
 	// rClr << < blockCount2d, blockSize2d >> >(dev_primitives, bufIdxSize / 3,
 	//	dev_framebuffer, width, height);
