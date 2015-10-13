@@ -27,8 +27,8 @@ static glm::vec3 *dev_framebuffer = NULL;
 static glm::vec3 *d_lightSourcePos = NULL;
 static int bufIdxSize = 0;
 static int vertCount = 0;
-#define ANTIALIASING 1.0f
-#define TWOAA 1.0f
+#define ANTIALIASING 2.0f
+#define TWOAA 4.0f
 
 /**
  * Kernel that writes the image to the OpenGL PBO directly.
@@ -188,7 +188,6 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 
 	std::cout << "Primitive Assembly : " << timeValue << std::endl;
 
-	/*
 	/////////////////////////////////////////////////////////////
 
 	cudaEventCreate(&beginEvent_acc);
@@ -205,7 +204,6 @@ void rasterize(uchar4 *pbo, glm::mat4 viewProjecition) {
 	total_acc += timeValue;
 
 	std::cout << "backface culling : " << timeValue << std::endl;
-	*/
 	/////////////////////////////////////////////////////////////
 
 	cudaEventCreate(&beginEvent_acc);
