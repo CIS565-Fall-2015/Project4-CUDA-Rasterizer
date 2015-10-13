@@ -31,5 +31,3 @@ CUDA Rasterizer
 <img src=img/graph.png width=80%/>
 
 <img src=img/time.png width=50%/>
-
-
