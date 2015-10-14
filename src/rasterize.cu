@@ -60,6 +60,9 @@ static int vertCount = 0;
 
 static Light *dev_lights = NULL; // buffer of lights
 static int numLights = 0;
+static int numInstances = 1;
+static glm::mat4 *dev_modelTransforms;
+static glm::mat4 *dev_vertexTransforms;
 
 /**
 * Add Lights
@@ -196,30 +199,47 @@ void clearDepthBuffer(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
 	}
 }
 
+/**
+* Compute vertex transforms. expects single dimensional blocks
+*/
+__global__ void computeVertexTFs(int tfCount, glm::mat4 *dev_vertexTfs,
+	glm::mat4 *dev_modelTfs, glm::mat4 cam_tf) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < tfCount) {
+		dev_modelTfs[i] = cam_tf * dev_vertexTfs[i];
+	}
+}
 
 /**
 * Vertex shader
 */
-__global__ void vertexShader(int vertCount, glm::mat4 tf, VertexIn *dev_bufVertices,
-	VertexOut *dev_tfVertices) {
+__global__ void vertexShader(int vertCount, int numInstances, glm::mat4 *dev_vertTfs,
+	VertexIn *dev_bufVertices, VertexOut *dev_tfVertices) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (i < vertCount) {
-		dev_tfVertices[i].screenPos = tfPoint(tf, dev_bufVertices[i].pos);
-		glm::vec3 ogPoint = dev_bufVertices[i].pos;
-		glm::vec3 screenPos = tfPoint(tf, dev_bufVertices[i].pos); // debug
+	if (i < vertCount * numInstances) {
+		// figure out which matrix to use
+		int instanceNumber = i / vertCount;
+
+		dev_tfVertices[i].screenPos = tfPoint(dev_vertTfs[instanceNumber],
+			dev_bufVertices[i].pos);
+		//glm::vec3 ogPoint = dev_bufVertices[i].pos; // debug
+		//glm::vec3 screenPos = tfPoint(tf, dev_bufVertices[i].pos); // debug
 		dev_tfVertices[i].worldNor = dev_bufVertices[i].nor;
 		dev_tfVertices[i].col = dev_bufVertices[i].col;
 	}
 }
 
 // primitive assembly. 1D linear blocks expected
-__global__ void primitiveAssembly(int numPrimitives, int *dev_idx,
+__global__ void primitiveAssembly(int numPrimitives, int numInstances, int *dev_idx,
 	VertexOut *dev_vertices, Triangle *dev_primitives) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (i < numPrimitives) {
-		dev_primitives[i].v[0] = dev_vertices[dev_idx[i * 3]];
-		dev_primitives[i].v[1] = dev_vertices[dev_idx[i * 3 + 1]];
-		dev_primitives[i].v[2] = dev_vertices[dev_idx[i * 3 + 2]];
+	if (i < numPrimitives * numInstances) {
+		// compute the index to get indices from
+		int indicesIndex = i % numPrimitives;
+
+		dev_primitives[i].v[0] = dev_vertices[dev_idx[indicesIndex * 3]];
+		dev_primitives[i].v[1] = dev_vertices[dev_idx[indicesIndex * 3 + 1]];
+		dev_primitives[i].v[2] = dev_vertices[dev_idx[indicesIndex * 3 + 2]];
 	}
 }
 
@@ -289,7 +309,7 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 					interpNorm += dev_primitives[i].v[2].worldNor * baryCoordinate[2];
 					dev_fragsDepths[fragIndex].worldNorm = interpNorm;
 
-					// interpoalte world position from bary
+					// interpolate world position from bary
 					glm::vec3 interpWorld = dev_primitives[i].v[0].worldPos * baryCoordinate[0];
 					interpWorld += dev_primitives[i].v[1].worldPos * baryCoordinate[1];
 					interpWorld += dev_primitives[i].v[2].worldPos * baryCoordinate[2];
@@ -336,17 +356,17 @@ __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numL
 			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
 			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
 		}
-		dev_fragsDepths[i].color *= finalColor;
-		//dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
-		//dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
-		//dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
+		//dev_fragsDepths[i].color *= finalColor;
+		dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
+		dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
+		dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
 	}
 }
 
 /**
 * Perform rasterization.
 */
-void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix) {
+void rasterize(uchar4 *pbo, glm::mat4 modelTransform, glm::mat4 cameraMatrix) {
 	int sideLength2d = 8;
 	dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockCount2d_pix((width + blockSize2d.x - 1) / blockSize2d.x,
@@ -368,7 +388,7 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
 
 	// 2) vertex shading - pass in vertex tf
-	glm::mat4 tf = cameraMatrix * sceneGraphTransform;
+	glm::mat4 tf = cameraMatrix * modelTransform;
 	vertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, tf, dev_bufVertex, dev_tfVertex);
 
 	// 3) primitive assembly
@@ -387,6 +407,30 @@ void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatri
 	// Copy framebuffer into OpenGL buffer for OpenGL previewing
 	sendImageToPBO << <blockCount2d_pix, blockSize2d >> >(pbo, width, height, dev_framebuffer);
 	checkCUDAError("rasterize");
+}
+
+/**
+* Called once per change of instancing... situation.
+* - allocate space for and upload the matrices
+* - allocate space for the new tf vertices on the device
+* - set the number of instances
+*/
+void setupInstances(std::vector<glm::mat4> modelTransform) {
+	numInstances = modelTransform.size();
+
+	cudaFree(dev_modelTransforms);
+	cudaMalloc(&dev_modelTransforms, numInstances * sizeof(glm::mat4));
+	cudaMemcpy(dev_modelTransforms, modelTransform.data(),
+		numInstances * sizeof(glm::mat4), cudaMemcpyHostToDevice);
+
+	cudaFree(dev_vertexTransforms);
+	cudaMalloc(&dev_vertexTransforms, numInstances * sizeof(glm::mat4));
+
+	cudaFree(dev_tfVertex);
+	cudaMalloc(&dev_tfVertex, numInstances * vertCount * sizeof(VertexOut));
+
+	cudaFree(dev_primitives); // primitives of transformed verts
+	cudaMalloc(&dev_primitives, numInstances * bufIdxSize / 3 * sizeof(Triangle));
 }
 
 /**
@@ -420,6 +464,14 @@ void rasterizeFree() {
 	cudaFree(dev_lights);
 	dev_lights = NULL;
 	numLights = 0;
+
+	cudaFree(dev_modelTransforms);
+	dev_modelTransforms = NULL;
+
+	cudaFree(dev_vertexTransforms);
+	dev_vertexTransforms = NULL;
+
+	numInstances = 1;
 
 	checkCUDAError("rasterizeFree");
 }

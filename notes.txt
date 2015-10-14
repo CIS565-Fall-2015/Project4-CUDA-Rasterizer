@@ -13,3 +13,5 @@ INSTANCING
 	-parallel instancing: allocates more memory every time number of instances changes
 		-more memory in the primitives buffer
 		-add new kernels for parallel instancing
+		
+-btw there's a problem where the fragment shader doesn't work on lab machines. wtf.

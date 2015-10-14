@@ -97,7 +97,10 @@ void runCuda() {
 	glm::mat4 tf;
 	tf = glm::translate(tf, glm::vec3(0.0f, 0.0f, 0.0f));
 	if (RUN_MIN) minRasterizeFirstTry(dptr, tf, camMatrix);//cam);
-	else rasterize(dptr, tf, camMatrix);
+	else {
+
+		rasterize(dptr, tf, camMatrix);
+	}
     cudaGLUnmapBufferObject(pbo);
 
     frame++;
