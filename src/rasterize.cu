@@ -49,8 +49,6 @@ static int height = 0;
 static int *dev_bufIdx = NULL;
 static unsigned int *dev_intDepths = NULL;
 static VertexIn *dev_bufVertex = NULL; // the raw vertices
-//static int *dev_tesselatedIdx = NULL; // tesselated indices
-//static VertexIn *dev_tesselatedVertex = NULL; // tesselated vertices
 static VertexOut *dev_tfVertex = NULL; // transformed (tesselated?) vertices
 static Triangle *dev_primitives = NULL; // primitives of transformed verts
 static Fragment *dev_depthbuffer = NULL; // stores visible fragments
@@ -61,8 +59,8 @@ static int vertCount = 0;
 static Light *dev_lights = NULL; // buffer of lights
 static int numLights = 0;
 static int numInstances = 1;
-static glm::mat4 *dev_modelTransforms;
-static glm::mat4 *dev_vertexTransforms;
+static glm::mat4 *dev_modelTransforms = NULL;
+static glm::mat4 *dev_vertexTransforms = NULL;
 
 /**
 * Add Lights
@@ -366,7 +364,7 @@ __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numL
 /**
 * Perform rasterization.
 */
-void rasterize(uchar4 *pbo, glm::mat4 modelTransform, glm::mat4 cameraMatrix) {
+void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	int sideLength2d = 8;
 	dim3 blockSize2d(sideLength2d, sideLength2d);
 	dim3 blockCount2d_pix((width + blockSize2d.x - 1) / blockSize2d.x,
@@ -376,8 +374,9 @@ void rasterize(uchar4 *pbo, glm::mat4 modelTransform, glm::mat4 cameraMatrix) {
 	dim3 blockSize1d(sideLength1d);
 	dim3 blockCount1d_pix((width * height + sideLength1d - 1) / sideLength1d);
 
-	dim3 blockCount1d_vertices((vertCount + sideLength1d - 1) / sideLength1d);
-	dim3 blockCount1d_primitives(((bufIdxSize / 3) + sideLength1d - 1) / sideLength1d);
+	dim3 blockCount1d_vertices((vertCount * numInstances + sideLength1d - 1) / sideLength1d);
+	dim3 blockCount1d_primitives(((bufIdxSize / 3) * numInstances + sideLength1d - 1) / sideLength1d);
+	dim3 blockCount1d_transformations((numInstances + sideLength1d - 1) / sideLength1d);
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
 	glm::vec3 bgColor = glm::vec3(1.1f, 1.1f, 1.1f);
@@ -387,22 +386,28 @@ void rasterize(uchar4 *pbo, glm::mat4 modelTransform, glm::mat4 cameraMatrix) {
 	int depth = UINT16_MAX; // really should get this from cam params somehow
 	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
 
-	// 2) vertex shading - pass in vertex tf
-	glm::mat4 tf = cameraMatrix * modelTransform;
-	vertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, tf, dev_bufVertex, dev_tfVertex);
+	// 2) transform all the vertex tfs with the camera matrix
+	computeVertexTFs <<<blockCount1d_transformations, blockSize1d>>>(numInstances,
+		dev_vertexTransforms, dev_modelTransforms, cameraMatrix);
 
-	// 3) primitive assembly
-	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, dev_bufIdx,
-		dev_tfVertex, dev_primitives);
+	// 3) vertex shading -> generates numInstances * vertCout screen space vertices
+	vertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, numInstances,
+		dev_vertexTransforms, dev_bufVertex, dev_tfVertex);
 
-	// 4) rasterize and depth test
+	int numPrimitivesTotal = (bufIdxSize / 3) * numInstances;
+
+	// 4) primitive assembly -> generates numInstances * numPrimitives screen space triangles
+	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(numPrimitivesTotal, 
+		dev_bufIdx, dev_tfVertex, dev_primitives);
+
+	// 5) rasterize and depth test
 	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, bufIdxSize / 3,
 		dev_primitives, dev_depthbuffer, dev_intDepths);
 
-	// 5) fragment shade
+	// 6) fragment shade
 	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer, numLights, dev_lights);
 
-	// 6) Copy depthbuffer colors into framebuffer
+	// 7) Copy depthbuffer colors into framebuffer
 	render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	// Copy framebuffer into OpenGL buffer for OpenGL previewing
 	sendImageToPBO << <blockCount2d_pix, blockSize2d >> >(pbo, width, height, dev_framebuffer);
