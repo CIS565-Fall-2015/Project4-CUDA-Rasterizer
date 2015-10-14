@@ -204,7 +204,7 @@ __global__ void computeVertexTFs(int tfCount, glm::mat4 *dev_vertexTfs,
 	glm::mat4 *dev_modelTfs, glm::mat4 cam_tf) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < tfCount) {
-		dev_modelTfs[i] = cam_tf * dev_vertexTfs[i];
+		dev_vertexTfs[i] = cam_tf * dev_modelTfs[i];
 	}
 }
 
@@ -222,21 +222,20 @@ __global__ void vertexShader(int vertCount, int numInstances, glm::mat4 *dev_ver
 
 		dev_tfVertices[i].screenPos = tfPoint(dev_vertTfs[instanceNumber],
 			dev_bufVertices[vertexIndex].pos);
-		//glm::vec3 ogPoint = dev_bufVertices[i].pos; // debug
-		//glm::vec3 screenPos = tfPoint(tf, dev_bufVertices[i].pos); // debug
+		//glm::vec3 screenPos = tfPoint(dev_vertTfs[instanceNumber], dev_bufVertices[vertexIndex].pos); // debug
 		dev_tfVertices[i].worldNor = dev_bufVertices[vertexIndex].nor;
 		dev_tfVertices[i].col = dev_bufVertices[vertexIndex].col;
 	}
 }
 
 // primitive assembly. 1D linear blocks expected
-__global__ void primitiveAssembly(int numPrimitives, int numInstances, int *dev_idx,
-	VertexOut *dev_vertices, Triangle *dev_primitives) {
+__global__ void primitiveAssembly(int numPrimitives, int numVertices, int numInstances,
+	int *dev_idx, VertexOut *dev_vertices, Triangle *dev_primitives) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives * numInstances) {
 		// compute the index to get indices from
 		int indicesIndex = i % numPrimitives;
-		int offset = i / numPrimitives;
+		int offset = (i / numPrimitives) * numVertices;
 
 		dev_primitives[i].v[0] = dev_vertices[dev_idx[indicesIndex * 3] + offset];
 		dev_primitives[i].v[1] = dev_vertices[dev_idx[indicesIndex * 3 + 1] + offset];
@@ -357,10 +356,10 @@ __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numL
 			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
 			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
 		}
-		//dev_fragsDepths[i].color *= finalColor;
-		dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
-		dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
-		dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
+		dev_fragsDepths[i].color *= finalColor;
+		//dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
+		//dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
+		//dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
 	}
 }
 
@@ -382,7 +381,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	dim3 blockCount1d_transformations((numInstances + sideLength1d - 1) / sideLength1d);
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
-	glm::vec3 bgColor = glm::vec3(1.1f, 1.1f, 1.1f);
+	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
 	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
 	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor, defaultNorm,
 		dev_depthbuffer);
@@ -401,7 +400,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 
 	// 4) primitive assembly -> generates numInstances * numPrimitives screen space triangles
 	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, 
-		numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
+		vertCount, numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
 
 	// 5) rasterize and depth test
 	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, 

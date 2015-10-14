@@ -99,7 +99,7 @@ void runCuda() {
 	if (RUN_MIN) minRasterizeFirstTry(dptr, tf, camMatrix);//cam);
 	else {
 
-		rasterize(dptr, tf, camMatrix);
+		rasterize(dptr, camMatrix);
 	}
     cudaGLUnmapBufferObject(pbo);
 
@@ -180,7 +180,9 @@ bool init(obj *mesh) {
         glm::mat4 ID = glm::mat4();
         std::vector<glm::mat4> transformations;
         transformations.push_back(ID);
-        transformations.push_back(glm::translate(ID, glm::vec3(10.0f, 0.0f, 0.0f)));
+        transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
+		transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
+			glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
         setupInstances(transformations);
 	}
 
