@@ -175,6 +175,13 @@ bool init(obj *mesh) {
 		specular.push_back(glm::vec3(1.0f, 0.3f, 0.0f));
 
 		addLights(positions, ambient, diffuse, specular);
+
+        // add some transformations
+        glm::mat4 ID = glm::mat4();
+        std::vector<glm::mat4> transformations;
+        transformations.push_back(ID);
+        transformations.push_back(glm::translate(ID, glm::vec3(10.0f, 0.0f, 0.0f)));
+        setupInstances(transformations);
 	}
 
     GLuint passthroughProgram;

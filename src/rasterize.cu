@@ -217,13 +217,15 @@ __global__ void vertexShader(int vertCount, int numInstances, glm::mat4 *dev_ver
 	if (i < vertCount * numInstances) {
 		// figure out which matrix to use
 		int instanceNumber = i / vertCount;
+		// figure out what index to use for dev_vertTfs
+		int vertexIndex = i % vertCount;
 
 		dev_tfVertices[i].screenPos = tfPoint(dev_vertTfs[instanceNumber],
-			dev_bufVertices[i].pos);
+			dev_bufVertices[vertexIndex].pos);
 		//glm::vec3 ogPoint = dev_bufVertices[i].pos; // debug
 		//glm::vec3 screenPos = tfPoint(tf, dev_bufVertices[i].pos); // debug
-		dev_tfVertices[i].worldNor = dev_bufVertices[i].nor;
-		dev_tfVertices[i].col = dev_bufVertices[i].col;
+		dev_tfVertices[i].worldNor = dev_bufVertices[vertexIndex].nor;
+		dev_tfVertices[i].col = dev_bufVertices[vertexIndex].col;
 	}
 }
 
@@ -234,10 +236,11 @@ __global__ void primitiveAssembly(int numPrimitives, int numInstances, int *dev_
 	if (i < numPrimitives * numInstances) {
 		// compute the index to get indices from
 		int indicesIndex = i % numPrimitives;
+		int offset = i / numPrimitives;
 
-		dev_primitives[i].v[0] = dev_vertices[dev_idx[indicesIndex * 3]];
-		dev_primitives[i].v[1] = dev_vertices[dev_idx[indicesIndex * 3 + 1]];
-		dev_primitives[i].v[2] = dev_vertices[dev_idx[indicesIndex * 3 + 2]];
+		dev_primitives[i].v[0] = dev_vertices[dev_idx[indicesIndex * 3] + offset];
+		dev_primitives[i].v[1] = dev_vertices[dev_idx[indicesIndex * 3 + 1] + offset];
+		dev_primitives[i].v[2] = dev_vertices[dev_idx[indicesIndex * 3 + 2] + offset];
 	}
 }
 
@@ -397,12 +400,12 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	int numPrimitivesTotal = (bufIdxSize / 3) * numInstances;
 
 	// 4) primitive assembly -> generates numInstances * numPrimitives screen space triangles
-	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(numPrimitivesTotal, 
-		dev_bufIdx, dev_tfVertex, dev_primitives);
+	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, 
+		numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
 
 	// 5) rasterize and depth test
-	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, bufIdxSize / 3,
-		dev_primitives, dev_depthbuffer, dev_intDepths);
+	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, 
+		numPrimitivesTotal, dev_primitives, dev_depthbuffer, dev_intDepths);
 
 	// 6) fragment shade
 	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer, numLights, dev_lights);
@@ -420,7 +423,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 * - allocate space for the new tf vertices on the device
 * - set the number of instances
 */
-void setupInstances(std::vector<glm::mat4> modelTransform) {
+void setupInstances(std::vector<glm::mat4> &modelTransform) {
 	numInstances = modelTransform.size();
 
 	cudaFree(dev_modelTransforms);

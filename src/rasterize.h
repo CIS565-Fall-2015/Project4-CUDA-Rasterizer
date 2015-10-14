@@ -15,8 +15,8 @@ void rasterizeSetBuffers(
 	int bufIdxSize, int *bufIdx,
 	int vertCount, float *bufPos, float *bufNor, float *bufCol);
 void rasterizeSetVariableBuffers();
-void rasterize(uchar4 *pbo, glm::mat4 sceneGraphTransform, glm::mat4 cameraMatrix);
+void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix);
 
-void setupInstances(std::vector<glm::mat4> sceneGraphTransform); // call after setup
+void setupInstances(std::vector<glm::mat4> &modelTransform); // call after setup
 
 void rasterizeFree();
