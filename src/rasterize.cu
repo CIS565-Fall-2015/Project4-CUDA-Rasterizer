@@ -576,12 +576,13 @@ __global__ void fragmentShaderMSAA(int numFrags, FragmentAA *dev_fragsDepthsAA,
 	if (i < numFrags) {
 		for (int j = 0; j < 5; j++) {
 			if (dev_fragsDepthsAA[i].primitiveID[j] > 0) {
+				// run the actual pixel shader once per unique triangle
 				shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[j], numLights, dev_lights);
 				// propagate the computation
 				for (int k = 0; k < 5; k++) {
 					if (j == k) continue;
 					if (dev_fragsDepthsAA[i].primitiveID[k] == dev_fragsDepthsAA[i].primitiveID[j]) {
-						dev_fragsDepthsAA[i].primitiveID[j] = -1;
+						dev_fragsDepthsAA[i].primitiveID[k] = -1;
 						dev_fragsDepthsAA[i].subFrags[k].color = dev_fragsDepthsAA[i].subFrags[j].color;
 					}
 				}
