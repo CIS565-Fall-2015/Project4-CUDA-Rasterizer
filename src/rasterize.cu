@@ -46,6 +46,7 @@ struct FragmentAA { // antialiased fragment
 	*     3
 	****************/
 	Fragment subFrags[5];
+	int primitiveID[5];
 };
 
 struct Light {
@@ -75,8 +76,8 @@ static glm::mat4 *dev_vertexTransforms = NULL;
 
 // antialiasing stuff
 static bool antialiasing = false;
-static FragmentAA *dev_depthbufferMSAA = NULL; // stores MSAA fragments
-static unsigned int *dev_intDepthsMSAA = NULL; // stores depths of MSAA subfragments
+static FragmentAA *dev_depthbufferAA = NULL; // stores MSAA fragments
+static unsigned int *dev_intDepthsAA = NULL; // stores depths of MSAA subfragments
 
 /**
 * Add Lights
@@ -182,12 +183,12 @@ void rasterizeInit(int w, int h) {
 * Enable antialiasing. Call after init.
 */
 void enableAA() {
-	cudaFree(dev_depthbufferMSAA);
-	cudaMalloc(&dev_depthbufferMSAA, width * height * sizeof(FragmentAA));
+	cudaFree(dev_depthbufferAA);
+	cudaMalloc(&dev_depthbufferAA, width * height * sizeof(FragmentAA));
 	
-	cudaFree(dev_intDepthsMSAA);
-	cudaMalloc(&dev_intDepthsMSAA, width * height * sizeof(unsigned int) * 5);
-	cudaMemset(dev_intDepthsMSAA, 0, width * height * sizeof(unsigned int) * 5);
+	cudaFree(dev_intDepthsAA);
+	cudaMalloc(&dev_intDepthsAA, width * height * sizeof(unsigned int) * 5);
+	cudaMemset(dev_intDepthsAA, 0, width * height * sizeof(unsigned int) * 5);
 	
 	antialiasing = true;
 	checkCUDAError("antialiasing ON");
@@ -261,16 +262,21 @@ void clearDepthBufferAA(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
 FragmentAA *dev_depthbufferAA) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < bufSize) {
-		dev_depthbuffer[i][0].color = bgColor;
-		dev_depthbuffer[i][0].worldNorm = defaultNorm;
-		dev_depthbuffer[i][1].color = bgColor;
-		dev_depthbuffer[i][1].worldNorm = defaultNorm;
-		dev_depthbuffer[i][2].color = bgColor;
-		dev_depthbuffer[i][2].worldNorm = defaultNorm;
-		dev_depthbuffer[i][3].color = bgColor;
-		dev_depthbuffer[i][3].worldNorm = defaultNorm;
-		dev_depthbuffer[i][4].color = bgColor;
-		dev_depthbuffer[i][4].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].subFrags[0].color = bgColor;
+		dev_depthbufferAA[i].subFrags[0].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].subFrags[1].color = bgColor;
+		dev_depthbufferAA[i].subFrags[1].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].subFrags[2].color = bgColor;
+		dev_depthbufferAA[i].subFrags[2].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].subFrags[3].color = bgColor;
+		dev_depthbufferAA[i].subFrags[3].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].subFrags[4].color = bgColor;
+		dev_depthbufferAA[i].subFrags[4].worldNorm = defaultNorm;
+		dev_depthbufferAA[i].primitiveID[0] = -1;
+		dev_depthbufferAA[i].primitiveID[1] = -1;
+		dev_depthbufferAA[i].primitiveID[2] = -1;
+		dev_depthbufferAA[i].primitiveID[3] = -1;
+		dev_depthbufferAA[i].primitiveID[4] = -1;
 	}
 }
 
@@ -321,7 +327,8 @@ __global__ void primitiveAssembly(int numPrimitives, int numVertices, int numIns
 }
 
 __device__ void scanlineSingleFragment(Triangle primitive, glm::vec3 baryCoordinate,
-	Fragment &frag, unsigned int &frag_depth, unsigned int zDepth) {
+	Fragment &frag, unsigned int &frag_depth, unsigned int zDepth, int *ID_slot,
+	int primitive_ID) {
 	// check if it's in dev_primitives[i].v using bary
 	if (!isBarycentricCoordInBounds(baryCoordinate)) {
 		return;
@@ -349,6 +356,10 @@ __device__ void scanlineSingleFragment(Triangle primitive, glm::vec3 baryCoordin
 		interpWorld += primitive.v[1].worldPos * baryCoordinate[1];
 		interpWorld += primitive.v[2].worldPos * baryCoordinate[2];
 		frag.worldPos = interpWorld;
+
+		if (ID_slot != NULL) {
+			*ID_slot = primitive_ID;
+		}
 	}
 }
 
@@ -397,7 +408,7 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
-					dev_fragsDepths[fragIndex], dev_intDepths[fragIndex], zDepth);
+					dev_fragsDepths[fragIndex], dev_intDepths[fragIndex], zDepth, NULL, 0);
 			}
 		}
 	}
@@ -458,9 +469,11 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
+
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
 					dev_fragsDepthsAA[fragIndex].subFrags[0],
-					dev_intDepthsAA[fragIndex * 5], zDepth);
+					dev_intDepthsAA[fragIndex * 5], zDepth,
+					&dev_fragsDepthsAA[fragIndex].primitiveID[0], i);
 
 				// do fragment 1: 1/6 over, 1/3 up
 				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f + pixWidth / 6.0f,
@@ -470,7 +483,8 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
 					dev_fragsDepthsAA[fragIndex].subFrags[1],
-					dev_intDepthsAA[fragIndex * 5 + 1], zDepth);
+					dev_intDepthsAA[fragIndex * 5 + 1], zDepth,
+					&dev_fragsDepthsAA[fragIndex].primitiveID[1], i);
 
 				// do fragment 2: 1/3 over, 1/6 down
 				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f + pixWidth / 3.0f,
@@ -480,7 +494,8 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
 					dev_fragsDepthsAA[fragIndex].subFrags[2],
-					dev_intDepthsAA[fragIndex * 5 + 2], zDepth);
+					dev_intDepthsAA[fragIndex * 5 + 2], zDepth,
+					&dev_fragsDepthsAA[fragIndex].primitiveID[2], i);
 
 				// do fragment 3: 1/6 over left, 1/3 down
 				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f - pixWidth / 6.0f,
@@ -490,7 +505,8 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
 					dev_fragsDepthsAA[fragIndex].subFrags[3],
-					dev_intDepthsAA[fragIndex * 5 + 3], zDepth);
+					dev_intDepthsAA[fragIndex * 5 + 3], zDepth,
+					&dev_fragsDepthsAA[fragIndex].primitiveID[3], i);
 
 				// do fragment 4: 1/3 over left, 1/6 up
 				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f - pixWidth / 3.0f,
@@ -500,7 +516,8 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
 					dev_fragsDepthsAA[fragIndex].subFrags[4],
-					dev_intDepthsAA[fragIndex * 5 + 4], zDepth);
+					dev_intDepthsAA[fragIndex * 5 + 4], zDepth,
+					&dev_fragsDepthsAA[fragIndex].primitiveID[4], i);
 			}
 		}
 	}
@@ -553,21 +570,35 @@ __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numL
 	}
 }
 
-__global__ void fragmentShaderMSAA(int numFrags, FragmentAA *dev_fragsDepths, int numLights, Light *dev_lights) {
+__global__ void fragmentShaderMSAA(int numFrags, FragmentAA *dev_fragsDepthsAA,
+	int numLights, Light *dev_lights) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
-		shadeSingleFragment(dev_fragsDepths[i], numLights, dev_lights);
+		for (int j = 0; j < 5; j++) {
+			if (dev_fragsDepthsAA[i].primitiveID[j] > 0) {
+				shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[j], numLights, dev_lights);
+				// propagate the computation
+				for (int k = 0; k < 5; k++) {
+					if (j == k) continue;
+					if (dev_fragsDepthsAA[i].primitiveID[k] == dev_fragsDepthsAA[i].primitiveID[j]) {
+						dev_fragsDepthsAA[i].primitiveID[j] = -1;
+						dev_fragsDepthsAA[i].subFrags[k].color = dev_fragsDepthsAA[i].subFrags[j].color;
+					}
+				}
+			}
+		}
 	}
 }
 
-__global__ void fragmentShaderFSAA(int numFrags, FragmentAA *dev_fragsDepths, int numLights, Light *dev_lights) {
+__global__ void fragmentShaderFSAA(int numFrags, FragmentAA *dev_fragsDepthsAA,
+	int numLights, Light *dev_lights) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
-		shadeSingleFragment(dev_fragsDepths[i][0], numLights, dev_lights);
-		shadeSingleFragment(dev_fragsDepths[i][1], numLights, dev_lights);
-		shadeSingleFragment(dev_fragsDepths[i][2], numLights, dev_lights);
-		shadeSingleFragment(dev_fragsDepths[i][3], numLights, dev_lights);
-		shadeSingleFragment(dev_fragsDepths[i][4], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[0], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[1], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[2], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[3], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[4], numLights, dev_lights);
 	}
 }
 
@@ -591,12 +622,20 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
 	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
 	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
-	clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height, bgColor, defaultNorm,
-		dev_depthbuffer);
+	
+	if (antialiasing) {
+		clearDepthBufferAA << <blockCount1d_pix, blockSize1d >> >(width * height,
+			bgColor, defaultNorm, dev_depthbufferAA);
+	}
+	else {
+		clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height,
+			bgColor, defaultNorm, dev_depthbuffer);
+	}
+
 	int depth = UINT16_MAX; // really should get this from cam params somehow
 	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
 	if (antialiasing) { // clear the depths grid for antialiasing
-		cudaMemset(dev_intDepthsMSAA, depth, width * height * sizeof(int) * 5);
+		cudaMemset(dev_intDepthsAA, depth, width * height * sizeof(int) * 5);
 	}
 
 	// 2) transform all the vertex tfs with the camera matrix
@@ -613,15 +652,31 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, 
 		vertCount, numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
 
-	// 5) rasterize and depth test
-	scanlineRasterization <<<blockCount1d_primitives, blockSize1d >> >(width, height, 
-		numPrimitivesTotal, dev_primitives, dev_depthbuffer, dev_intDepths);
+	if (antialiasing) {
+		// 5) rasterize and depth test
+		scanlineRasterizationAA << <blockCount1d_primitives, blockSize1d >> >(
+			width, height, numPrimitivesTotal, dev_primitives, dev_depthbufferAA,
+			dev_intDepthsAA);
 
-	// 6) fragment shade
-	fragmentShader <<<blockCount1d_pix, blockSize1d >>>(width * height, dev_depthbuffer, numLights, dev_lights);
+		// 6) fragment shade
+		fragmentShaderMSAA << <blockCount1d_pix, blockSize1d >> >(width * height,
+			dev_depthbufferAA, numLights, dev_lights);
 
-	// 7) Copy depthbuffer colors into framebuffer
-	render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+		// 7) Copy depthbuffer colors into framebuffer
+		renderAA << <blockCount2d_pix, blockSize2d >> >(width, height,
+			dev_depthbufferAA, dev_framebuffer);
+	}
+	else {
+		// 5) rasterize and depth test
+		scanlineRasterization << <blockCount1d_primitives, blockSize1d >> >(width, height,
+			numPrimitivesTotal, dev_primitives, dev_depthbuffer, dev_intDepths);
+
+		// 6) fragment shade
+		fragmentShader << <blockCount1d_pix, blockSize1d >> >(width * height, dev_depthbuffer, numLights, dev_lights);
+
+		// 7) Copy depthbuffer colors into framebuffer
+		render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+	}
 	// Copy framebuffer into OpenGL buffer for OpenGL previewing
 	sendImageToPBO << <blockCount2d_pix, blockSize2d >> >(pbo, width, height, dev_framebuffer);
 	checkCUDAError("rasterize");
@@ -689,8 +744,8 @@ void rasterizeFree() {
 	cudaFree(dev_vertexTransforms);
 	dev_vertexTransforms = NULL;
 
-	cudaFree(dev_depthbufferMSAA);
-	dev_depthbufferMSAA = NULL;
+	cudaFree(dev_depthbufferAA);
+	dev_depthbufferAA = NULL;
 
 	numInstances = 1;
 

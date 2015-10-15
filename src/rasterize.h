@@ -10,6 +10,7 @@
 #include <vector>
 void addLights(std::vector<glm::vec3> &positions, std::vector<glm::vec3> &ambient,
 	std::vector<glm::vec3> &diffuse, std::vector<glm::vec3> &specular);
+void enableAA();
 void rasterizeInit(int width, int height);
 void rasterizeSetBuffers(
 	int bufIdxSize, int *bufIdx,

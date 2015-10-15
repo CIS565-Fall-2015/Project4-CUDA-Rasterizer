@@ -28,6 +28,7 @@ ANTIALIASING
 -TODO:
 -add a struct for AAfrag [done]
 -add a new AAdepth_buffer [done]
--add a new AArender
--add a new AAscanline
+-add a new AArender [done]
+-add a new AAscanline [done]
+-add fragment shaders
 -add antialiasing to rasterize()
