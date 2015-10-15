@@ -37,6 +37,17 @@ struct Fragment {
 	glm::vec3 worldPos; // needed for computing lighting
 };
 
+struct FragmentAA { // antialiased fragment
+	/***************
+	*         1
+	*  4 
+	*       0
+	*            2
+	*     3
+	****************/
+	Fragment subFrag[5];
+};
+
 struct Light {
 	glm::vec3 position;
 	glm::vec3 ambient;
@@ -61,6 +72,11 @@ static int numLights = 0;
 static int numInstances = 1;
 static glm::mat4 *dev_modelTransforms = NULL;
 static glm::mat4 *dev_vertexTransforms = NULL;
+
+// antialiasing stuff
+static bool antialiasing = false;
+static FragmentAA *dev_depthbufferMSAA = NULL; // stores MSAA fragments
+static unsigned int *dev_intDepthsMSAA = NULL; // stores depths of MSAA subfragments
 
 /**
 * Add Lights
@@ -120,6 +136,27 @@ void render(int w, int h, Fragment *depthbuffer, glm::vec3 *framebuffer) {
 	}
 }
 
+// Writes AAfragment colors to the framebuffer
+__global__
+void renderAA(int w, int h, FragmentAA *depthbufferAA, glm::vec3 *framebuffer) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * w);
+
+	// frameBuffer code assumes (0,0) is at the bottom left in pix coords,
+	// but this code assumes it's at the top right.
+	int frameBufferIndex = (w - 1 - x) + (h - 1 - y) * w;
+
+	if (x < w && y < h) {
+		framebuffer[index] = depthbufferAA[frameBufferIndex].subFrag[0].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[1].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[2].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[3].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[4].color;
+		framebuffer[index] = framebuffer[index] / 5.0f;
+	}
+}
+
 /**
 * Called once at the beginning of the program to allocate memory.
 */
@@ -139,6 +176,25 @@ void rasterizeInit(int w, int h) {
 	cudaMemset(dev_framebuffer, 0, width * height * sizeof(glm::vec3));
 
 	checkCUDAError("rasterizeInit");
+}
+
+/**
+* Enable antialiasing. Call after init.
+*/
+void enableAA() {
+	cudaFree(dev_depthbufferMSAA);
+	cudaMalloc(&dev_depthbufferMSAA, width * height * sizeof(FragmentAA));
+	
+	cudaFree(dev_intDepthsMSAA);
+	cudaMalloc(&dev_intDepthsMSAA, width * height * sizeof(unsigned int) * 5);
+	cudaMemset(dev_intDepthsMSAA, 0, width * height * sizeof(unsigned int) * 5);
+	
+	antialiasing = true;
+	checkCUDAError("antialiasing ON");
+}
+
+void disableAA() {
+	antialiasing = false;
 }
 
 /**
@@ -243,6 +299,38 @@ __global__ void primitiveAssembly(int numPrimitives, int numVertices, int numIns
 	}
 }
 
+__device__ void scanlineSingleFragment(Triangle primitive, glm::vec3 baryCoordinate,
+	Fragment &frag, unsigned int &frag_depth, unsigned int zDepth) {
+	// check if it's in dev_primitives[i].v using bary
+	if (!isBarycentricCoordInBounds(baryCoordinate)) {
+		return;
+	}
+
+	// do int depthTest using atomicMin. we'll use the whole range of uint to do this.
+	// check depth using bary. the version in utils returns a negative z for some reason
+	atomicMin(&frag_depth, zDepth);
+
+	if (zDepth == frag_depth) {
+		// interpolate color from bary
+		glm::vec3 interpColor = primitive.v[0].col * baryCoordinate[0];
+		interpColor += primitive.v[1].col * baryCoordinate[1];
+		interpColor += primitive.v[2].col * baryCoordinate[2];
+		frag.color = interpColor;
+
+		// interpolate normal from bary
+		glm::vec3 interpNorm = primitive.v[0].worldNor * baryCoordinate[0];
+		interpNorm += primitive.v[1].worldNor * baryCoordinate[1];
+		interpNorm += primitive.v[2].worldNor * baryCoordinate[2];
+		frag.worldNorm = interpNorm;
+
+		// interpolate world position from bary
+		glm::vec3 interpWorld = primitive.v[0].worldPos * baryCoordinate[0];
+		interpWorld += primitive.v[1].worldPos * baryCoordinate[1];
+		interpWorld += primitive.v[2].worldPos * baryCoordinate[2];
+		frag.worldPos = interpWorld;
+	}
+}
+
 /**
 * Perform scanline rasterization. 1D linear blocks expected.
 */
@@ -278,47 +366,75 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 			for (int x = BBXmin; x < BBXmax; x++) {
 				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
 					y * pixHeight + pixHeight * 0.5f);
-				// check if it's in dev_primitives[i].v using bary
-				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
-				if (!isBarycentricCoordInBounds(baryCoordinate)) {
-					continue;
-				}
 
 				// we're pretending NDC is -1 to +1 along each axis
 				// so a fragIndx(0,0) is at NDC -1 -1
 				// btw, going from NDC back to pixel coordinates:
 				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
-				
-				// do int depthTest using atomicMin. we'll use the whole range of uint to do this.
-				// check depth using bary. the version in utils returns a negative z for some reason
+				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
-				atomicMin(&dev_intDepths[fragIndex], zDepth);
-
-				if (zDepth == dev_intDepths[fragIndex]) {
-					// interpolate color from bary
-					glm::vec3 interpColor = dev_primitives[i].v[0].col * baryCoordinate[0];
-					interpColor += dev_primitives[i].v[1].col * baryCoordinate[1];
-					interpColor += dev_primitives[i].v[2].col * baryCoordinate[2];
-					dev_fragsDepths[fragIndex].color = interpColor;
-
-					// interpolate normal from bary
-					glm::vec3 interpNorm = dev_primitives[i].v[0].worldNor * baryCoordinate[0];
-					interpNorm += dev_primitives[i].v[1].worldNor * baryCoordinate[1];
-					interpNorm += dev_primitives[i].v[2].worldNor * baryCoordinate[2];
-					dev_fragsDepths[fragIndex].worldNorm = interpNorm;
-
-					// interpolate world position from bary
-					glm::vec3 interpWorld = dev_primitives[i].v[0].worldPos * baryCoordinate[0];
-					interpWorld += dev_primitives[i].v[1].worldPos * baryCoordinate[1];
-					interpWorld += dev_primitives[i].v[2].worldPos * baryCoordinate[2];
-					dev_fragsDepths[fragIndex].worldPos = interpWorld;
-				}
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepths[fragIndex], dev_intDepths[fragIndex], zDepth);
 			}
 		}
 	}
 }
+
+/**
+* Perform scanline rasterization. 1D linear blocks expected.
+*/
+
+__global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
+	Triangle *dev_primitives, Fragment *dev_fragsDepths, unsigned int *dev_intDepths) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numPrimitives) {
+		// get the AABB of the triangle
+		glm::vec3 v[3];
+		v[0] = dev_primitives[i].v[0].screenPos;
+		v[1] = dev_primitives[i].v[1].screenPos;
+		v[2] = dev_primitives[i].v[2].screenPos;
+
+		AABB triangleBB = getAABBForTriangle(v);
+
+		float pixWidth = 2.0f / (float)w; // NDC goes from -1 to 1 in x and y
+		float pixHeight = 2.0f / (float)h;
+
+		int BBYmin = triangleBB.min.y * (h / 2) - 1;
+		int BBYmax = triangleBB.max.y * (h / 2) + 1;
+
+		int BBXmin = triangleBB.min.x * (w / 2) - 1;
+		int BBXmax = triangleBB.max.x * (w / 2) + 1;
+
+		// clip
+		if (BBYmin < -h / 2) BBYmin = -h / 2;
+		if (BBXmin < -w / 2) BBXmin = -w / 2;
+		if (BBYmax > h / 2) BBYmax = h / 2;
+		if (BBXmax > w / 2) BBXmax = w / 2;
+
+		// scan over the AABB
+		for (int y = BBYmin; y < BBYmax; y++) {
+			for (int x = BBXmin; x < BBXmax; x++) {
+				// do the middle fragment
+				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
+					y * pixHeight + pixHeight * 0.5f);
+
+				// we're pretending NDC is -1 to +1 along each axis
+				// so a fragIndx(0,0) is at NDC -1 -1
+				// btw, going from NDC back to pixel coordinates:
+				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
+				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
+				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepths[fragIndex], dev_intDepths[fragIndex], zDepth);
+			}
+		}
+	}
+}
+
 
 __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numLights, Light *dev_lights) {
 	// https://www.opengl.org/sdk/docs/tutorials/ClockworkCoders/lighting.php
@@ -387,6 +503,9 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 		dev_depthbuffer);
 	int depth = UINT16_MAX; // really should get this from cam params somehow
 	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
+	if (antialiasing) { // clear the depths grid for antialiasing
+		cudaMemset(dev_intDepthsMSAA, depth, width * height * sizeof(int) * 5);
+	}
 
 	// 2) transform all the vertex tfs with the camera matrix
 	computeVertexTFs <<<blockCount1d_transformations, blockSize1d>>>(numInstances,
@@ -477,6 +596,9 @@ void rasterizeFree() {
 
 	cudaFree(dev_vertexTransforms);
 	dev_vertexTransforms = NULL;
+
+	cudaFree(dev_depthbufferMSAA);
+	dev_depthbufferMSAA = NULL;
 
 	numInstances = 1;
 

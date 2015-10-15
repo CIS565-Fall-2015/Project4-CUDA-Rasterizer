@@ -7,7 +7,7 @@ TESSELATION
 -every triangle gets an "innter" value and 4 "outer" values
 -wat
 
-INSTANCING
+INSTANCING [working]
 -we'll do it two ways
 	-serial instancing: multiple draws between buffer wipes
 	-parallel instancing: allocates more memory every time number of instances changes
@@ -15,3 +15,19 @@ INSTANCING
 		-add new kernels for parallel instancing
 		
 -btw there's a problem where the fragment shader doesn't work on lab machines. wtf.
+
+ANTIALIASING
+-seems like the way MSAA works is:
+	-compute 5 samples per fragment
+	-but only compute fragment shading on the center
+	-use that value for each occluded sample
+	-and then average the samples for a color
+	-it's cheating antialiasing!
+	-for frags with more than one triangle... bad luck, must compute more times. worst case is 5x per frag, so worst case is like FSAA
+
+-TODO:
+-add a struct for AAfrag [done]
+-add a new AAdepth_buffer [done]
+-add a new AArender
+-add a new AAscanline
+-add antialiasing to rasterize()
