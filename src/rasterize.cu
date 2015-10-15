@@ -45,7 +45,7 @@ struct FragmentAA { // antialiased fragment
 	*            2
 	*     3
 	****************/
-	Fragment subFrag[5];
+	Fragment subFrags[5];
 };
 
 struct Light {
@@ -148,11 +148,11 @@ void renderAA(int w, int h, FragmentAA *depthbufferAA, glm::vec3 *framebuffer) {
 	int frameBufferIndex = (w - 1 - x) + (h - 1 - y) * w;
 
 	if (x < w && y < h) {
-		framebuffer[index] = depthbufferAA[frameBufferIndex].subFrag[0].color;
-		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[1].color;
-		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[2].color;
-		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[3].color;
-		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrag[4].color;
+		framebuffer[index] = depthbufferAA[frameBufferIndex].subFrags[0].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrags[1].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrags[2].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrags[3].color;
+		framebuffer[index] += depthbufferAA[frameBufferIndex].subFrags[4].color;
 		framebuffer[index] = framebuffer[index] / 5.0f;
 	}
 }
@@ -250,6 +250,27 @@ void clearDepthBuffer(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
 	if (i < bufSize) {
 		dev_depthbuffer[i].color = bgColor;
 		dev_depthbuffer[i].worldNorm = defaultNorm;
+	}
+}
+
+/**
+* Clears the depth buffer between draws. Expects single dimensional blocks
+*/
+__global__
+void clearDepthBufferAA(int bufSize, glm::vec3 bgColor, glm::vec3 defaultNorm,
+FragmentAA *dev_depthbufferAA) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < bufSize) {
+		dev_depthbuffer[i][0].color = bgColor;
+		dev_depthbuffer[i][0].worldNorm = defaultNorm;
+		dev_depthbuffer[i][1].color = bgColor;
+		dev_depthbuffer[i][1].worldNorm = defaultNorm;
+		dev_depthbuffer[i][2].color = bgColor;
+		dev_depthbuffer[i][2].worldNorm = defaultNorm;
+		dev_depthbuffer[i][3].color = bgColor;
+		dev_depthbuffer[i][3].worldNorm = defaultNorm;
+		dev_depthbuffer[i][4].color = bgColor;
+		dev_depthbuffer[i][4].worldNorm = defaultNorm;
 	}
 }
 
@@ -387,7 +408,7 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 */
 
 __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
-	Triangle *dev_primitives, Fragment *dev_fragsDepths, unsigned int *dev_intDepths) {
+	Triangle *dev_primitives, FragmentAA *dev_fragsDepthsAA, unsigned int *dev_intDepthsAA) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numPrimitives) {
 		// get the AABB of the triangle
@@ -416,66 +437,137 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 		// scan over the AABB
 		for (int y = BBYmin; y < BBYmax; y++) {
 			for (int x = BBXmin; x < BBXmax; x++) {
-				// do the middle fragment
-				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
-					y * pixHeight + pixHeight * 0.5f);
 
 				// we're pretending NDC is -1 to +1 along each axis
 				// so a fragIndx(0,0) is at NDC -1 -1
 				// btw, going from NDC back to pixel coordinates:
 				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
+
+				/***************
+				*         1
+				*  4
+				*       0
+				*            2
+				*     3
+				****************/
+
+				// do the middle fragment [0]
+				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
+					y * pixHeight + pixHeight * 0.5f);
 				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
-					dev_fragsDepths[fragIndex], dev_intDepths[fragIndex], zDepth);
+					dev_fragsDepthsAA[fragIndex].subFrags[0],
+					dev_intDepthsAA[fragIndex * 5], zDepth);
+
+				// do fragment 1: 1/6 over, 1/3 up
+				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f + pixWidth / 6.0f,
+					y * pixHeight + pixHeight * 0.5f + pixHeight / 3.0f);
+				baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepthsAA[fragIndex].subFrags[1],
+					dev_intDepthsAA[fragIndex * 5 + 1], zDepth);
+
+				// do fragment 2: 1/3 over, 1/6 down
+				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f + pixWidth / 3.0f,
+					y * pixHeight + pixHeight * 0.5f - pixHeight / 6.0f);
+				baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepthsAA[fragIndex].subFrags[2],
+					dev_intDepthsAA[fragIndex * 5 + 2], zDepth);
+
+				// do fragment 3: 1/6 over left, 1/3 down
+				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f - pixWidth / 6.0f,
+					y * pixHeight + pixHeight * 0.5f - pixHeight / 3.0f);
+				baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepthsAA[fragIndex].subFrags[3],
+					dev_intDepthsAA[fragIndex * 5 + 3], zDepth);
+
+				// do fragment 4: 1/3 over left, 1/6 up
+				fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f - pixWidth / 3.0f,
+					y * pixHeight + pixHeight * 0.5f + pixHeight / 6.0f);
+				baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
+					dev_fragsDepthsAA[fragIndex].subFrags[4],
+					dev_intDepthsAA[fragIndex * 5 + 4], zDepth);
 			}
 		}
 	}
 }
 
+__device__ void shadeSingleFragment(Fragment &frag, int numLights, Light *dev_lights) {
+	// https://www.opengl.org/sdk/docs/tutorials/ClockworkCoders/lighting.php
+	glm::vec3 N = frag.worldNorm;
+	if (glm::abs(N.x) < 0.1f && glm::abs(N.y) < 0.1f && glm::abs(N.z) < 0.1f) {
+		return;
+	}
+
+	glm::vec3 V = frag.worldPos;
+	glm::vec3 finalColor = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 tmp;
+	for (int j = 0; j < numLights; j++) {
+		glm::vec3 light = normalize(dev_lights[j].position - V);
+		glm::vec3 eye = normalize(-V);
+		glm::vec3 refl = normalize(-glm::reflect(light, N));
+
+		//glm::vec3 amb = dev_lights[j].ambient; // debug
+		//glm::vec3 diff = dev_lights[j].diffuse; // debug
+		//glm::vec3 spec = dev_lights[j].specular; // debug
+
+		// calculate ambient term
+		finalColor += dev_lights[j].ambient;
+
+		// calculate diffuse term
+		tmp = dev_lights[j].diffuse * glm::max(dot(N, light), 0.0f);
+		finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
+		finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
+		finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
+
+		// calculate specular term
+		tmp = dev_lights[j].specular * powf(glm::max(glm::dot(refl, eye), 0.0f), 0.3);
+		finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
+		finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
+		finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
+	}
+	frag.color *= finalColor;
+	//frag.color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
+	//frag.color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
+	//frag.color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
+}
 
 __global__ void fragmentShader(int numFrags, Fragment *dev_fragsDepths, int numLights, Light *dev_lights) {
-	// https://www.opengl.org/sdk/docs/tutorials/ClockworkCoders/lighting.php
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
-		glm::vec3 N = dev_fragsDepths[i].worldNorm;
-		if (glm::abs(N.x) < 0.1f && glm::abs(N.y) < 0.1f && glm::abs(N.z) < 0.1f) {
-			return;
-		}
+		shadeSingleFragment(dev_fragsDepths[i], numLights, dev_lights);
+	}
+}
 
-		glm::vec3 V = dev_fragsDepths[i].worldPos;
-		glm::vec3 finalColor = glm::vec3(0.0f, 0.0f, 0.0f);
-		glm::vec3 tmp;
-		for (int j = 0; j < numLights; j++) {
-			glm::vec3 light = normalize(dev_lights[j].position - V);
-			glm::vec3 eye = normalize(-V);
-			glm::vec3 refl = normalize(-glm::reflect(light, N));
+__global__ void fragmentShaderMSAA(int numFrags, FragmentAA *dev_fragsDepths, int numLights, Light *dev_lights) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numFrags) {
+		shadeSingleFragment(dev_fragsDepths[i], numLights, dev_lights);
+	}
+}
 
-			//glm::vec3 amb = dev_lights[j].ambient; // debug
-			//glm::vec3 diff = dev_lights[j].diffuse; // debug
-			//glm::vec3 spec = dev_lights[j].specular; // debug
-
-			// calculate ambient term
-			finalColor += dev_lights[j].ambient;
-
-			// calculate diffuse term
-			tmp = dev_lights[j].diffuse * glm::max(dot(N, light), 0.0f);
-			finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
-			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
-			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
-
-			// calculate specular term
-			tmp = dev_lights[j].specular * powf(glm::max(glm::dot(refl, eye), 0.0f), 0.3);
-			finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
-			finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
-			finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
-		}
-		dev_fragsDepths[i].color *= finalColor;
-		//dev_fragsDepths[i].color[0] = dev_fragsDepths[i].worldNorm[0]; // debug normals
-		//dev_fragsDepths[i].color[1] = dev_fragsDepths[i].worldNorm[1]; // debug normals
-		//dev_fragsDepths[i].color[2] = dev_fragsDepths[i].worldNorm[2]; // debug normals
+__global__ void fragmentShaderFSAA(int numFrags, FragmentAA *dev_fragsDepths, int numLights, Light *dev_lights) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numFrags) {
+		shadeSingleFragment(dev_fragsDepths[i][0], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepths[i][1], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepths[i][2], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepths[i][3], numLights, dev_lights);
+		shadeSingleFragment(dev_fragsDepths[i][4], numLights, dev_lights);
 	}
 }
 
