@@ -6,6 +6,9 @@
 * @copyright University of Pennsylvania & STUDENT
 */
 
+#define TILESIZE = 16;
+#define TILESIZESQUARED = 256;
+
 #include "rasterize.h"
 
 #include <cmath>
@@ -56,6 +59,12 @@ struct Light {
 	glm::vec3 specular;
 };
 
+struct Tile {
+	int primitiveIndicesIndex = -1;
+	glm::ivec2 bbMin;
+	glm::ivec2 bbMax;
+};
+
 static int width = 0;
 static int height = 0;
 static int *dev_bufIdx = NULL;
@@ -78,6 +87,11 @@ static glm::mat4 *dev_vertexTransforms = NULL;
 static bool antialiasing = false;
 static FragmentAA *dev_depthbufferAA = NULL; // stores MSAA fragments
 static unsigned int *dev_intDepthsAA = NULL; // stores depths of MSAA subfragments
+
+// tiling stuff
+static Tile dev_tileBuffer = NULL;
+static int numTiles = 0;
+static int *dev_primitiveIndicesBuffer = NULL;
 
 /**
 * Add Lights
@@ -708,6 +722,26 @@ void setupInstances(std::vector<glm::mat4> &modelTransform) {
 }
 
 /**
+* Called once per vertex/primitive/etc buffer change.
+* - allocate space for the Tile buffer
+* - for each Tile, allocate space for a list of primitives
+*/
+void setupTiling() {
+	// compute number of tiles. aim to overshoot the screen
+	int tilesWide = (width + TILESIZE - 1) / TILESIZE;
+	int tilesTall = (height + TILESIZE - 1) / TILESIZE;
+
+	cudaFree(dev_tileBuffer);
+	dev_tileBuffer = NULL;
+	cudaMalloc(&dev_tileBuffer, sizeof(Tile) * tilesWide * tilesTall);
+
+	cudaFree(dev_primitiveIndicesBuffer);
+	dev_primitiveIndicesBuffer = NULL;
+	cudaMalloc(&dev_primitiveIndicesBuffer, sizeof(int) * tilesWide * tilesTall);
+}
+
+
+/**
 * Called once at the end of the program to free CUDA memory.
 */
 void rasterizeFree() {
@@ -749,6 +783,12 @@ void rasterizeFree() {
 	dev_depthbufferAA = NULL;
 
 	numInstances = 1;
+
+	cudaFree(dev_tileBuffer);
+	dev_tileBuffer = NULL;
+
+	cudaFree(dev_primitiveIndicesBuffer);
+	dev_primitiveIndicesBuffer = NULL;
 
 	checkCUDAError("rasterizeFree");
 }
