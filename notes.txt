@@ -41,13 +41,55 @@ TILING
 
 TODO:
 -add a spatial datastructure
-	-we'll need one for each tile (yikes)
+	-we'll need one for each tile
 	-each needs room to hold a list of every primitive (yikes)
 	-so spatial datastructure size and allocation all needs to be done in one go
 	-also need a fast kernel to "dump" transformed primitives into each structure
 	-also will need to add a special destruction handler to destroy each list (yikes)
--add a new tiled scanline and AAscanline (yikes)
+-add a new tiled scanline -> AA version if we can get to it. doubtful.
 	-basically, uses shared memory
 	-so needs to clip to smaller coordinate area, use lower resolution
 	-fractional tiles are OK - be sure to handle this
+	-how to parallelize?
+		-over prims AND tiles? -> how to even do this? b/c need to ensure each tile's threads stay together.
+		-serial tiles, parallelize over prims in tile? -> just run a 250x for loop?
+			-this seems more likely.
+			-but then need to memcpy tile's primitive count over to hst?
+			-only other option is to launch kernel assuming full primitives, early-retire those that don't have a prim. <- ok. doable. slow?
+			-but again: problem is sharing a chunk of depth buffer.
+
 -ditto with fragment shading
+
+-what if...
+-we allocate primitives * [tiles to tesselate screen] (yikes, but similar to above)
+-for each primitive, compute its AABB coords and determine a list of tiles that it covers
+-some are occupied, some are not. tiles no longer need to store a list of internal prims
+-then when we scanline each primitive, we parallelize per tile
+-blocksize must be [tiles to tesselate screen]. share a chunk of depth buffer
+-similar memory requirements, in theory. improvement in that there's potentially less fetching from global memory
+-this idea makes a "tile" kind of like a giant fragment
+-in case of cow at 800x800, that's 5803 * 50 * 50 fragment_tiles.
+-this also allows stream compaction to reduce number of threads to launch
+-hmmm... but idea is to allow a block to share a chunk of the depth buffer. possibly impossible with this implementation
+
+-FUNDAMENTAL PROBLEM: idea is to share a chunk of the depth buffer, which limits the block size
+-this CAN'T BE DONE if we parallelize by primitive!
+	-unless block size is dynamic to number of primitives. potentially bad idea.
+	-otherwise complicates things a lot
+	-b/c suddenly if we have multiple blocks trying to write to the same chunk of screen space
+	-then we have to do another atomic write comparison at the writeback stage.
+	-which we CAN do, it's just slow.
+	-but I suppose... if the goal is just to access the global frame buffer LESS...
+	-this could be doable
+-the only hope is that not all the primitives are in the same chunk of screen space!
+
+-the polygon list implementation (fewer tiles, more data per tile) appears to be how it's done. ok.
+-risk: low occupancy. unless we can figure out how to parallelize over both tiles and polygon lists-just may need stream compaction to cull lists that don't do stuff.
+
+-scratch that: FUNDAMENTAL PROBLEM: the idea is to share a chunk of the depth buffer, which limits the block size
+-assume we try to parallelize across all tiles and all primitives
+	-so, in case of cow at 800x800, grid with 5803 * 50 * 50 kernel instances.
+	-each block however can only assess one tile. that's the whole point of using shared memory.
+	-possible to resolve blocks that end up with primitives spread across tiles, but ruins the point.
+		-this requires thrasing global memory all over again for threads that aren't in the "current tile"
+		
