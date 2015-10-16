@@ -30,5 +30,24 @@ ANTIALIASING
 -add a new AAdepth_buffer [done]
 -add a new AArender [done]
 -add a new AAscanline [done]
--add fragment shaders
--add antialiasing to rasterize()
+-add fragment shaders [done]
+-add antialiasing to rasterize() [done]
+
+TILING
+-need to tile scanline and fragment shading
+-so need to make shared memory versions of each
+-need to use syncthreads()
+-go look at how the work efficient version was done
+
+TODO:
+-add a spatial datastructure
+	-we'll need one for each tile (yikes)
+	-each needs room to hold a list of every primitive (yikes)
+	-so spatial datastructure size and allocation all needs to be done in one go
+	-also need a fast kernel to "dump" transformed primitives into each structure
+	-also will need to add a special destruction handler to destroy each list (yikes)
+-add a new tiled scanline and AAscanline (yikes)
+	-basically, uses shared memory
+	-so needs to clip to smaller coordinate area, use lower resolution
+	-fractional tiles are OK - be sure to handle this
+-ditto with fragment shading
