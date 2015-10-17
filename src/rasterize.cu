@@ -692,11 +692,11 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 
 			AABB triangleBB = getAABBForTriangle(v);
 			// convert to pixelized NDC
-			int BBYmin = triangleBB.min.y * (h / 2) - 1;
-			int BBYmax = triangleBB.max.y * (h / 2) + 1;
+			int BBYmin = triangleBB.min.y * (h / 2);
+			int BBYmax = triangleBB.max.y * (h / 2);
 
-			int BBXmin = triangleBB.min.x * (w / 2) - 1;
-			int BBXmax = triangleBB.max.x * (w / 2) + 1;
+			int BBXmin = triangleBB.min.x * (w / 2);
+			int BBXmax = triangleBB.max.x * (w / 2);
 
 			// clip to this tile
 			if (BBYmin < thisTile.min.y) {
@@ -709,7 +709,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 				BBYmax = thisTile.max.y;
 			}
 			if (BBXmax > thisTile.max.x) {
-				BBXmax = thisTile.max.y;
+				BBXmax = thisTile.max.x;
 			}
 
 			// scan the AABB
