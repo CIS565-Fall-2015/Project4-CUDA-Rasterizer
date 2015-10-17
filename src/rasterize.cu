@@ -592,7 +592,7 @@ __global__ void fragmentShaderMSAA(int numFrags, FragmentAA *dev_fragsDepthsAA,
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numFrags) {
 		for (int j = 0; j < 5; j++) {
-			if (dev_fragsDepthsAA[i].primitiveID[j] > 0) {
+			if (dev_fragsDepthsAA[i].primitiveID[j] >= 0) {
 				// run the actual pixel shader once per unique triangle
 				shadeSingleFragment(dev_fragsDepthsAA[i].subFrags[j], numLights, dev_lights);
 				// propagate the computation
@@ -766,13 +766,14 @@ void setupTiling() {
 
 	cudaFree(dev_tiling_primitiveIndicesBuffer);
 	dev_tiling_primitiveIndicesBuffer = NULL;
-	cudaMalloc(&dev_tiling_primitiveIndicesBuffer, sizeof(int) * tilesWide * tilesTall);
+	cudaMalloc(&dev_tiling_primitiveIndicesBuffer,
+		sizeof(int) * tilesWide * tilesTall * (bufIdxSize / 3) * numInstances);
 
 	int sideLength1d = 16;
 	dim3 blockSize1d(sideLength1d);
 	dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
-	setupIndividualTile <<<blockCount1d_tiles, blockSize1d>>>(dev_tileBuffer, tilesWide,
-		tilesTall, (bufIdxSize / 3) * numInstances, width, height);
+	setupIndividualTile <<<blockCount1d_tiles, blockSize1d>>>(dev_tileBuffer,
+		tilesWide, tilesTall, (bufIdxSize / 3) * numInstances, width, height);
 }
 
 

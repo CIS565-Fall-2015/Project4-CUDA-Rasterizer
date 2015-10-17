@@ -20,4 +20,6 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix);
 
 void setupInstances(std::vector<glm::mat4> &modelTransform); // call after setup
 
+void setupTiling(); // call after setup and setupInstances
+
 void rasterizeFree();

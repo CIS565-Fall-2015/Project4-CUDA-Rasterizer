@@ -221,6 +221,7 @@ void initCuda() {
 	else {
 		rasterizeInit(width, height);
 		enableAA();
+		setupTiling();
 	}
 
     // Clean up on program exit
