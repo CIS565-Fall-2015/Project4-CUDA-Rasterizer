@@ -668,7 +668,6 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			fragsDepths_block_data[i].color = bgColor;
 			fragsDepths_block_data[i].worldNorm = defaultNorm;
 		}
-		else break;
 	}
 	__syncthreads();
 
@@ -692,11 +691,11 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 
 			AABB triangleBB = getAABBForTriangle(v);
 			// convert to pixelized NDC
-			int BBYmin = triangleBB.min.y * (h / 2);
-			int BBYmax = triangleBB.max.y * (h / 2);
+			int BBYmin = triangleBB.min.y * (h / 2) - 1;
+			int BBYmax = triangleBB.max.y * (h / 2) + 1;
 
-			int BBXmin = triangleBB.min.x * (w / 2);
-			int BBXmax = triangleBB.max.x * (w / 2);
+			int BBXmin = triangleBB.min.x * (w / 2) - 1;
+			int BBXmax = triangleBB.max.x * (w / 2) + 1;
 
 			// clip to this tile
 			if (BBYmin < thisTile.min.y) {
@@ -713,8 +712,8 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			}
 
 			// scan the AABB
-			for (int y = BBYmin; y < BBYmax; y++) {
-				for (int x = BBXmin; x < BBXmax; x++) {
+			for (int y = BBYmin; y <= BBYmax; y++) {
+				for (int x = BBXmin; x <= BBXmax; x++) {
 					glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
 						y * pixHeight + pixHeight * 0.5f);
 
@@ -722,8 +721,8 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 					// so a fragIndx(0,0) is at NDC -1 -1
 					// btw, going from NDC back to pixel coordinates:
 					// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
-					int localX = x - thisTile.min.x;// + w / 2;
-					int localY = y - thisTile.min.y;// + h / 2;
+					int localX = x - thisTile.min.x;
+					int localY = y - thisTile.min.y;
 					int fragIndexLocal = ((localX) + (localY) * TILESIZE);
 					glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
 					// check depth using bary. the version in utils returns a negative z for some reason
@@ -780,8 +779,8 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			//Fragment debugFrag2 = dev_fragsDepths[fragIndex]; // debug
 			//int c = x + y; // debug
 		}
-		else break;
 	}
+
 }
 
 __device__ bool pointInBox(int ptX, int ptY, glm::ivec2 min, glm::ivec2 max) {
