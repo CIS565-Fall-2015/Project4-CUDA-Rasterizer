@@ -724,10 +724,41 @@ void setupInstances(std::vector<glm::mat4> &modelTransform) {
 	cudaMalloc(&dev_primitives, numInstances * bufIdxSize / 3 * sizeof(Triangle));
 }
 
+__device__ bool checkBB(glm::vec3 coordinate, glm::ivec2 min, glm::ivec2 max,
+	int width, int height) {
+	glm::ivec2 pixCoordinate;
+	pixCoordinate.x = coordinate.x * width / 2 + width;
+	pixCoordinate.y = coordinate.y * height / 2 + height;
+	return (min.x <= pixCoordinate.x && pixCoordinate.x <= max.x &&
+		min.y <= pixCoordinate.y && pixCoordinate.y <= max.y);
+}
+
+/**
+* Bin the primitives
+*/
+__global__ void binPrimitives(int numTiles, Tile *tiles, int numPrimitives,
+	Triangle *dev_primitives, int width, int height, int *tilePrimitiveBin) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numPrimitives) {
+		for (int j = 0; j < numTiles; j++) {
+			// bin the prim. check for each vertex if it's inside the tile
+			if (checkBB(dev_primitives[i].v[0].screenPos,
+					tiles[j].min, tiles[j].max, width, height) ||
+				checkBB(dev_primitives[i].v[1].screenPos,
+					tiles[j].min, tiles[j].max, width, height) ||
+				checkBB(dev_primitives[i].v[2].screenPos,
+					tiles[j].min, tiles[j].max, width, height)) {
+				int tilePrimitiveBinIndex = tiles[j].primitiveIndicesIndex +
+					tiles[j].numPrimitives;
+				tilePrimitiveBin[tilePrimitiveBinIndex] = i;
+				tiles[j].numPrimitives++;
+			}
+		}
+	}
+}
 
 /**
 * For setting up individual tile data in the structs.
-*
 */
 __global__ void setupIndividualTile(Tile *tiles, int numTilesWide,
 	int numTilesTall, int numPrimitives, int width, int height) {
