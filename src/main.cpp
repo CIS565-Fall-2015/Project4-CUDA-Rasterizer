@@ -15,7 +15,7 @@
 
 float theta = 0.78539816339f;// 1.57079632679f;
 float phi = 0.0f;//2.35619449019f;
-float zoom = 5.0f;
+float zoom = 1.0f;
 float fovy = 0.785398f;
 glm::mat4 camMatrix;
 
@@ -119,8 +119,8 @@ bool init(obj *mesh) {
         return false;
     }
 
-    width = 800;
-    height = 800;
+    width = 80;
+    height = 80;
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
@@ -180,9 +180,10 @@ bool init(obj *mesh) {
         glm::mat4 ID = glm::mat4();
         std::vector<glm::mat4> transformations;
         transformations.push_back(ID);
-        transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
-		transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
-			glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
+		transformations.push_back(glm::translate(ID, glm::vec3(0.0f, 0.05f, 0.0f)));
+        //transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
+		//transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
+		//	glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
         setupInstances(transformations);
 
 		// set up tiling!

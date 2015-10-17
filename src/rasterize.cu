@@ -736,13 +736,26 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 	}
 }
 
-__device__ bool checkBB(glm::vec3 coordinate, glm::ivec2 min, glm::ivec2 max,
+__device__ bool checkBB(AABB bb, glm::ivec2 min, glm::ivec2 max,
 	int width, int height) {
-	glm::ivec2 pixCoordinate;
-	pixCoordinate.x = coordinate.x * width / 2;
-	pixCoordinate.y = coordinate.y * height / 2;
-	return (min.x <= pixCoordinate.x && pixCoordinate.x <= max.x &&
-		min.y <= pixCoordinate.y && pixCoordinate.y <= max.y);
+	glm::ivec2 bbMinPix;
+	glm::ivec2 bbMaxPix;
+	bbMinPix.x = bb.min.x * width / 2;
+	bbMaxPix.x = bb.max.x * width / 2;
+	bbMinPix.y = bb.min.y * height / 2;
+	bbMaxPix.y = bb.max.y * height / 2;
+
+	// check if there's any overlap whatsoever
+	return (
+		bbMinPix.x <= min.x && min.x <= bbMaxPix.x &&
+		bbMinPix.y <= min.y && min.y <= bbMaxPix.y ||
+		bbMinPix.x <= max.x && max.x <= bbMaxPix.x &&
+		bbMinPix.y <= max.y && max.y <= bbMaxPix.y ||
+		min.x <= bbMinPix.x && bbMinPix.x <= max.x &&
+		min.y <= bbMinPix.y && bbMinPix.y <= max.y ||
+		min.x <= bbMaxPix.x && bbMaxPix.x <= max.x &&
+		min.y <= bbMaxPix.y && bbMaxPix.y <= max.y
+		);
 }
 
 /**
@@ -754,13 +767,17 @@ __global__ void binPrimitives(int numTiles, Tile *tiles, int numPrimitives,
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (i < numTiles) {
 		for (int j = 0; j < numPrimitives; j++) {
+			// get the AABB of the triangle
+			glm::vec3 v[3];
+			v[0] = dev_primitives[j].v[0].screenPos;
+			v[1] = dev_primitives[j].v[1].screenPos;
+			v[2] = dev_primitives[j].v[2].screenPos;
+
+			AABB triangleBB = getAABBForTriangle(v);
+
 			// bin the prim. check for each vertex if it's inside the tile
-			if (checkBB(dev_primitives[j].v[0].screenPos,
-				tiles[i].min, tiles[i].max, width, height) ||
-				checkBB(dev_primitives[j].v[1].screenPos,
-				tiles[i].min, tiles[i].max, width, height) ||
-				checkBB(dev_primitives[j].v[2].screenPos,
-				tiles[i].min, tiles[i].max, width, height)) {
+			if (checkBB(triangleBB, tiles[i].min, tiles[i].max,
+				width, height)) {
 				int tilePrimitiveBinIndex = tiles[i].primitiveIndicesIndex +
 					tiles[i].numPrimitives;
 				tilePrimitiveBin[tilePrimitiveBinIndex] = j;
@@ -855,6 +872,12 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 		binPrimitives << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide,
 			dev_tileBuffer, (bufIdxSize / 3) * numInstances, dev_primitives, width, height,
 			dev_tiling_primitiveIndicesBuffer);
+
+		// debug
+		//Tile peekTiles[25]; // use with 80x80 reso
+		//cudaMemcpy(&peekTiles, dev_tileBuffer, 25 * sizeof(Tile), cudaMemcpyDeviceToHost);
+		//int peekIndices[50];
+		//cudaMemcpy(&peekIndices, dev_tiling_primitiveIndicesBuffer, 50 * sizeof(int), cudaMemcpyDeviceToHost);
 
 		// 6) rasterize and depth test using tiling
 		dim3 blockSize1dTile(16 * 16);
