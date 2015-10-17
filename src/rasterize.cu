@@ -812,6 +812,16 @@ __device__ bool checkBB(AABB bb, glm::ivec2 min, glm::ivec2 max,
 }
 
 /**
+* Call between tiled draw calls to wipe tiles
+*/
+__global__ void clearTile(int numTiles, Tile *tiles) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numTiles) {
+		tiles[i].numPrimitives = 0;
+	}
+}
+
+/**
 * Bin the primitives. parallelized per tile to avoid race conditions for now.
 * Parallelizing per primitive requires locking tiles when using them
 */
@@ -919,8 +929,10 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 		render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
 	}
 	else {
-		// 5) bin the primitives
+		// 5) clear and re-bin the primitives
 		dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
+
+		clearTile << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide, dev_tileBuffer);
 
 		binPrimitives << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide,
 			dev_tileBuffer, (bufIdxSize / 3) * numInstances, dev_primitives, width, height,
