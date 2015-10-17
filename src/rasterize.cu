@@ -683,6 +683,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 	for (int i = startIdx; i < startIdx + numItemsPerThread; i++) {
 		if (i < thisTile.numPrimitives) {
 			int primitiveIndex = dev_primitiveIndices[thisTile.primitiveIndicesIndex + i];
+			//primitiveIndex = thisTile.primitiveIndicesIndex + i; // with this, it draws bins correctly.
 			Triangle thisTriangle = dev_primitives[primitiveIndex];
 			// get the AABB of the triangle
 			v[0] = thisTriangle.v[0].screenPos;
@@ -723,7 +724,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 					// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 					int localX = x - thisTile.min.x;// + w / 2;
 					int localY = y - thisTile.min.y;// + h / 2;
-					int fragIndexLocal = ((localX - 1) + (localY - 1) * TILESIZE);
+					int fragIndexLocal = ((localX) + (localY) * TILESIZE);
 					glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
 					// check depth using bary. the version in utils returns a negative z for some reason
 					int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
@@ -757,7 +758,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			}
 		}
 		else break;
-	} */
+	}
 	numItemsPerThread = (TILESIZESQUARED + blockDim.x - 1) / blockDim.x;
 	startIdx = threadIdx.x * numItemsPerThread;
 	__syncthreads();
