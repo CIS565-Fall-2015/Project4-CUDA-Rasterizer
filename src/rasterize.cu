@@ -352,7 +352,6 @@ __device__ void scanlineSingleFragment(Triangle primitive, glm::vec3 baryCoordin
 	}
 
 	// do int depthTest using atomicMin. we'll use the whole range of uint to do this.
-	// check depth using bary. the version in utils returns a negative z for some reason
 	atomicMin(&frag_depth, zDepth);
 
 	if (zDepth == frag_depth) {
@@ -422,6 +421,7 @@ __global__ void scanlineRasterization(int w, int h, int numPrimitives,
 				// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 				int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
 				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				// check depth using bary. the version in utils returns a negative z for some reason
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
 				scanlineSingleFragment(dev_primitives[i], baryCoordinate,
@@ -484,6 +484,7 @@ __global__ void scanlineRasterizationAA(int w, int h, int numPrimitives,
 				glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
 					y * pixHeight + pixHeight * 0.5f);
 				glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+				// check depth using bary. the version in utils returns a negative z for some reason
 				int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
 
 
@@ -734,24 +735,134 @@ __device__ bool checkBB(glm::vec3 coordinate, glm::ivec2 min, glm::ivec2 max,
 }
 
 /**
-* Bin the primitives
+* Perform the scanline operation on all the primitives in a tile.
+* The goal is to have each block get a "tile" of the framebuffer,
+* so this is parallelized so that each block gets one tile.
+* So it will scanline triangles in serial/parallel groups, based on
+* the block size. Requires some balancing of block size!
+*/
+__global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
+	Triangle *dev_primitives, Fragment *dev_fragsDepths, int *dev_primitiveIndices,
+	unsigned int startDepth, glm::vec3 bgColor, glm::vec3 defaultNorm, int w, int h) {
+	__shared__ unsigned int intDepths_block_data[TILESIZESQUARED];
+	__shared__ Fragment fragsDepths_block_data[TILESIZESQUARED];
+
+	// block index is which tile we're working on
+
+	// parallel/serial write default values
+	// 0 1 2 3 4 5 6 7 8 9
+	// 10 indices across 3 threads requires 4 items per thread:
+	// (10 + 3 - 1) / 3 = 4
+	// thread 1: 0 1 2 3
+	// thread 2: 4 5 6 7
+	// thread 3: 8 9 x x
+	int numItemsPerThread = (TILESIZESQUARED + blockDim.x - 1) / blockDim.x;
+	if (numItemsPerThread < 1) numItemsPerThread = 1;
+	int startIdx = threadIdx.x * numItemsPerThread;
+	for (int i = startIdx; i < startIdx + numItemsPerThread; i++) {
+		if (i < TILESIZESQUARED) {
+			intDepths_block_data[i] = startDepth;
+			fragsDepths_block_data[i].color = bgColor;
+			fragsDepths_block_data[i].worldNorm = defaultNorm;
+		}
+	}
+	__syncthreads();
+	// parallel/serial scanline the primitives
+	numItemsPerThread = (dev_tiles[blockIdx.x].numPrimitives + blockDim.x - 1) / blockDim.x;
+	glm::vec3 v[3];
+	if (numItemsPerThread < 1) numItemsPerThread = 1;
+	startIdx = threadIdx.x * numItemsPerThread;
+	for (int i = startIdx; i < startIdx + numItemsPerThread; i++) {
+		if (i < dev_tiles[blockIdx.x].numPrimitives) {
+			int primitiveIndex = dev_tiles[blockIdx.x].primitiveIndicesIndex + i;
+			// get the AABB of the triangle
+			v[0] = dev_primitives[primitiveIndex].v[0].screenPos;
+			v[1] = dev_primitives[primitiveIndex].v[1].screenPos;
+			v[2] = dev_primitives[primitiveIndex].v[2].screenPos;
+
+			AABB triangleBB = getAABBForTriangle(v);
+
+			// convert to pixel coordinates
+			float pixWidth = 2.0f / (float)w; // NDC goes from -1 to 1 in x and y
+			float pixHeight = 2.0f / (float)h;
+
+			int BBYmin = triangleBB.min.y * (h / 2) - 1;
+			int BBYmax = triangleBB.max.y * (h / 2) + 1;
+
+			int BBXmin = triangleBB.min.x * (w / 2) - 1;
+			int BBXmax = triangleBB.max.x * (w / 2) + 1;
+
+			// clip to this tile
+			if (BBYmin < dev_tiles[blockIdx.x].min.y) BBYmin = dev_tiles[blockIdx.x].min.y;
+			if (BBXmin < dev_tiles[blockIdx.x].min.x) BBXmin = dev_tiles[blockIdx.x].min.x;
+			if (BBYmax > dev_tiles[blockIdx.x].max.y) BBYmax = dev_tiles[blockIdx.x].max.y;
+			if (BBXmax > dev_tiles[blockIdx.x].max.x) BBXmax = dev_tiles[blockIdx.x].max.y;
+
+			// scan the AABB
+			for (int y = BBYmin; y < BBYmax; y++) {
+				for (int x = BBXmin; x < BBXmax; x++) {
+					glm::vec2 fragCoord = glm::vec2(x * pixWidth + pixWidth * 0.5f,
+						y * pixHeight + pixHeight * 0.5f);
+
+					// we're pretending NDC is -1 to +1 along each axis
+					// so a fragIndx(0,0) is at NDC -1 -1
+					// btw, going from NDC back to pixel coordinates:
+					// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
+					int fragIndex = ((x - BBXmin) + (w / 2) - 1) + (((y - BBYmin) + (h / 2) - 1) * w);
+					glm::vec3 baryCoordinate = calculateBarycentricCoordinate(v, fragCoord);
+					// check depth using bary. the version in utils returns a negative z for some reason
+					int zDepth = UINT16_MAX  * -getZAtCoordinate(baryCoordinate, v);
+
+					scanlineSingleFragment(dev_primitives[primitiveIndex], baryCoordinate,
+						fragsDepths_block_data[fragIndex], intDepths_block_data[fragIndex],
+						zDepth, NULL, 0);
+				}
+			}
+		}
+	}
+	numItemsPerThread = (TILESIZESQUARED + blockDim.x - 1) / blockDim.x;
+	if (numItemsPerThread < 1) numItemsPerThread = 1;
+	startIdx = threadIdx.x * numItemsPerThread;
+	__syncthreads();
+	// parallel copy the chunk of the buffer over to global memory
+	for (int i = startIdx; i < startIdx + numItemsPerThread; i++) {
+		if (i < TILESIZESQUARED) {
+			// compute x y coordinates of fragment i
+			// 12 13 14 15
+			// 8  9  10 11
+			// 4  5  6  7
+			// 0  1  2  3
+			// offset those coordinates by the tile min
+			// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
+			int x = (i % TILESIZE) + dev_tiles[blockIdx.x].min.x;
+			int y = (i / TILESIZE) + dev_tiles[blockIdx.x].min.y;
+			int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
+			dev_fragsDepths[fragIndex] = fragsDepths_block_data[i];
+		}
+	}
+}
+
+
+/**
+* Bin the primitives. parallelized per tile to avoid race conditions for now.
+* Parallelizing per primitive requires locking tiles when using them
 */
 __global__ void binPrimitives(int numTiles, Tile *tiles, int numPrimitives,
 	Triangle *dev_primitives, int width, int height, int *tilePrimitiveBin) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (i < numPrimitives) {
-		for (int j = 0; j < numTiles; j++) {
+	if (i < numTiles) {
+		for (int j = 0; j < numPrimitives; j++) {
 			// bin the prim. check for each vertex if it's inside the tile
-			if (checkBB(dev_primitives[i].v[0].screenPos,
-					tiles[j].min, tiles[j].max, width, height) ||
-				checkBB(dev_primitives[i].v[1].screenPos,
-					tiles[j].min, tiles[j].max, width, height) ||
-				checkBB(dev_primitives[i].v[2].screenPos,
-					tiles[j].min, tiles[j].max, width, height)) {
-				int tilePrimitiveBinIndex = tiles[j].primitiveIndicesIndex +
-					tiles[j].numPrimitives;
-				tilePrimitiveBin[tilePrimitiveBinIndex] = i;
-				tiles[j].numPrimitives++;
+			if (checkBB(dev_primitives[j].v[0].screenPos,
+					tiles[i].min, tiles[i].max, width, height) ||
+				checkBB(dev_primitives[j].v[1].screenPos,
+					tiles[i].min, tiles[i].max, width, height) ||
+				checkBB(dev_primitives[j].v[2].screenPos,
+					tiles[i].min, tiles[i].max, width, height)) {
+				int tilePrimitiveBinIndex = tiles[i].primitiveIndicesIndex +
+					tiles[i].numPrimitives;
+				tilePrimitiveBin[tilePrimitiveBinIndex] = j;
+				tiles[i].numPrimitives++;
 			}
 		}
 	}
@@ -776,8 +887,14 @@ __global__ void setupIndividualTile(Tile *tiles, int numTilesWide,
 		int x = i % numTilesWide;
 		tiles[i].min.x = x * TILESIZE;
 		tiles[i].min.y = y * TILESIZE;
-		tiles[i].max.x = x * TILESIZE + TILESIZE - 1;
-		tiles[i].max.y = y * TILESIZE + TILESIZE - 1;
+		tiles[i].max.x = min(x * TILESIZE + TILESIZE - 1, width);
+		tiles[i].max.y = min(y * TILESIZE + TILESIZE - 1, height);
+
+		// offset coordinates so NDC aligns.
+		tiles[i].min.x -= width / 2;
+		tiles[i].min.y -= height / 2;
+		tiles[i].max.x -= width / 2;
+		tiles[i].max.y -= height / 2;
 	}
 }
 

@@ -109,10 +109,25 @@ REVISED TODO
 	-holds int of number of triangles (aka point at which to "insert")
 	-also holds either NDC min/max or world min/max. check what rasterize does again
 -add a buffer of TILEs [done]
--add a TILES setup function
+-add a TILES setup function [done]
 -add a RASTERIZE TILE PRIMITIVE function <- the biggie. the realllll biggie.
 	-needs to use a shared memory chunk
 	-needs to correctly compute index of tile and index of primitive within tile (yikes)
 	-needs to use atomics both in scanline portion and in writeback portion
 
 -add tiled fragment shading (shouldn't be hard)
+
+-so: according to http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0363d/CJAEEJCF.html,
+it's OKAY to serialize tiles?
+-where does this get us?
+	-so fully parallelizing (running all tiles at once) imroves occupancy but also leads to a lot of wasted threads
+	-but bottom line problem: a tile may be spread across multiple blocks if there's a lot of primitives
+	-in which case the tile's writeback is no better than normal writeback
+	-how to force a single tile into all shared memory? -> might not be possible
+	-unless the block is just really really huge and we run each tile individually
+	-but this constrains the number of polygons we can use
+
+-how about hybrid parallel/serial approach with parallelization per tile? <- THIS. THIS MAKES THE MOST SENSE
+	-each block gets one tile
+	-each thread processes primitives in serial, using atomics to write to the block memory
+	-entire output is written out to the frame buffer; no need for atomics here
