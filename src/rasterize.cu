@@ -655,7 +655,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 	Tile thisTile = dev_tiles[blockIdx.x];
 
 	if (blockIdx.x % 2) { // debug: draw tiles
-		bgColor *= 0.5f;
+		bgColor *= 1.1f;
 	}
 
 	if (thisTile.numPrimitives > 0) { // debug for checking tile binning
