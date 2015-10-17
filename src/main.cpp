@@ -119,8 +119,8 @@ bool init(obj *mesh) {
         return false;
     }
 
-    width = 160;
-    height = 160;
+    width = 176;
+    height = 176;
     window = glfwCreateWindow(width, height, "CIS 565 Pathtracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
@@ -179,8 +179,8 @@ bool init(obj *mesh) {
         // add some transformations
         glm::mat4 ID = glm::mat4();
         std::vector<glm::mat4> transformations;
-        //transformations.push_back(ID);
-		transformations.push_back(glm::translate(ID, glm::vec3(-0.4f, -0.5f, 0.05f)));
+        transformations.push_back(ID);
+		//transformations.push_back(glm::translate(ID, glm::vec3(-0.4f, -0.5f, 0.05f)));
         //transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
 		//transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
 		//	glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));

@@ -671,6 +671,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 		else break;
 	}
 	__syncthreads();
+
 	// parallel/serial scanline the primitives
 	numItemsPerThread = (thisTile.numPrimitives + blockDim.x - 1) / blockDim.x;
 	glm::vec3 v[3];
@@ -682,10 +683,11 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 	for (int i = startIdx; i < startIdx + numItemsPerThread; i++) {
 		if (i < thisTile.numPrimitives) {
 			int primitiveIndex = dev_primitiveIndices[thisTile.primitiveIndicesIndex + i];
+			Triangle thisTriangle = dev_primitives[primitiveIndex];
 			// get the AABB of the triangle
-			v[0] = dev_primitives[primitiveIndex].v[0].screenPos;
-			v[1] = dev_primitives[primitiveIndex].v[1].screenPos;
-			v[2] = dev_primitives[primitiveIndex].v[2].screenPos;
+			v[0] = thisTriangle.v[0].screenPos;
+			v[1] = thisTriangle.v[1].screenPos;
+			v[2] = thisTriangle.v[2].screenPos;
 
 			AABB triangleBB = getAABBForTriangle(v);
 			// convert to pixelized NDC
@@ -696,10 +698,18 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			int BBXmax = triangleBB.max.x * (w / 2) + 1;
 
 			// clip to this tile
-			if (BBYmin < thisTile.min.y) BBYmin = thisTile.min.y;
-			if (BBXmin < thisTile.min.x) BBXmin = thisTile.min.x;
-			if (BBYmax > thisTile.max.y) BBYmax = thisTile.max.y;
-			if (BBXmax > thisTile.max.x) BBXmax = thisTile.max.y;
+			if (BBYmin < thisTile.min.y) {
+				BBYmin = thisTile.min.y;
+			}
+			if (BBXmin < thisTile.min.x) {
+				BBXmin = thisTile.min.x;
+			}
+			if (BBYmax > thisTile.max.y) {
+				BBYmax = thisTile.max.y;
+			}
+			if (BBXmax > thisTile.max.x) {
+				BBXmax = thisTile.max.y;
+			}
 
 			// scan the AABB
 			for (int y = BBYmin; y < BBYmax; y++) {
@@ -726,28 +736,28 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 
 					if (zDepth == intDepths_block_data[fragIndexLocal]) {
 						// interpolate color from bary
-						glm::vec3 interpColor = dev_primitives[primitiveIndex].v[0].col * baryCoordinate[0];
-						interpColor += dev_primitives[primitiveIndex].v[1].col * baryCoordinate[1];
-						interpColor += dev_primitives[primitiveIndex].v[2].col * baryCoordinate[2];
+						glm::vec3 interpColor = thisTriangle.v[0].col * baryCoordinate[0];
+						interpColor += thisTriangle.v[1].col * baryCoordinate[1];
+						interpColor += thisTriangle.v[2].col * baryCoordinate[2];
 						fragsDepths_block_data[fragIndexLocal].color = interpColor;
 
 						// interpolate normal from bary
-						glm::vec3 interpNorm = dev_primitives[primitiveIndex].v[0].worldNor * baryCoordinate[0];
-						interpNorm += dev_primitives[primitiveIndex].v[1].worldNor * baryCoordinate[1];
-						interpNorm += dev_primitives[primitiveIndex].v[2].worldNor * baryCoordinate[2];
+						glm::vec3 interpNorm = thisTriangle.v[0].worldNor * baryCoordinate[0];
+						interpNorm += thisTriangle.v[1].worldNor * baryCoordinate[1];
+						interpNorm += thisTriangle.v[2].worldNor * baryCoordinate[2];
 						fragsDepths_block_data[fragIndexLocal].worldNorm = interpNorm;
 
 						// interpolate world position from bary
-						glm::vec3 interpWorld = dev_primitives[primitiveIndex].v[0].worldPos * baryCoordinate[0];
-						interpWorld += dev_primitives[primitiveIndex].v[1].worldPos * baryCoordinate[1];
-						interpWorld += dev_primitives[primitiveIndex].v[2].worldPos * baryCoordinate[2];
+						glm::vec3 interpWorld = thisTriangle.v[0].worldPos * baryCoordinate[0];
+						interpWorld += thisTriangle.v[1].worldPos * baryCoordinate[1];
+						interpWorld += thisTriangle.v[2].worldPos * baryCoordinate[2];
 						fragsDepths_block_data[fragIndexLocal].worldPos = interpWorld;
 					}
 				}
 			}
 		}
 		else break;
-	}
+	} */
 	numItemsPerThread = (TILESIZESQUARED + blockDim.x - 1) / blockDim.x;
 	startIdx = threadIdx.x * numItemsPerThread;
 	__syncthreads();
@@ -763,8 +773,11 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			// I've flipped the drawing system, so now it assumes 0,0 is in the bottom left.
 			int x = (i % TILESIZE) + thisTile.min.x;
 			int y = (i / TILESIZE) + thisTile.min.y;
-			int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
+			int fragIndex = (x + (w / 2)) + ((y + (h / 2)) * w);
 			dev_fragsDepths[fragIndex] = fragsDepths_block_data[i];
+			//Fragment debugFrag1 = fragsDepths_block_data[i]; // debug
+			//Fragment debugFrag2 = dev_fragsDepths[fragIndex]; // debug
+			//int c = x + y; // debug
 		}
 		else break;
 	}
@@ -845,7 +858,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	dim3 blockCount1d_transformations((numInstances + sideLength1d - 1) / sideLength1d);
 
 	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
-	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
+	glm::vec3 bgColor = glm::vec3(0.5f, 0.5f, 0.5f);
 	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
 	int depth = UINT16_MAX; // really should get this from cam params somehow
 
@@ -930,7 +943,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 
 		// 6) rasterize and depth test using tiling
 
-		dim3 blockSize1dTile(16 * 16);
+		dim3 blockSize1dTile(TILESIZESQUARED);
 		dim3 blockCountTile(tilesTall * tilesWide);
 		tileScanline << <blockCountTile, blockSize1dTile >> >(tilesTall * tilesWide, dev_tileBuffer,
 			(bufIdxSize / 3) * numInstances, dev_primitives, dev_depthbuffer,
@@ -1061,7 +1074,7 @@ void rasterizeFree() {
 	cudaFree(dev_framebuffer);
 	dev_framebuffer = NULL;
 
-	cudaFree(dev_tfVertex); // transformed (tesselated?) vertices
+	cudaFree(dev_tfVertex); // transformed vertices
 	dev_tfVertex = NULL;
 
 	cudaFree(dev_primitives); // primitives of transformed verts
