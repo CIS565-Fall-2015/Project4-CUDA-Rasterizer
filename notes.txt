@@ -92,4 +92,27 @@ TODO:
 	-each block however can only assess one tile. that's the whole point of using shared memory.
 	-possible to resolve blocks that end up with primitives spread across tiles, but ruins the point.
 		-this requires thrasing global memory all over again for threads that aren't in the "current tile"
-		
+	-buuuuuut wait. maybe this is only a problem if we do a stream compaction run!
+	-otherwise, primitives can be buffered apart by threads that don't do anything!
+	-potentially lots of wasted threads, but it should work without having to thrash global framebuffer!
+	-so when we allocate list for each tile, must allocate a multiple of block size.
+	-well. or we could handle this in indexing. probably better that way.
+	-theoretically similar to serializing though
+		-low occupancy in serializing a result of not a lot of prims case, though
+		-so this should perform better in case of, say, few prims at a large screen size
+		-and should perform similarly in other cases, b/c effectively serialized by thread controller
+
+REVISED TODO
+-add a define for shared memory size. [done]
+-add a struct for TILE [done]
+	-holds pointer to a list of triangle indices. I suspect copying these over isn't going ot help
+	-holds int of number of triangles (aka point at which to "insert")
+	-also holds either NDC min/max or world min/max. check what rasterize does again
+-add a buffer of TILEs [done]
+-add a TILES setup function
+-add a RASTERIZE TILE PRIMITIVE function <- the biggie. the realllll biggie.
+	-needs to use a shared memory chunk
+	-needs to correctly compute index of tile and index of primitive within tile (yikes)
+	-needs to use atomics both in scanline portion and in writeback portion
+
+-add tiled fragment shading (shouldn't be hard)

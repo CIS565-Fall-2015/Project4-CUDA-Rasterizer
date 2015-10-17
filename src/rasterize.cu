@@ -6,8 +6,8 @@
 * @copyright University of Pennsylvania & STUDENT
 */
 
-#define TILESIZE = 16;
-#define TILESIZESQUARED = 256;
+#define TILESIZE 16
+#define TILESIZESQUARED 256
 
 #include "rasterize.h"
 
@@ -61,8 +61,9 @@ struct Light {
 
 struct Tile {
 	int primitiveIndicesIndex = -1;
-	glm::ivec2 bbMin;
-	glm::ivec2 bbMax;
+	int numPrimitives = 0;
+	glm::ivec2 min;
+	glm::ivec2 max;
 };
 
 static int width = 0;
@@ -89,9 +90,11 @@ static FragmentAA *dev_depthbufferAA = NULL; // stores MSAA fragments
 static unsigned int *dev_intDepthsAA = NULL; // stores depths of MSAA subfragments
 
 // tiling stuff
-static Tile dev_tileBuffer = NULL;
+static Tile *dev_tileBuffer = NULL;
 static int numTiles = 0;
-static int *dev_primitiveIndicesBuffer = NULL;
+// a GIANT list of primitives.
+// basically a concatenation of each tile's list of primitives
+static int *dev_tiling_primitiveIndicesBuffer = NULL;
 
 /**
 * Add Lights
@@ -721,13 +724,39 @@ void setupInstances(std::vector<glm::mat4> &modelTransform) {
 	cudaMalloc(&dev_primitives, numInstances * bufIdxSize / 3 * sizeof(Triangle));
 }
 
+
+/**
+* For setting up individual tile data in the structs.
+*
+*/
+__global__ void setupIndividualTile(Tile *tiles, int numTilesWide,
+	int numTilesTall, int numPrimitives, int width, int height) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < numTilesWide * numTilesTall) {
+		// set up the two indices that tell us all we need to know about this tile's primitive list
+		tiles[i].numPrimitives = 0;
+		tiles[i].primitiveIndicesIndex = i * numPrimitives;
+		// set up the tile's coordinates
+		// first, figure out which tile this is.
+		// 10 11 12 13 14
+		// 5  6  7  8  9
+		// 0  1  2  3  4 -> w:5, h:3
+		int y = i / numTilesWide;
+		int x = i % numTilesWide;
+		tiles[i].min.x = x * TILESIZE;
+		tiles[i].min.y = y * TILESIZE;
+		tiles[i].max.x = x * TILESIZE + TILESIZE - 1;
+		tiles[i].max.y = y * TILESIZE + TILESIZE - 1;
+	}
+}
+
 /**
 * Called once per vertex/primitive/etc buffer change.
 * - allocate space for the Tile buffer
 * - for each Tile, allocate space for a list of primitives
 */
 void setupTiling() {
-	// compute number of tiles. aim to overshoot the screen
+	// compute number of tiles. aim to overshoot the screen if necessary
 	int tilesWide = (width + TILESIZE - 1) / TILESIZE;
 	int tilesTall = (height + TILESIZE - 1) / TILESIZE;
 
@@ -735,9 +764,15 @@ void setupTiling() {
 	dev_tileBuffer = NULL;
 	cudaMalloc(&dev_tileBuffer, sizeof(Tile) * tilesWide * tilesTall);
 
-	cudaFree(dev_primitiveIndicesBuffer);
-	dev_primitiveIndicesBuffer = NULL;
-	cudaMalloc(&dev_primitiveIndicesBuffer, sizeof(int) * tilesWide * tilesTall);
+	cudaFree(dev_tiling_primitiveIndicesBuffer);
+	dev_tiling_primitiveIndicesBuffer = NULL;
+	cudaMalloc(&dev_tiling_primitiveIndicesBuffer, sizeof(int) * tilesWide * tilesTall);
+
+	int sideLength1d = 16;
+	dim3 blockSize1d(sideLength1d);
+	dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
+	setupIndividualTile <<<blockCount1d_tiles, blockSize1d>>>(dev_tileBuffer, tilesWide,
+		tilesTall, (bufIdxSize / 3) * numInstances, width, height);
 }
 
 
@@ -787,8 +822,8 @@ void rasterizeFree() {
 	cudaFree(dev_tileBuffer);
 	dev_tileBuffer = NULL;
 
-	cudaFree(dev_primitiveIndicesBuffer);
-	dev_primitiveIndicesBuffer = NULL;
+	cudaFree(dev_tiling_primitiveIndicesBuffer);
+	dev_tiling_primitiveIndicesBuffer = NULL;
 
 	checkCUDAError("rasterizeFree");
 }
