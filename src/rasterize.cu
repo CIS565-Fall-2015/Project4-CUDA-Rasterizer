@@ -91,10 +91,14 @@ static unsigned int *dev_intDepthsAA = NULL; // stores depths of MSAA subfragmen
 
 // tiling stuff
 static Tile *dev_tileBuffer = NULL;
-static int numTiles = 0;
-// a GIANT list of primitives.
+static bool tiling = false;
+static int tilesTall;
+static int tilesWide;
+// a GIANT list of primitive indexes.
 // basically a concatenation of each tile's list of primitives
 static int *dev_tiling_primitiveIndicesBuffer = NULL;
+
+
 
 /**
 * Add Lights
@@ -622,119 +626,6 @@ __global__ void fragmentShaderFSAA(int numFrags, FragmentAA *dev_fragsDepthsAA,
 }
 
 /**
-* Perform rasterization.
-*/
-void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
-	int sideLength2d = 8;
-	dim3 blockSize2d(sideLength2d, sideLength2d);
-	dim3 blockCount2d_pix((width + blockSize2d.x - 1) / blockSize2d.x,
-		(height + blockSize2d.y - 1) / blockSize2d.y);
-
-	int sideLength1d = 16;
-	dim3 blockSize1d(sideLength1d);
-	dim3 blockCount1d_pix((width * height + sideLength1d - 1) / sideLength1d);
-
-	dim3 blockCount1d_vertices((vertCount * numInstances + sideLength1d - 1) / sideLength1d);
-	dim3 blockCount1d_primitives(((bufIdxSize / 3) * numInstances + sideLength1d - 1) / sideLength1d);
-	dim3 blockCount1d_transformations((numInstances + sideLength1d - 1) / sideLength1d);
-
-	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
-	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
-	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
-	
-	if (antialiasing) {
-		clearDepthBufferAA << <blockCount1d_pix, blockSize1d >> >(width * height,
-			bgColor, defaultNorm, dev_depthbufferAA);
-	}
-	else {
-		clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height,
-			bgColor, defaultNorm, dev_depthbuffer);
-	}
-
-	int depth = UINT16_MAX; // really should get this from cam params somehow
-	cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
-	if (antialiasing) { // clear the depths grid for antialiasing
-		cudaMemset(dev_intDepthsAA, depth, width * height * sizeof(int) * 5);
-	}
-
-	// 2) transform all the vertex tfs with the camera matrix
-	computeVertexTFs <<<blockCount1d_transformations, blockSize1d>>>(numInstances,
-		dev_vertexTransforms, dev_modelTransforms, cameraMatrix);
-
-	// 3) vertex shading -> generates numInstances * vertCout screen space vertices
-	vertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, numInstances,
-		dev_vertexTransforms, dev_bufVertex, dev_tfVertex);
-
-	int numPrimitivesTotal = (bufIdxSize / 3) * numInstances;
-
-	// 4) primitive assembly -> generates numInstances * numPrimitives screen space triangles
-	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, 
-		vertCount, numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
-
-	if (antialiasing) {
-		// 5) rasterize and depth test
-		scanlineRasterizationAA << <blockCount1d_primitives, blockSize1d >> >(
-			width, height, numPrimitivesTotal, dev_primitives, dev_depthbufferAA,
-			dev_intDepthsAA);
-
-		// 6) fragment shade
-		fragmentShaderMSAA << <blockCount1d_pix, blockSize1d >> >(width * height,
-			dev_depthbufferAA, numLights, dev_lights);
-
-		// 7) Copy depthbuffer colors into framebuffer
-		renderAA << <blockCount2d_pix, blockSize2d >> >(width, height,
-			dev_depthbufferAA, dev_framebuffer);
-	}
-	else {
-		// 5) rasterize and depth test
-		scanlineRasterization << <blockCount1d_primitives, blockSize1d >> >(width, height,
-			numPrimitivesTotal, dev_primitives, dev_depthbuffer, dev_intDepths);
-
-		// 6) fragment shade
-		fragmentShader << <blockCount1d_pix, blockSize1d >> >(width * height, dev_depthbuffer, numLights, dev_lights);
-
-		// 7) Copy depthbuffer colors into framebuffer
-		render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
-	}
-	// Copy framebuffer into OpenGL buffer for OpenGL previewing
-	sendImageToPBO << <blockCount2d_pix, blockSize2d >> >(pbo, width, height, dev_framebuffer);
-	checkCUDAError("rasterize");
-}
-
-/**
-* Called once per change of instancing... situation.
-* - allocate space for and upload the matrices
-* - allocate space for the new tf vertices on the device
-* - set the number of instances
-*/
-void setupInstances(std::vector<glm::mat4> &modelTransform) {
-	numInstances = modelTransform.size();
-
-	cudaFree(dev_modelTransforms);
-	cudaMalloc(&dev_modelTransforms, numInstances * sizeof(glm::mat4));
-	cudaMemcpy(dev_modelTransforms, modelTransform.data(),
-		numInstances * sizeof(glm::mat4), cudaMemcpyHostToDevice);
-
-	cudaFree(dev_vertexTransforms);
-	cudaMalloc(&dev_vertexTransforms, numInstances * sizeof(glm::mat4));
-
-	cudaFree(dev_tfVertex);
-	cudaMalloc(&dev_tfVertex, numInstances * vertCount * sizeof(VertexOut));
-
-	cudaFree(dev_primitives); // primitives of transformed verts
-	cudaMalloc(&dev_primitives, numInstances * bufIdxSize / 3 * sizeof(Triangle));
-}
-
-__device__ bool checkBB(glm::vec3 coordinate, glm::ivec2 min, glm::ivec2 max,
-	int width, int height) {
-	glm::ivec2 pixCoordinate;
-	pixCoordinate.x = coordinate.x * width / 2 + width;
-	pixCoordinate.y = coordinate.y * height / 2 + height;
-	return (min.x <= pixCoordinate.x && pixCoordinate.x <= max.x &&
-		min.y <= pixCoordinate.y && pixCoordinate.y <= max.y);
-}
-
-/**
 * Perform the scanline operation on all the primitives in a tile.
 * The goal is to have each block get a "tile" of the framebuffer,
 * so this is parallelized so that each block gets one tile.
@@ -765,6 +656,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			fragsDepths_block_data[i].color = bgColor;
 			fragsDepths_block_data[i].worldNorm = defaultNorm;
 		}
+		else break;
 	}
 	__syncthreads();
 	// parallel/serial scanline the primitives
@@ -782,7 +674,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 
 			AABB triangleBB = getAABBForTriangle(v);
 
-			// convert to pixel coordinates
+			// convert to pixelized NDC
 			float pixWidth = 2.0f / (float)w; // NDC goes from -1 to 1 in x and y
 			float pixHeight = 2.0f / (float)h;
 
@@ -819,6 +711,7 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 				}
 			}
 		}
+		else break;
 	}
 	numItemsPerThread = (TILESIZESQUARED + blockDim.x - 1) / blockDim.x;
 	if (numItemsPerThread < 1) numItemsPerThread = 1;
@@ -839,9 +732,18 @@ __global__ void tileScanline(int numTiles, Tile *dev_tiles, int numPrimitives,
 			int fragIndex = (x + (w / 2) - 1) + ((y + (h / 2) - 1) * w);
 			dev_fragsDepths[fragIndex] = fragsDepths_block_data[i];
 		}
+		else break;
 	}
 }
 
+__device__ bool checkBB(glm::vec3 coordinate, glm::ivec2 min, glm::ivec2 max,
+	int width, int height) {
+	glm::ivec2 pixCoordinate;
+	pixCoordinate.x = coordinate.x * width / 2;
+	pixCoordinate.y = coordinate.y * height / 2;
+	return (min.x <= pixCoordinate.x && pixCoordinate.x <= max.x &&
+		min.y <= pixCoordinate.y && pixCoordinate.y <= max.y);
+}
 
 /**
 * Bin the primitives. parallelized per tile to avoid race conditions for now.
@@ -854,11 +756,11 @@ __global__ void binPrimitives(int numTiles, Tile *tiles, int numPrimitives,
 		for (int j = 0; j < numPrimitives; j++) {
 			// bin the prim. check for each vertex if it's inside the tile
 			if (checkBB(dev_primitives[j].v[0].screenPos,
-					tiles[i].min, tiles[i].max, width, height) ||
+				tiles[i].min, tiles[i].max, width, height) ||
 				checkBB(dev_primitives[j].v[1].screenPos,
-					tiles[i].min, tiles[i].max, width, height) ||
+				tiles[i].min, tiles[i].max, width, height) ||
 				checkBB(dev_primitives[j].v[2].screenPos,
-					tiles[i].min, tiles[i].max, width, height)) {
+				tiles[i].min, tiles[i].max, width, height)) {
 				int tilePrimitiveBinIndex = tiles[i].primitiveIndicesIndex +
 					tiles[i].numPrimitives;
 				tilePrimitiveBin[tilePrimitiveBinIndex] = j;
@@ -866,6 +768,135 @@ __global__ void binPrimitives(int numTiles, Tile *tiles, int numPrimitives,
 			}
 		}
 	}
+}
+
+
+/**
+* Perform rasterization.
+*/
+void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
+	int sideLength2d = 8;
+	dim3 blockSize2d(sideLength2d, sideLength2d);
+	dim3 blockCount2d_pix((width + blockSize2d.x - 1) / blockSize2d.x,
+		(height + blockSize2d.y - 1) / blockSize2d.y);
+
+	int sideLength1d = 16;
+	dim3 blockSize1d(sideLength1d);
+	dim3 blockCount1d_pix((width * height + sideLength1d - 1) / sideLength1d);
+
+	dim3 blockCount1d_vertices((vertCount * numInstances + sideLength1d - 1) / sideLength1d);
+	dim3 blockCount1d_primitives(((bufIdxSize / 3) * numInstances + sideLength1d - 1) / sideLength1d);
+	dim3 blockCount1d_transformations((numInstances + sideLength1d - 1) / sideLength1d);
+
+	// 1) clear depth buffer - should be able to pass in color, clear depth, etc.
+	glm::vec3 bgColor = glm::vec3(0.1f, 0.1f, 0.1f);
+	glm::vec3 defaultNorm = glm::vec3(0.0f, 0.0f, 0.0f);
+	int depth = UINT16_MAX; // really should get this from cam params somehow
+
+	if (!tiling) {
+		if (antialiasing) {
+			clearDepthBufferAA << <blockCount1d_pix, blockSize1d >> >(width * height,
+				bgColor, defaultNorm, dev_depthbufferAA);
+		}
+		else {
+			clearDepthBuffer << <blockCount1d_pix, blockSize1d >> >(width * height,
+				bgColor, defaultNorm, dev_depthbuffer);
+		}
+
+		cudaMemset(dev_intDepths, depth, width * height * sizeof(int)); // clear the depths grid
+		if (antialiasing) { // clear the depths grid for antialiasing
+			cudaMemset(dev_intDepthsAA, depth, width * height * sizeof(int) * 5);
+		}
+	}
+
+	// 2) transform all the vertex tfs with the camera matrix
+	computeVertexTFs <<<blockCount1d_transformations, blockSize1d>>>(numInstances,
+		dev_vertexTransforms, dev_modelTransforms, cameraMatrix);
+
+	// 3) vertex shading -> generates numInstances * vertCout screen space vertices
+	vertexShader <<<blockCount1d_vertices, blockSize1d>>>(vertCount, numInstances,
+		dev_vertexTransforms, dev_bufVertex, dev_tfVertex);
+
+	int numPrimitivesTotal = (bufIdxSize / 3) * numInstances;
+
+	// 4) primitive assembly -> generates numInstances * numPrimitives screen space triangles
+	primitiveAssembly << <blockCount1d_primitives, blockSize1d >> >(bufIdxSize / 3, 
+		vertCount, numInstances, dev_bufIdx, dev_tfVertex, dev_primitives);
+
+	if (antialiasing && !tiling) {
+		// 5) rasterize and depth test
+		scanlineRasterizationAA << <blockCount1d_primitives, blockSize1d >> >(
+			width, height, numPrimitivesTotal, dev_primitives, dev_depthbufferAA,
+			dev_intDepthsAA);
+
+		// 6) fragment shade
+		fragmentShaderMSAA << <blockCount1d_pix, blockSize1d >> >(width * height,
+			dev_depthbufferAA, numLights, dev_lights);
+
+		// 7) Copy depthbuffer colors into framebuffer
+		renderAA << <blockCount2d_pix, blockSize2d >> >(width, height,
+			dev_depthbufferAA, dev_framebuffer);
+	}
+	else if (!tiling) {
+		// 5) rasterize and depth test
+		scanlineRasterization << <blockCount1d_primitives, blockSize1d >> >(width, height,
+			numPrimitivesTotal, dev_primitives, dev_depthbuffer, dev_intDepths);
+
+		// 6) fragment shade
+		fragmentShader << <blockCount1d_pix, blockSize1d >> >(width * height, dev_depthbuffer, numLights, dev_lights);
+
+		// 7) Copy depthbuffer colors into framebuffer
+		render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+	}
+	else {
+		// 5) bin the primitives
+		dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
+
+		binPrimitives << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide,
+			dev_tileBuffer, (bufIdxSize / 3) * numInstances, dev_primitives, width, height,
+			dev_tiling_primitiveIndicesBuffer);
+
+		// 6) rasterize and depth test using tiling
+		dim3 blockSize1dTile(16 * 16);
+		dim3 blockCountTile(tilesTall * tilesWide);
+		tileScanline << <blockCountTile, blockSize1dTile >> >(tilesTall * tilesWide, dev_tileBuffer,
+			(bufIdxSize / 3) * numInstances, dev_primitives, dev_depthbuffer,
+			dev_tiling_primitiveIndicesBuffer,
+			depth, bgColor, defaultNorm, width, height);
+
+		// 7) fragment shade
+		fragmentShader << <blockCount1d_pix, blockSize1d >> >(width * height, dev_depthbuffer, numLights, dev_lights);
+
+		// 8) Copy depthbuffer colors into framebuffer
+		render << <blockCount2d_pix, blockSize2d >> >(width, height, dev_depthbuffer, dev_framebuffer);
+	}
+	// Copy framebuffer into OpenGL buffer for OpenGL previewing
+	sendImageToPBO << <blockCount2d_pix, blockSize2d >> >(pbo, width, height, dev_framebuffer);
+	checkCUDAError("rasterize");
+}
+
+/**
+* Called once per change of instancing... situation.
+* - allocate space for and upload the matrices
+* - allocate space for the new tf vertices on the device
+* - set the number of instances
+*/
+void setupInstances(std::vector<glm::mat4> &modelTransform) {
+	numInstances = modelTransform.size();
+
+	cudaFree(dev_modelTransforms);
+	cudaMalloc(&dev_modelTransforms, numInstances * sizeof(glm::mat4));
+	cudaMemcpy(dev_modelTransforms, modelTransform.data(),
+		numInstances * sizeof(glm::mat4), cudaMemcpyHostToDevice);
+
+	cudaFree(dev_vertexTransforms);
+	cudaMalloc(&dev_vertexTransforms, numInstances * sizeof(glm::mat4));
+
+	cudaFree(dev_tfVertex);
+	cudaMalloc(&dev_tfVertex, numInstances * vertCount * sizeof(VertexOut));
+
+	cudaFree(dev_primitives); // primitives of transformed verts
+	cudaMalloc(&dev_primitives, numInstances * bufIdxSize / 3 * sizeof(Triangle));
 }
 
 /**
@@ -895,6 +926,13 @@ __global__ void setupIndividualTile(Tile *tiles, int numTilesWide,
 		tiles[i].min.y -= height / 2;
 		tiles[i].max.x -= width / 2;
 		tiles[i].max.y -= height / 2;
+
+		//int xMin = tiles[i].min.x;
+		//int yMin = tiles[i].min.y;
+		//int xMax = tiles[i].max.x;
+		//int yMax = tiles[i].max.y;
+		//
+		//int debug = 0;
 	}
 }
 
@@ -904,9 +942,10 @@ __global__ void setupIndividualTile(Tile *tiles, int numTilesWide,
 * - for each Tile, allocate space for a list of primitives
 */
 void setupTiling() {
+	tiling = true;
 	// compute number of tiles. aim to overshoot the screen if necessary
-	int tilesWide = (width + TILESIZE - 1) / TILESIZE;
-	int tilesTall = (height + TILESIZE - 1) / TILESIZE;
+	tilesWide = (width + TILESIZE - 1) / TILESIZE;
+	tilesTall = (height + TILESIZE - 1) / TILESIZE;
 
 	cudaFree(dev_tileBuffer);
 	dev_tileBuffer = NULL;
@@ -923,7 +962,6 @@ void setupTiling() {
 	setupIndividualTile <<<blockCount1d_tiles, blockSize1d>>>(dev_tileBuffer,
 		tilesWide, tilesTall, (bufIdxSize / 3) * numInstances, width, height);
 }
-
 
 /**
 * Called once at the end of the program to free CUDA memory.

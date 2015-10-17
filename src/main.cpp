@@ -184,6 +184,12 @@ bool init(obj *mesh) {
 		transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
 			glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
         setupInstances(transformations);
+
+		// set up tiling!
+		setupTiling();
+
+		// anti aliasing toggle
+		//enableAA();
 	}
 
     GLuint passthroughProgram;
@@ -220,8 +226,6 @@ void initCuda() {
     if (RUN_MIN) minRasterizeInit(width, height);
 	else {
 		rasterizeInit(width, height);
-		enableAA();
-		setupTiling();
 	}
 
     // Clean up on program exit
