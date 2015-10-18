@@ -8,7 +8,7 @@ CUDA Rasterizer
 
 ![](img/AAAAAAAAAAAAAAA.png)
 
-This repository contains a basic rasterization pipeline written in CUDA. This pipeline has the following rough stages, as seen in the rasterize() function in [src/rasterize.cu#L856](rasterize.cu):
+This repository contains a basic rasterization pipeline written in CUDA. This pipeline has the following rough stages, as seen in the rasterize() function in [rasterize.cu](src/rasterize.cu#L856):
 * clear the fragment/depth buffer
 * multiply all scenegraph transformation matrices by the view/projection matrix
 * shade vertices
@@ -20,10 +20,10 @@ This repository contains a basic rasterization pipeline written in CUDA. This pi
 This pipeline also supports instancing, anti-aliasing, and tile based rasterization. Enabling anti-aliasing and tile rasterization cause some notable changes to the pipeline, which will be explained below.
 
 *Places to Tweak*
-Most configurable settings are in [src/main.cpp](main.cpp), which handles sending delivering buffers of vertices, normals, indices, and matrices to the rasterizer. The [src/main.cpp#L16](top) of the file contains some variables that can be used to control the camera's starting state. Camera controls are spherical. The camera can also be controlled using the keyboard. The left, right, up and down arrow keys rotate the "sphere" of the camera, while the z and x keys control the "radius." Field of view can also be changed with f and g but may be unpredictable.
-[src/main.cpp#L199](Line 199), if uncommented, activates tiled rendering.
-[src/main.cpp$L202](Line 202) similarly toggles anti aliasing.
-Adding modeling transformations to the [src/main.cpp#L181](transformations) vector allows adding additional instances.
+Most configurable settings are in [main.cpp](src/main.cpp), which handles sending delivering buffers of vertices, normals, indices, and matrices to the rasterizer. The [top](src/main.cpp#L16) of the file contains some variables that can be used to control the camera's starting state. Camera controls are spherical. The camera can also be controlled using the keyboard. The left, right, up and down arrow keys rotate the "sphere" of the camera, while the z and x keys control the "radius." Field of view can also be changed with f and g but may be unpredictable.
+[Line 199](src/main.cpp#L199), if uncommented, activates tiled rendering.
+[Line 202](src/main.cpp#L202) similarly toggles anti aliasing.
+Adding modeling transformations to the [transformations vector](src/main.cpp#L181) allows adding additional instances.
 Changing [src/rasterize.cpp#L912] from MSAA to FSAA will switch between multisample and full screen antialiasing.
 
 *Instancing*
@@ -31,7 +31,7 @@ Changing [src/rasterize.cpp#L912] from MSAA to FSAA will switch between multisam
 
 Instancing allows "drawing" one model (one set of vertices, indices, and normals - this rasterizer only supports rendering one model at a time) multiple times in a scene with different transformations. This rasterizer implements instancing by keeping a larger buffer for primitives and transformed vertices. The point of instancing isn't to increase performance on the GPU (the GPU is still drawing all the triangles) but to decrease the bandwidth consumption when preparing a scene by reducing the amount of data that needs to be sent from the host to the device. This improvement is demonstrated by the following charts:
 
-![](img/charts/instancing/stack_comparison).png)
+![](img/charts/instancing/stack_comparison.png)
 
 ![](img/charts/instancing/single_cow.png) ![](img/charts/instancing/many_cows_host.png) ![](img/charts/instancing/many_cows_instanced.png)
 
