@@ -1,0 +1,5 @@
+"";"clear tiles/fragment buffer";"compute vertex transforms";"vertex shade";"primitive assembly";"bin primitives (tiling only)";"scanline rasterization"
+"cow";"407.724";"2.790";"33.997";"48.961";"0.0";"2803.701"
+"cow (tiled)";"5.793";"3.970";"33.211";"47.463";"4982.626";"1772.194"
+"zoomed cube";"409.288";"2.0768";"4.691";"10.299";"0.0";"56579.231"
+"zoomed cube (tiled)";"5.854";"3.952";"4.701";"10.212";"18.913";"1546.637"

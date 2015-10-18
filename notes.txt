@@ -140,4 +140,8 @@ TODO README:
 		-cows scene
 		-zoomed in cube scene
 
-ANALYSIS - INSTANCING
+ANALYSIS - INSTANCING (no AA)
+-single cow: 5804 triangles, 2903 vertices	
+-6 cows: 34824 triangles, 17418 verts
+-single cow, host multicow, and device multicow all run at 60 fps
+-cube scene: on the range of 18 fps untiled

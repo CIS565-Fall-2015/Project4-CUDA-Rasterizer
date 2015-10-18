@@ -1,0 +1,4 @@
+"";"scanline rasterization";"fragment shading";"render to frame buffer"
+"no antialiasing";"2799.816";"277.787";"284.307"
+"FSAA";"13887.599";"2159.613";"2985.455"
+"MSAA";"13910.298";"1142.535";"2883.819"

@@ -908,7 +908,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 			width, height, numPrimitivesTotal, dev_primitives, dev_depthbufferAA,
 			dev_intDepthsAA);
 
-		// 6) fragment shade
+		// 6) fragment shade - toggle between MSAA and FSAA by changing one little letter
 		fragmentShaderMSAA << <blockCount1d_pix, blockSize1d >> >(width * height,
 			dev_depthbufferAA, numLights, dev_lights);
 

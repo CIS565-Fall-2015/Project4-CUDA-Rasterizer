@@ -1,0 +1,7 @@
+"clearDepthBuffer";"407.638";"#ff6633";"0"
+"computeVertexTFs";"2.751";"#99ff66";"0"
+"vertexShader";"34.2";"#ccaa00";"0"
+"primitiveAssembly";"49.181";"#aa99cc";"0"
+"scanlineRasterization";"1847.084";"#33aa66";"0"
+"fragmentShader";"236.989";"#aaff33";"0"
+"host -> device memcpy";"60.225";"#ff9933";"0"

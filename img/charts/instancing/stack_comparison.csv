@@ -1,0 +1,4 @@
+"";"clearDepthBuffer";"computeVertexTFs";"vertexShader";"primitiveAssembly";"scanlineRasterization";"fragmentShader";"host -> device memcpy"
+"SIngle Cow";"407.638";"2.751";"34.2";"49.181";"1847.084";"236.989";"60.225"
+"Geometry Cows";"408.746";"2.75";"186.007";"1053.543";"1355.387";"249.116";"2899.678"
+"Instanced Cows";"407.226";"2.795";"160.891";"1044.682";"1481.845";"256.672";"50.192"

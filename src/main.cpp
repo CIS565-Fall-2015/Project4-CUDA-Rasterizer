@@ -13,9 +13,9 @@
 //-------------MAIN--------------
 //-------------------------------
 
-float theta = 0.78539816339f;// 1.57079632679f;
-float phi = 0.0f;//2.35619449019f;
-float zoom = 2.0f;
+float theta = 0.58539816339f;// 1.57079632679f;
+float phi = 0.65f;//2.35619449019f;
+float zoom = 5.0f;
 float fovy = 0.785398f;
 glm::mat4 camMatrix;
 
@@ -199,7 +199,7 @@ bool init(obj *mesh) {
 		//setupTiling();
 
 		// anti aliasing toggle
-		//enableAA();
+		enableAA();
 	}
 
     GLuint passthroughProgram;
