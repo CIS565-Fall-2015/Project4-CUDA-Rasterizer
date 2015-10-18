@@ -859,7 +859,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	dim3 blockCount2d_pix((width + blockSize2d.x - 1) / blockSize2d.x,
 		(height + blockSize2d.y - 1) / blockSize2d.y);
 
-	int sideLength1d = 16;
+	int sideLength1d = 64;
 	dim3 blockSize1d(sideLength1d);
 	dim3 blockCount1d_pix((width * height + sideLength1d - 1) / sideLength1d);
 
@@ -930,11 +930,10 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	else {
 		// 5) clear and re-bin the primitives
 		dim3 blockCountTile(tilesTall * tilesWide);
-		dim3 blockSizeTile(TILESIZESQUARED);
 
-		clearTile << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide, dev_tileBuffer);
+		clearTile << <blockCountTile, blockSize1d >> >(tilesTall * tilesWide, dev_tileBuffer);
 
-		binPrimitives << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide,
+		binPrimitives << <blockCountTile, blockSize1d >> >(tilesTall * tilesWide,
 			dev_tileBuffer, (bufIdxSize / 3) * numInstances, dev_primitives, width, height,
 			dev_tiling_primitiveIndicesBuffer);
 		//checkCUDAError("binning"); // debug
@@ -956,7 +955,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 
 		// 6) rasterize and depth test using tiling
 
-		tileScanline << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide, dev_tileBuffer,
+		tileScanline << <blockCountTile, blockSize1d >> >(tilesTall * tilesWide, dev_tileBuffer,
 			(bufIdxSize / 3) * numInstances, dev_primitives, dev_depthbuffer,
 			dev_tiling_primitiveIndicesBuffer,
 			depth, bgColor, defaultNorm, width, height);

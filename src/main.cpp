@@ -180,14 +180,23 @@ bool init(obj *mesh) {
         glm::mat4 ID = glm::mat4();
         std::vector<glm::mat4> transformations;
         transformations.push_back(ID);
+		
+		
+		// having more than one TF leads to instancing
+		transformations.push_back(glm::translate(ID, glm::vec3(0.7f, 0.0f, 0.2f)));
 		transformations.push_back(glm::translate(ID, glm::vec3(-0.4f, -0.5f, 0.05f)));
-        //transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
-		//transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
-		//	glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
+        transformations.push_back(glm::translate(ID, glm::vec3(1.0f, 0.0f, 0.0f)));
+
+		transformations.push_back(glm::translate(ID, glm::vec3(-1.0f, 0.0f, 0.0f)) * 
+			glm::scale(ID, glm::vec3(2.0f, 2.0f, 2.0f)));
+		transformations.push_back(glm::translate(ID, glm::vec3(0.0f, -0.2f, 0.5f)) *
+			glm::rotate(ID, 2.0f, glm::vec3(1.0f, 1.0f, 1.0f)));
+		
+
         setupInstances(transformations);
 
 		// set up tiling!
-		setupTiling();
+		//setupTiling();
 
 		// anti aliasing toggle
 		//enableAA();
@@ -340,7 +349,6 @@ void errorCallback(int error, const char *description) {
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	if (action == GLFW_PRESS) {
-		//printf("theta %f phi %f zoom %f fovy %f\n", theta, phi, zoom, fovy);
 		switch (key) {
 		case GLFW_KEY_ESCAPE:
 			glfwSetWindowShouldClose(window, GL_TRUE);
@@ -400,35 +408,13 @@ void computeCameraMatrix() {
 	cameraPos.x = zoom * sin(phi) * sin(theta);
 	cameraPos.y = zoom * cos(theta);
 	cameraPos.z = zoom * cos(phi) * sin(theta);
-	//cout << "camera pos is " << cameraPos[0] << " " << cameraPos[1] << " " << cameraPos[2] << endl;
     // view matrix
     glm::mat4 view = glm::lookAt(
 		cameraPos, // Camera position in World Space
-        glm::vec3(0, 0, 0), // camera lookAt
+        glm::vec3(0, 0.2, 0), // camera lookAt
         glm::vec3(0, 1, 0)  // Head is up
         );
-	//cout << projection[0][0] << " " << projection[1][0] << " " << projection[2][0] << " " << projection[3][0] << endl;
-	//cout << projection[0][1] << " " << projection[1][1] << " " << projection[2][1] << " " << projection[3][1] << endl;
-	//cout << projection[0][2] << " " << projection[1][2] << " " << projection[2][2] << " " << projection[3][2] << endl;
-	//cout << projection[0][3] << " " << projection[1][3] << " " << projection[2][3] << " " << projection[3][3] << endl;
-	//cout << endl;
-	//projection[2][3] = 1.0f;
-	//cout << view[0][0] << " " << view[0][1] << " " << view[0][2] << " " << view[0][3] << endl;
-	//cout << view[1][0] << " " << view[1][1] << " " << view[1][2] << " " << view[1][3] << endl;
-	//cout << view[2][0] << " " << view[2][1] << " " << view[2][2] << " " << view[2][3] << endl;
-	//cout << view[3][0] << " " << view[3][1] << " " << view[3][2] << " " << view[3][3] << endl;
-	//cout << endl;
-	//cout << projection[0][0] << " " << projection[1][0] << " " << projection[2][0] << " " << projection[3][0] << endl;
-	//cout << projection[0][1] << " " << projection[1][1] << " " << projection[2][1] << " " << projection[3][1] << endl;
-	//cout << projection[0][2] << " " << projection[1][2] << " " << projection[2][2] << " " << projection[3][2] << endl;
-	//cout << projection[0][3] << " " << projection[1][3] << " " << projection[2][3] << " " << projection[3][3] << endl;
-	//cout << endl;
 	
 	camMatrix = projection * view;
-	
-	//cout << camMatrix[0][0] << " " << camMatrix[1][0] << " " << camMatrix[2][0] << " " << camMatrix[3][0] << endl;
-	//cout << camMatrix[0][1] << " " << camMatrix[1][1] << " " << camMatrix[2][1] << " " << camMatrix[3][1] << endl;
-	//cout << camMatrix[0][2] << " " << camMatrix[1][2] << " " << camMatrix[2][2] << " " << camMatrix[3][2] << endl;
-	//cout << camMatrix[0][3] << " " << camMatrix[1][3] << " " << camMatrix[2][3] << " " << camMatrix[3][3] << endl;
 }
 

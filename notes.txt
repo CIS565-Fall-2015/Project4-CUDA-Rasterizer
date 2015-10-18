@@ -132,6 +132,12 @@ it's OKAY to serialize tiles?
 	-each thread processes primitives in serial, using atomics to write to the block memory
 	-entire output is written out to the frame buffer; no need for atomics here
 
+TODO README:
+-describe features
+	-instancing
+	-MSAA, FSAA
+	-Tiling
+		-cows scene
+		-zoomed in cube scene
 
-ANALYSIS
--
+ANALYSIS - INSTANCING
