@@ -83,8 +83,16 @@ Tiling requires additional buffers to be added in global memory. This implementa
 The [tileScanline](src/rasterize.cpp#L661) kernel sets its local fragment and depth buffers at the start of the kernel. This is also where debugging can be toggled. The kernel supports drawing a checkered background to indicate the tile boundaries (Tile size is 16 x 16, set by TILESIZE) and drawing a red background for tiles whose primitive lists are nonempty.
 
 *Performance*
-The performance gains differ based on the scene case. In the case of a scene with many primitives in view (the cow), with each primitive relatively small, standard rasterization outperforms tiling.
+The performance gains differ based on the scene case. In the case of a scene with many primitives in view (the cow), with each primitive relatively small, standard rasterization outperforms tiling. However, note that in this case the actual scanline portion is faster in the tiled rasterizer - the main loss is the binning process, which here is parallelized per tile but could benefit from parallelization per primitive with appropriate handling for race conditions.
 
 However, in the case of a scene with few primitives in view that are very very large (the cube), tiling dramaticaly undercuts traditional rasterization. This is because the serial scanline process in for tile is capped by the tile size, while in traditional rasterization the scanline process for each primitive is capped by the total render resolution. Thus, "dicing" large primitives into smaller scanline regions (the tiles) better exploits parallelism.
 
 ![](img/charts/tiling/tiling.png)
+
+
+|task vs pipeline stage in microseconds| clear tiles/fragment buffer| compute vertex transforms|vertex shade|primitive assembly| bin primitives (tiling only) |scanline rasterization|
+|--------------------------------------|----------------------------|--------------------------|------------|------------------|------------------------------|----------------------|
+|cow                                   |  407.724                   |  2.79                    |  33.997    | 48.961           | N/A                          | 2803.701             |
+|cow (tiled)                           |  5.793                     |  3.97                    |  33.211    | 47.463           | 4982.626                     | 1772.194             |
+|zoomed cube                           |  409.288                   |  2.0768                  |  4.691     | 10.299           | N/A                          | 56579.231            | 
+|zoomed cube (tiled)                   |  5.854                     |  3.952                   |  4.701     | 10.212           | 18.913                       | 1546.637             |
