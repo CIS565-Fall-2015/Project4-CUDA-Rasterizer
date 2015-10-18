@@ -47,9 +47,44 @@ This rasterizer implements two forms of antialiasing: Full Screen Antialiasing (
 
 ![](img/charts/antialiasing/antialiasing.png)
 
-Although MSAA is an approximation of FSAA, the results are visibily similar. This is because aliasing is mostly noticed on the edgs of primitives, so MSAA "cheats" by treating samples from one fragment striking "inside" primitives similarly to single-sampled fragments. The FSAA image is in the middle and the MSAA image is to the far right.
+Although MSAA is an approximation of FSAA, the results are visibily similar. This is because aliasing is mostly noticed on the edgs of primitives, so MSAA "cheats" in fragment shading by treating samples from one fragment striking "inside" primitives similarly to single-sampled fragments. The FSAA image is in the middle and the MSAA image is to the far right.
 
 ![](img/AA_spread_comparison.png)
 
 **Tiling**
 
+![](img/tiling_spread.png)
+
+Tiling is a rendering technique used to reduce global memory access in the scanline rasterization/depth test stage and is commonly used on mobile GPUs to reduce power.
+
+Standard scanline rasterization is parallelized per primitive. An Axis-Aligned Bounding Box is built around the primitive, which corresponds with the screen pixels that the primitive covers. Points on the primitive are then sampled using this bounding box as a grid, scanning fragments line by line and testing them against a depth/fragment buffer that all the primitive processing kernels can access.
+
+What happens if two primitives that would overlap in the current view are being rasterized simultaneously by separate kernels? It is very likely that at some point they will access the same fragment in the depth/fragment buffer. This implmentation uses CUDA's atomicMin to resolve this race condition and maintains a parallel buffer of integer depths to the fragment buffer.
+
+These integer depth and fragment buffers exist in global memory, which is slow and power inefficient to access. Tiling dices the screen space into a grid of "tiles," each of which has its own depth and fragment buffer in block shared memory, as well as a list of primitives that overlap this tile in screen space. This implementation thus parallelizes scanline rasterization over tiles, with each tile checking the fragments it covers serially.
+
+Unfortunately, this implementation of tiling is a little messy and incomplete. Fortunately, enough of the output image is correct to provide an analysis and demonstrate a use case in which it is far mroe efficient than full screen rasterization.
+
+*Pipeline Changes*
+The Tiling pipeline diverges completely after primitive assembly. This implementation also ditches the depth buffer clearing stage in favor of a tile clearing stage, as each tile gets its own depth and fragment buffer.
+The tiling pipeline looks something like this:
+
+* multiply all scenegraph transformation matrices by the view/projection matrix [unchanged]
+* shade vertices [unchanged]
+* perform primitive assembly [unchanged]
+* for each tile in parallel, generate a list of primitives that are likely to be in this tile.
+* for each tile in parallel, use scanline rasterization to generate fragments. perform depth tests.
+* shade the fragments [unchanged]
+* copy the fragments to the frame buffer [unchanged]
+
+Tiling requires additional buffers to be added in global memory. This implementation uses a buffer of "tile" structs and a concatenated list of the primitive indices that each tile contains.
+
+*Things to look at*
+The [tileScanline](src/rasterize.cpp#L661) kernel sets its local fragment and depth buffers at the start of the kernel. This is also where debugging can be toggled. The kernel supports drawing a checkered background to indicate the tile boundaries (Tile size is 16 x 16, set by TILESIZE) and drawing a red background for tiles whose primitive lists are nonempty.
+
+*Performance*
+The performance gains differ based on the scene case. In the case of a scene with many primitives in view (the cow), with each primitive relatively small, standard rasterization outperforms tiling.
+
+However, in the case of a scene with few primitives in view that are very very large (the cube), tiling dramaticaly undercuts traditional rasterization. This is because the serial scanline process in for tile is capped by the tile size, while in traditional rasterization the scanline process for each primitive is capped by the total render resolution. Thus, "dicing" large primitives into smaller scanline regions (the tiles) better exploits parallelism.
+
+![](img/charts/tiling/tiling.png)
