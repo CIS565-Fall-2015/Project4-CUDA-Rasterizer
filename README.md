@@ -6,6 +6,8 @@ CUDA Rasterizer
 * Kangning (Gary) Li
 * Tested on: Windows 10, i7-4790 @ 3.6GHz 16GB, GTX 970 4096MB (Personal)
 
+<iframe src="https://player.vimeo.com/video/142789852" width="500" height="500" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe> <p><a href="https://vimeo.com/142789852">CUDA Rasterizer</a> from <a href="https://vimeo.com/user17519711">Kangning Li</a> on <a href="https://vimeo.com">Vimeo</a>.</p>
+
 ![](img/AAAAAAAAAAAAAAA.png)
 
 This repository contains a basic rasterization pipeline written in CUDA. This pipeline has the following rough stages, as seen in the rasterize() function in [rasterize.cu](src/rasterize.cu#L856):
@@ -55,7 +57,7 @@ Although MSAA is an approximation of FSAA, the results are visibily similar. Thi
 
 ![](img/tiling_spread.png)
 
-Tiling is a rendering technique used to reduce global memory access in the scanline rasterization/depth test stage and is commonly used on mobile GPUs to reduce power.
+Tiling is a rastserization technique used to reduce global memory access in the scanline rasterization/depth test stage and is commonly used on mobile GPUs to reduce power.
 
 Standard scanline rasterization is parallelized per primitive. An Axis-Aligned Bounding Box is built around the primitive, which corresponds with the screen pixels that the primitive covers. Points on the primitive are then sampled using this bounding box as a grid, scanning fragments line by line and testing them against a depth/fragment buffer that all the primitive processing kernels can access.
 
@@ -85,7 +87,7 @@ The [tileScanline](src/rasterize.cpp#L661) kernel sets its local fragment and de
 *Performance*
 The performance gains differ based on the scene case. In the case of a scene with many primitives in view (the cow), with each primitive relatively small, standard rasterization outperforms tiling. However, note that in this case the actual scanline portion is faster in the tiled rasterizer - the main loss is the binning process, which here is parallelized per tile but could benefit from parallelization per primitive with appropriate handling for race conditions.
 
-However, in the case of a scene with few primitives in view that are very very large (the cube), tiling dramaticaly undercuts traditional rasterization. This is because the serial scanline process in for tile is capped by the tile size, while in traditional rasterization the scanline process for each primitive is capped by the total render resolution. Thus, "dicing" large primitives into smaller scanline regions (the tiles) better exploits parallelism.
+However, in the case of a scene with few primitives in view that are very very large (the cube), tiling dramaticaly undercuts traditional rasterization. This is because the serial scanline process for tile is capped by the tile size, while in traditional rasterization the scanline process for each primitive is capped by the total render resolution. Thus, "dicing" large primitives into smaller scanline regions (the tiles) better exploits parallelism.
 
 ![](img/charts/tiling/tiling.png)
 
