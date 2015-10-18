@@ -45,8 +45,8 @@ In this comparison, 6 cows were rasterized by uploading an obj file with 6 cows 
 
 This rasterizer implements two forms of antialiasing: Full Screen Antialiasing (FSAA) and Multi Sample Antialiasing (MSAA). Full Screen Antialiasing is closest to the original concept of antialiasing: multisample each pixel to produce a smooth result. In this pipeline, enabling antialiasing replaces the standard scanline rasterization and depth test stage with one that takes 5 samples per fragment distributed across the fragment's screen coordinate area, which results in additional computation time. Where FSAA and MSAA differ is in fragment shading: FSAA shades each of the 5 samples independently, while MSAA only shades each sample that strikes a unique primitive. The result, as demonstrated below, is that the MSAA pipeline spends less time in fragment shading, which would produce more dramatic performance gains over FSAA with a highly complex fragment shader:
 
-![](img/charts/instancing/antialiasing.png)
+![](img/charts/antialiasing/antialiasing.png)
 
 Although MSAA is an approximation of FSAA, the results are visibily similar. This is because aliasing is mostly noticed on the edgs of primitives, so MSAA "cheats" by treating samples from one fragment striking "inside" primitives similarly to single-sampled fragments. The FSAA image is on the right and the MSAA image is on the left.
 
-![](img/single_cow.png) ![](img/FSAA.png) ![](img/charts/instancing/MSAA.png)
+![](img/FSAA.png) ![](img/MSAA.png)
