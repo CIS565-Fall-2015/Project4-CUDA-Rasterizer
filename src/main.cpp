@@ -15,7 +15,7 @@
 
 float theta = 0.78539816339f;// 1.57079632679f;
 float phi = 0.0f;//2.35619449019f;
-float zoom = 1.0f;
+float zoom = 2.0f;
 float fovy = 0.785398f;
 glm::mat4 camMatrix;
 

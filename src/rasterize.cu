@@ -574,7 +574,7 @@ __device__ void shadeSingleFragment(Fragment &frag, int numLights, Light *dev_li
 		finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
 
 		// calculate specular term
-		tmp = dev_lights[j].specular * powf(glm::max(glm::dot(refl, eye), 0.0f), 0.3);
+		tmp = dev_lights[j].specular * powf(glm::max(glm::dot(refl, eye), 0.0f), 0.3f * 19.0f);
 		finalColor[0] += glm::clamp(tmp[0], 0.0f, 1.0f);
 		finalColor[1] += glm::clamp(tmp[1], 0.0f, 1.0f);
 		finalColor[2] += glm::clamp(tmp[2], 0.0f, 1.0f);
@@ -929,11 +929,12 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 	}
 	else {
 		// 5) clear and re-bin the primitives
-		dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
+		dim3 blockCountTile(tilesTall * tilesWide);
+		dim3 blockSizeTile(TILESIZESQUARED);
 
-		clearTile << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide, dev_tileBuffer);
+		clearTile << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide, dev_tileBuffer);
 
-		binPrimitives << <blockCount1d_tiles, blockSize1d >> >(tilesTall * tilesWide,
+		binPrimitives << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide,
 			dev_tileBuffer, (bufIdxSize / 3) * numInstances, dev_primitives, width, height,
 			dev_tiling_primitiveIndicesBuffer);
 		//checkCUDAError("binning"); // debug
@@ -955,9 +956,7 @@ void rasterize(uchar4 *pbo, glm::mat4 cameraMatrix) {
 
 		// 6) rasterize and depth test using tiling
 
-		dim3 blockSize1dTile(TILESIZESQUARED);
-		dim3 blockCountTile(tilesTall * tilesWide);
-		tileScanline << <blockCountTile, blockSize1dTile >> >(tilesTall * tilesWide, dev_tileBuffer,
+		tileScanline << <blockCountTile, blockSizeTile >> >(tilesTall * tilesWide, dev_tileBuffer,
 			(bufIdxSize / 3) * numInstances, dev_primitives, dev_depthbuffer,
 			dev_tiling_primitiveIndicesBuffer,
 			depth, bgColor, defaultNorm, width, height);
@@ -1057,9 +1056,8 @@ void setupTiling() {
 	cudaMemset(dev_tiling_primitiveIndicesBuffer, -1,
 		sizeof(int) * tilesWide * tilesTall * (bufIdxSize / 3) * numInstances);
 
-	int sideLength1d = 16;
-	dim3 blockSize1d(sideLength1d);
-	dim3 blockCount1d_tiles((tilesWide * tilesTall + sideLength1d - 1) / sideLength1d);
+	dim3 blockSize1d(TILESIZESQUARED);
+	dim3 blockCount1d_tiles((tilesWide * tilesTall + blockSize1d.x - 1) / blockSize1d.x);
 	setupIndividualTile <<<blockCount1d_tiles, blockSize1d>>>(dev_tileBuffer,
 		tilesWide, tilesTall, (bufIdxSize / 3) * numInstances, width, height);
 }

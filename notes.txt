@@ -131,3 +131,7 @@ it's OKAY to serialize tiles?
 	-each block gets one tile
 	-each thread processes primitives in serial, using atomics to write to the block memory
 	-entire output is written out to the frame buffer; no need for atomics here
+
+
+ANALYSIS
+-
